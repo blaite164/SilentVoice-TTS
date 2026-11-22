@@ -39,7 +39,7 @@ Watch the overview covering installation, local & cloud TTS models, AI typo corr
 
 ### 🗣️ Voice & TTS Engine
 - **One-Click Local TTS Installer:** Download and set up offline TTS models in a single click with progress tracking, automatic mirrors, and proxy fallback.
-  - **Language-Tailored Model Library:** Includes **5 local models** each for Ukrainian and Russian (3 fast CPU models with instant voice previews + 2 GPU models with voice cloning) and **4 local models** for English and other languages.
+  - **Language-Tailored Model Library:** Includes **4 local TTS models** each for Ukrainian and Russian (3 fast CPU models with instant voice previews + 1 GPU model with voice cloning) and **3 local models** for English and other languages (4 CPU models and 1 GPU voice-cloning model in total; **OpenVoice v2** works separately as a tone-transfer add-on).
   - **Voice Cloning & Tone Transfer:** GPU-accelerated voice cloning with curated starter voice packs (EN / UK / RU), custom audio sample support, plus **OpenVoice v2** tone-color transfer to give lightweight TTS voices a unique vocal identity.
 - **Cloud TTS via API (6+ Providers):** One-click **Edge TTS** installation plus support for 6+ online TTS services with built-in step-by-step API key setup guides.
 - **Primary & Fallback Failover + DSP:** Configure a backup TTS engine that takes over automatically if your primary engine fails, and enhance your voice with real-time **DSP audio filters**.
