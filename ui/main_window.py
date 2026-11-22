@@ -1114,16 +1114,8 @@ class MainWindow(QMainWindow):
         self.resize(init_w, init_h)
         self.setMinimumSize(540, 380)
         if screen_obj is not None:
-            if saved_x is not None and saved_y is not None:
-                try:
-                    cx = max(avail_geo.x(), min(avail_geo.x() + avail_geo.width() - init_w, int(saved_x)))
-                    cy = max(avail_geo.y(), min(avail_geo.y() + avail_geo.height() - init_h, int(saved_y)))
-                except (TypeError, ValueError):
-                    cx = avail_geo.x() + max(0, (avail_geo.width() - init_w) // 2)
-                    cy = avail_geo.y()
-            else:
-                cx = avail_geo.x() + max(0, (avail_geo.width() - init_w) // 2)
-                cy = avail_geo.y()
+            cx = avail_geo.x() + max(0, (avail_geo.width() - init_w) // 2)
+            cy = avail_geo.y()
             self.move(cx, cy)
         self.setStyleSheet(MAIN_STYLESHEET)
 
