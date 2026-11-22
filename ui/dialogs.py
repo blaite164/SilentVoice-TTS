@@ -808,17 +808,6 @@ class VoiceSamplesDialog(QDialog):
         name_lbl.setStyleSheet("border: none; background: transparent; color: #FFFFFF;")
         r_lay.addWidget(name_lbl, 1)
 
-        play_btn = QPushButton("▶")
-        play_btn.setObjectName("primaryBtn")
-        play_btn.setFixedSize(34, 28)
-        play_btn.setStyleSheet("padding: 0px; font-size: 13px;")
-        play_btn.setToolTip(tr("dlg_003", "▶ Прослухати"))
-        play_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        play_btn.clicked.connect(
-            lambda checked=False, p=item["path"]: tts_manager.play_sample_preview(p, monitor_only=True)
-        )
-        r_lay.addWidget(play_btn)
-
         if self._on_select_sample is not None:
             use_btn = QPushButton()
             use_btn.setFixedSize(34, 28)
@@ -837,6 +826,17 @@ class VoiceSamplesDialog(QDialog):
                 )
             self._install_buttons.append((norm_item, use_btn))
             r_lay.addWidget(use_btn)
+
+        play_btn = QPushButton("▶")
+        play_btn.setObjectName("primaryBtn")
+        play_btn.setFixedSize(34, 28)
+        play_btn.setStyleSheet("padding: 0px; font-size: 13px;")
+        play_btn.setToolTip(tr("dlg_003", "▶ Прослухати"))
+        play_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        play_btn.clicked.connect(
+            lambda checked=False, p=item["path"]: tts_manager.play_sample_preview(p, monitor_only=True)
+        )
+        r_lay.addWidget(play_btn)
 
         if item.get("is_custom") == "1":
             del_btn = QPushButton()
