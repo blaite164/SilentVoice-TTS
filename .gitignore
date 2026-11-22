@@ -1,0 +1,32 @@
+﻿# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# PyInstaller / Inno Setup build outputs
+build/
+dist/
+*.exe
+*.spec.bak
+
+# Runtime & personal user data (keep bundled data/samples/)
+data/*
+!data/samples/
+*.log
+instance.port
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
