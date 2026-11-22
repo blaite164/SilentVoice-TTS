@@ -1326,5 +1326,7 @@
   "donate.opt.kofi_desc": "Płatność przez PayPal (wygodnie z każdego kraju)",
   "donate.opt.crypto_title": "🪙 Kryptowaluty",
   "donate.opt.crypto_desc": "Wsparcie w kryptowalutach (dostępne na całym świecie)",
-  "donate.btn.open": "Otwórz →"
+  "donate.btn.open": "Otwórz →",
+  "donate.opt.twitch_title": "💜 Twitch — Kanał autora",
+  "donate.opt.twitch_desc": "Wesprzyj obserwacją lub wpadnij na stream (B1M_164)"
 }

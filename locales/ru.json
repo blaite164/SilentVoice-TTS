@@ -1326,5 +1326,7 @@
   "donate.opt.kofi_desc": "Оплата через PayPal (зарубежные счета)",
   "donate.opt.crypto_title": "🪙 Криптовалюта",
   "donate.opt.crypto_desc": "Перевод в криптовалюте (подходит для РФ и любых стран)",
-  "donate.btn.open": "Открыть →"
+  "donate.btn.open": "Открыть →",
+  "donate.opt.twitch_title": "💜 Twitch — Канал автора",
+  "donate.opt.twitch_desc": "Поддержите подпиской или заходите на стрим (B1M_164)"
 }

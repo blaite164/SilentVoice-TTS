@@ -1326,5 +1326,7 @@
   "donate.opt.kofi_desc": "Оплата через PayPal (зручно для підтримки з-за кордону)",
   "donate.opt.crypto_title": "🪙 Криптовалюта",
   "donate.opt.crypto_desc": "Підтримка в криптовалюті (працює з будь-якої країни)",
-  "donate.btn.open": "Відкрити →"
+  "donate.btn.open": "Відкрити →",
+  "donate.opt.twitch_title": "💜 Twitch — Канал автора",
+  "donate.opt.twitch_desc": "Підтримайте підпискою або заходьте на стрім (B1M_164)"
 }

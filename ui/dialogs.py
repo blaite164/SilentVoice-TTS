@@ -4920,7 +4920,8 @@ class FFmpegInstallDialog(QDialog):
 
 DONATE_DONATELLO_URL = "https://donatello.to/B1M"
 DONATE_KOFI_URL = "https://ko-fi.com/b1m164/tip"
-DONATE_CRYPTO_URL = "https://b1m164.notion.site/Donate-via-cryptocurrency-420eff284d6780d48d2be109f8065016"
+DONATE_CRYPTO_URL = "https://b1m164.notion.site/Donate-via-cryptocurrency-420eff284d6780d48d2be109f8065016?source=copy_link"
+DONATE_TWITCH_URL = "https://www.twitch.tv/B1M_164"
 
 
 class DonateDialog(QDialog):
@@ -4976,6 +4977,14 @@ class DonateDialog(QDialog):
                     DONATE_KOFI_URL,
                 ),
             ]
+            if lang in ("uk", "en"):
+                options.append(
+                    (
+                        tr("donate.opt.twitch_title", "💜 Twitch — Канал автора"),
+                        tr("donate.opt.twitch_desc", "Підтримайте підпискою або заходьте на стрім (B1M_164)"),
+                        DONATE_TWITCH_URL,
+                    )
+                )
 
         for opt_title, opt_desc, opt_url in options:
             card = QFrame()

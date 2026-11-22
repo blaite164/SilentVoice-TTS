@@ -1326,5 +1326,7 @@
   "donate.opt.kofi_desc": "Pay via PayPal (convenient worldwide)",
   "donate.opt.crypto_title": "🪙 Cryptocurrency",
   "donate.opt.crypto_desc": "Donate via cryptocurrency (available worldwide)",
-  "donate.btn.open": "Open →"
+  "donate.btn.open": "Open →",
+  "donate.opt.twitch_title": "💜 Twitch — Author Channel",
+  "donate.opt.twitch_desc": "Support with a follow or drop by the stream (B1M_164)"
 }
