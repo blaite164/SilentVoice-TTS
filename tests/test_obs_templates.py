@@ -105,6 +105,38 @@ class ObsCustomTemplateTests(unittest.TestCase):
                     blaite_html = srv.render_page()
                     self.assertIn("VOICE TRANSMISSION", blaite_html)
 
+    def test_custom_browser_preview_auto_triggers_sample_speech_on_ws(self) -> None:
+        import asyncio
+        import json
+        from aiohttp.test_utils import TestClient, TestServer
+        from aiohttp import web
+
+        async def _run() -> None:
+            srv = OBSSubtitleServer()
+            app = web.Application()
+            app.router.add_get("/", srv._handle_index)
+            app.router.add_get("/ws", srv._handle_ws)
+            async with TestClient(TestServer(app)) as client:
+                with patch.object(config, "get", side_effect=lambda k, d=None: "custom" if k == "obs_template_mode" else d):
+                    resp = await client.get("/?preview=1")
+                    self.assertEqual(resp.status, 200)
+                    async with client.ws_connect("/ws") as ws:
+                        msg1 = json.loads(await ws.receive_str(timeout=2.0))
+                        msg2 = json.loads(await ws.receive_str(timeout=2.0))
+                        self.assertEqual(msg1["type"], "style")
+                        self.assertEqual(msg2["type"], "speech")
+                        self.assertTrue(bool(msg2.get("text")))
+                        self.assertGreater(float(msg2.get("duration", 0)), 0)
+
+                    # Normal OBS connect without ?preview=1 should only receive style (no auto speech)
+                    async with client.ws_connect("/ws") as ws_obs:
+                        first = json.loads(await ws_obs.receive_str(timeout=2.0))
+                        self.assertEqual(first["type"], "style")
+                        with self.assertRaises(asyncio.TimeoutError):
+                            await ws_obs.receive_str(timeout=0.15)
+
+        asyncio.run(_run())
+
 
 if __name__ == "__main__":
     unittest.main()

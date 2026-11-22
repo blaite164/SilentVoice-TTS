@@ -1120,10 +1120,10 @@ class MainWindow(QMainWindow):
                     cy = max(avail_geo.y(), min(avail_geo.y() + avail_geo.height() - init_h, int(saved_y)))
                 except (TypeError, ValueError):
                     cx = avail_geo.x() + max(0, (avail_geo.width() - init_w) // 2)
-                    cy = avail_geo.y() + max(0, (avail_geo.height() - init_h) // 2)
+                    cy = avail_geo.y()
             else:
                 cx = avail_geo.x() + max(0, (avail_geo.width() - init_w) // 2)
-                cy = avail_geo.y() + max(0, (avail_geo.height() - init_h) // 2)
+                cy = avail_geo.y()
             self.move(cx, cy)
         self.setStyleSheet(MAIN_STYLESHEET)
 

@@ -11,6 +11,7 @@ import copy
 import json
 import socket
 import threading
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -2690,7 +2691,14 @@ class OBSSubtitleServer(QObject):
                 return False
         return True
 
+    @staticmethod
+    def _is_custom_template_mode() -> bool:
+        tpl_mode = str(config.get("obs_template_mode", "builtin") or "builtin").strip().lower()
+        return tpl_mode == "custom" or tpl_mode.startswith("custom:")
+
     async def _handle_index(self, request: web.Request) -> web.Response:
+        if request.query.get("preview") == "1" and self._is_custom_template_mode():
+            self._custom_preview_pending_until = time.monotonic() + 5.0
         return web.Response(
             text=self.render_page(),
             content_type="text/html",
@@ -2707,8 +2715,29 @@ class OBSSubtitleServer(QObject):
         ws = web.WebSocketResponse()
         await ws.prepare(request)
         self._clients.add(ws)
+        style_payload = self.get_style_payload()
+        i18n_payload = self.get_page_i18n()
         # Відразу надсилаємо поточний стиль при підключенні OBS
-        await ws.send_str(json.dumps({"type": "style", "style": self.get_style_payload(), "i18n": self.get_page_i18n()}, ensure_ascii=False))
+        await ws.send_str(json.dumps({"type": "style", "style": style_payload, "i18n": i18n_payload}, ensure_ascii=False))
+        is_preview = (
+            request.query.get("preview") == "1"
+            or "preview=1" in str(request.headers.get("Referer", "") or "")
+            or time.monotonic() <= float(getattr(self, "_custom_preview_pending_until", 0.0))
+        )
+        if is_preview and self._is_custom_template_mode():
+            self._custom_preview_pending_until = 0.0
+            sample_text = str(i18n_payload.get("sample_text") or "Hello viewers! Testing OBS subtitles ✨")
+            await ws.send_str(
+                json.dumps(
+                    {
+                        "type": "speech",
+                        "text": sample_text,
+                        "duration": 2.8,
+                        "style": style_payload,
+                    },
+                    ensure_ascii=False,
+                )
+            )
         try:
             async for msg in ws:
                 if msg.type == WSMsgType.TEXT and request.query.get("preview") == "1":
