@@ -1,17 +1,20 @@
 import datetime
 import io
 import os
-import re
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
 from core.app_logger import (
     MAX_LOG_FILES,
     TimestampedLogStream,
+    UIWatchdog,
     create_session_log_path,
+    format_all_threads_dump,
     open_session_log_streams,
     prune_old_logs,
+    rotate_crash_log_if_needed,
 )
 
 
@@ -126,6 +129,56 @@ class AppLoggerTests(unittest.TestCase):
             removed = prune_old_logs(logs_dir, keep_count=2)
             self.assertEqual(len(removed), 2)
             self.assertEqual(len(list(logs_dir.glob("app_*.log"))), 2)
+
+    def test_format_all_threads_dump_includes_main_thread(self) -> None:
+        dump = format_all_threads_dump()
+        self.assertIn("MainThread", dump)
+        self.assertIn("test_format_all_threads_dump_includes_main_thread", dump)
+
+    def test_ui_watchdog_detects_freeze_and_recovery(self) -> None:
+        freeze_events: list[tuple[float, str]] = []
+        recover_events: list[float] = []
+        got_freeze = threading.Event()
+        got_recover = threading.Event()
+
+        def _on_freeze(stalled: float, dump: str) -> None:
+            freeze_events.append((stalled, dump))
+            got_freeze.set()
+
+        def _on_recover(stalled: float) -> None:
+            recover_events.append(stalled)
+            got_recover.set()
+
+        wd = UIWatchdog(
+            on_freeze=_on_freeze,
+            on_recover=_on_recover,
+            timeout_sec=0.08,
+            check_interval_sec=0.02,
+            repeat_dump_sec=5.0,
+        )
+        wd.start()
+        try:
+            self.assertTrue(got_freeze.wait(timeout=1.5), "Watchdog did not detect freeze")
+            self.assertEqual(len(freeze_events), 1)
+            self.assertGreaterEqual(freeze_events[0][0], 0.08)
+            self.assertIn("MainThread", freeze_events[0][1])
+
+            wd.heartbeat()
+            self.assertTrue(got_recover.wait(timeout=0.5), "Watchdog did not report recovery")
+            self.assertEqual(len(recover_events), 1)
+        finally:
+            wd.stop()
+
+    def test_rotate_crash_log_if_needed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            crash_path = Path(tmp) / "crash.log"
+            crash_path.write_text("x" * 200, encoding="utf-8")
+            rotated = rotate_crash_log_if_needed(crash_path, max_bytes=100)
+            self.assertTrue(rotated)
+            self.assertFalse(crash_path.exists())
+            backup = Path(tmp) / "crash.log.old"
+            self.assertTrue(backup.exists())
+            self.assertEqual(len(backup.read_text(encoding="utf-8")), 200)
 
 
 if __name__ == "__main__":

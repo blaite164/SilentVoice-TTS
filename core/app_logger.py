@@ -10,13 +10,17 @@ from __future__ import annotations
 
 import datetime
 import os
+import sys
 import threading
+import time
+import traceback
 from pathlib import Path
-from typing import TextIO
+from typing import Callable, TextIO
 
 MAX_LOG_FILES = 5
 LOG_FILE_PREFIX = "app_"
 LOG_FILE_SUFFIX = ".log"
+MAX_CRASH_LOG_BYTES = 2 * 1024 * 1024
 
 
 def format_log_timestamp(now: datetime.datetime | None = None) -> str:
@@ -240,3 +244,145 @@ def open_session_log_streams(
     stdout_stream = TimestampedLogStream(raw_file, console_stream=orig_stdout, lock=shared_lock)
     stderr_stream = TimestampedLogStream(raw_file, console_stream=orig_stderr, lock=shared_lock)
     return log_path, raw_file, stdout_stream, stderr_stream
+
+
+def rotate_crash_log_if_needed(
+    crash_log_path: Path,
+    max_bytes: int = MAX_CRASH_LOG_BYTES,
+) -> bool:
+    """
+    Якщо ``crash.log`` перевищує ``max_bytes``, переносить його у ``crash.log.old``,
+    щоб файл не розростався безмежно, але остання історія крашів зберігалася.
+    """
+    try:
+        if crash_log_path.exists() and crash_log_path.stat().st_size > max_bytes:
+            backup = crash_log_path.with_name(crash_log_path.name + ".old")
+            crash_log_path.replace(backup)
+            return True
+    except OSError:
+        pass
+    return False
+
+
+def format_all_threads_dump() -> str:
+    """
+    Повертає повний стек викликів усіх активних Python-потоків
+    (починаючи з MainThread) для діагностики зависань та deadlock'ів.
+    """
+    frames = sys._current_frames()
+    threads_by_id = {t.ident: t for t in threading.enumerate() if t.ident is not None}
+    main_ident = threading.main_thread().ident
+
+    ordered_ids = sorted(
+        frames.keys(),
+        key=lambda tid: (0 if tid == main_ident else 1, threads_by_id[tid].name if tid in threads_by_id else str(tid)),
+    )
+
+    sections: list[str] = []
+    for tid in ordered_ids:
+        frame = frames.get(tid)
+        if frame is None:
+            continue
+        t = threads_by_id.get(tid)
+        if t is not None:
+            role = "daemon" if t.daemon else "non-daemon"
+            header = f"--- Thread: {t.name} (id={tid}, {role}) ---"
+        else:
+            header = f"--- Thread: unknown (id={tid}) ---"
+        stack_txt = "".join(traceback.format_stack(frame)).rstrip()
+        sections.append(f"{header}\n{stack_txt}")
+    return "\n\n".join(sections)
+
+
+class UIWatchdog:
+    """
+    Фоновий сторожовий потік, що відстежує пульс головного GUI-потоку Qt.
+    Якщо UI не відповідає довше ``timeout_sec``, записує повний стек усіх потоків
+    через ``on_freeze`` (у ``crash.log``), щоб можна було точно побачити причину зависання.
+    """
+
+    def __init__(
+        self,
+        on_freeze: Callable[[float, str], None],
+        on_recover: Callable[[float], None] | None = None,
+        timeout_sec: float = 12.0,
+        check_interval_sec: float = 2.0,
+        repeat_dump_sec: float = 30.0,
+    ) -> None:
+        self._on_freeze = on_freeze
+        self._on_recover = on_recover
+        self._timeout_sec = max(0.05, float(timeout_sec))
+        self._check_interval_sec = max(0.02, float(check_interval_sec))
+        self._repeat_dump_sec = max(self._timeout_sec, float(repeat_dump_sec))
+        self._lock = threading.Lock()
+        self._last_heartbeat = time.monotonic()
+        self._freeze_started_at: float | None = None
+        self._dump_count = 0
+        self._stop_event = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def start(self) -> None:
+        if self._thread is not None and self._thread.is_alive():
+            return
+        self._stop_event.clear()
+        with self._lock:
+            self._last_heartbeat = time.monotonic()
+            self._freeze_started_at = None
+            self._dump_count = 0
+        self._thread = threading.Thread(target=self._run, daemon=True, name="UIWatchdog")
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop_event.set()
+        t = self._thread
+        if t is not None and t.is_alive() and t is not threading.current_thread():
+            t.join(timeout=min(1.0, self._check_interval_sec * 2.0))
+
+    def heartbeat(self) -> None:
+        now = time.monotonic()
+        recovered_after: float | None = None
+        with self._lock:
+            if self._freeze_started_at is not None:
+                recovered_after = max(0.0, now - self._freeze_started_at)
+                self._freeze_started_at = None
+                self._dump_count = 0
+            self._last_heartbeat = now
+        if recovered_after is not None and self._on_recover is not None:
+            try:
+                self._on_recover(recovered_after)
+            except Exception:
+                pass
+
+    def _run(self) -> None:
+        while not self._stop_event.is_set():
+            t_before = time.monotonic()
+            if self._stop_event.wait(self._check_interval_sec):
+                break
+            now = time.monotonic()
+            # Якщо система щойно вийшла зі сну/гібернації — скидаємо таймер, щоб уникнути хибної тривоги
+            if (now - t_before) > max(self._check_interval_sec * 4.0, self._timeout_sec):
+                with self._lock:
+                    self._last_heartbeat = now
+                continue
+
+            should_dump = False
+            stalled_sec = 0.0
+            with self._lock:
+                stalled_sec = now - self._last_heartbeat
+                if stalled_sec >= self._timeout_sec:
+                    if self._freeze_started_at is None:
+                        self._freeze_started_at = self._last_heartbeat
+                    if self._dump_count == 0:
+                        self._dump_count = 1
+                        should_dump = True
+                    elif self._dump_count == 1 and stalled_sec >= self._repeat_dump_sec:
+                        self._dump_count = 2
+                        should_dump = True
+
+            if should_dump:
+                try:
+                    dump = format_all_threads_dump()
+                    self._on_freeze(stalled_sec, dump)
+                except Exception:
+                    pass
+

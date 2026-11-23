@@ -55,10 +55,16 @@ ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
-from PySide6.QtCore import QEvent, QMessageLogContext, QObject, QtMsgType, Signal, qInstallMessageHandler
+from PySide6.QtCore import QEvent, QMessageLogContext, QObject, QTimer, QtMsgType, Signal, qInstallMessageHandler
 from PySide6.QtWidgets import QAbstractScrollArea, QApplication, QComboBox, QLineEdit
 
-from core.app_logger import MAX_LOG_FILES, format_log_timestamp, open_session_log_streams
+from core.app_logger import (
+    MAX_LOG_FILES,
+    UIWatchdog,
+    format_log_timestamp,
+    open_session_log_streams,
+    rotate_crash_log_if_needed,
+)
 from core.config import DATA_DIR, config
 from core.i18n import (
     _find_locale_path,
@@ -125,14 +131,23 @@ def _init_session_logging() -> None:
         _ensure_stdio_streams()
 
 
-def _write_crash_log(header: str, exc_type=None, exc_value=None, exc_tb=None) -> None:
+def _write_crash_log(
+    header: str,
+    exc_type=None,
+    exc_value=None,
+    exc_tb=None,
+    body: str | None = None,
+) -> None:
     try:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         stamp = format_log_timestamp()
-        with open(CRASH_LOG_PATH, "a", encoding="utf-8") as fh:
+        with open(CRASH_LOG_PATH, "a", encoding="utf-8", errors="replace") as fh:
             fh.write("\n" + "=" * 68 + "\n" + f"{stamp} {header}\n")
+            if body:
+                fh.write(body.rstrip() + "\n")
             if exc_type is not None:
                 traceback.print_exception(exc_type, exc_value, exc_tb, file=fh)
+            fh.flush()
     except Exception:
         pass
 
@@ -166,10 +181,28 @@ def _thread_excepthook(args: threading.ExceptHookArgs) -> None:
         sys.stderr.flush()
 
 
+def _unraisable_excepthook(unraisable) -> None:
+    """Ловить помилки в __del__, weakref та C-колбеках (PortAudio / PySide6 / ctypes), які не доходять до sys.excepthook."""
+    err_msg = getattr(unraisable, "err_msg", None) or "Unraisable exception"
+    obj_repr = ""
+    try:
+        if getattr(unraisable, "object", None) is not None:
+            obj_repr = f" ({unraisable.object!r})"
+    except Exception:
+        pass
+    header = f"[UNRAISABLE ERROR] {err_msg}{obj_repr}:"
+    _write_crash_log(header, unraisable.exc_type, unraisable.exc_value, unraisable.exc_traceback)
+    if sys.stderr is not None:
+        print(f"{header} {unraisable.exc_value}", file=sys.stderr, flush=True)
+
+
 def _qt_message_handler(mode: QtMsgType, context: QMessageLogContext, message: str) -> None:
-    """Перенаправляє попередження та помилки Qt у консоль."""
+    """Перенаправляє попередження та помилки Qt у лог, а критичні/фатальні — також у crash.log."""
     if "QFont::setPointSize: Point size <= 0" in message:
         return
+    if mode in (QtMsgType.QtCriticalMsg, QtMsgType.QtFatalMsg):
+        level = "FATAL" if mode == QtMsgType.QtFatalMsg else "CRITICAL"
+        _write_crash_log(f"[Qt {level}] {message}")
     if mode in (QtMsgType.QtWarningMsg, QtMsgType.QtCriticalMsg, QtMsgType.QtFatalMsg):
         print(f"[Qt] {message}", file=sys.stderr, flush=True)
 
@@ -233,12 +266,14 @@ def main() -> int:
     _ensure_stdio_streams()
     try:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
-        _CRASH_LOG_FILE = open(CRASH_LOG_PATH, "a", encoding="utf-8")
+        rotate_crash_log_if_needed(CRASH_LOG_PATH)
+        _CRASH_LOG_FILE = open(CRASH_LOG_PATH, "a", encoding="utf-8", errors="replace")
         faulthandler.enable(file=_CRASH_LOG_FILE, all_threads=True)
     except Exception:
         pass
     sys.excepthook = _console_excepthook
     threading.excepthook = _thread_excepthook
+    sys.unraisablehook = _unraisable_excepthook
     qInstallMessageHandler(_qt_message_handler)
 
     if "--verify-imports" in sys.argv:
@@ -530,9 +565,40 @@ def main() -> int:
         app.processEvents()
         window.repaint()
 
+    def _on_ui_freeze(stalled_sec: float, thread_dump: str) -> None:
+        header = f"[UI FREEZE] Головний потік не відповідає вже {stalled_sec:.1f} с (лог сесії: {APP_LOG_PATH.name}):"
+        _write_crash_log(header, body=thread_dump)
+        print(f"[Watchdog] Виявлено зависання інтерфейсу ({stalled_sec:.1f} с) — стек усіх потоків записано в crash.log.", flush=True)
+
+    def _on_ui_recover(stalled_sec: float) -> None:
+        _write_crash_log(f"[UI RECOVERED] Головний потік відновив роботу після {stalled_sec:.1f} с.")
+        print(f"[Watchdog] Інтерфейс відновив роботу після {stalled_sec:.1f} с.", flush=True)
+
+    ui_watchdog = UIWatchdog(
+        on_freeze=_on_ui_freeze,
+        on_recover=_on_ui_recover,
+        timeout_sec=12.0,
+        check_interval_sec=2.0,
+        repeat_dump_sec=30.0,
+    )
+    watchdog_timer = QTimer(app)
+    watchdog_timer.setInterval(2000)
+    watchdog_timer.timeout.connect(ui_watchdog.heartbeat)
+    watchdog_timer.start()
+    ui_watchdog.start()
+
     try:
         return app.exec()
     finally:
+        try:
+            watchdog_timer.stop()
+        except Exception:
+            pass
+        try:
+            ui_watchdog.stop()
+        except Exception:
+            pass
+        print("[SilentVoice] Завершення роботи...", flush=True)
         try:
             window.force_quit_app()
         except Exception:
