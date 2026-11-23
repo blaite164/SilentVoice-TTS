@@ -318,8 +318,13 @@ OBS_HTML_PAGE = r"""<!DOCTYPE html>
       -webkit-mask-image: linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.2) 14px, rgba(0, 0, 0, 0.75) 30px, black 50px, black 100%);
       mask-image: linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.2) 14px, rgba(0, 0, 0, 0.75) 30px, black 50px, black 100%);
     }
-    #subtitle-text {
+    #subtitle-content {
       display: inline-block;
+      max-width: 100%;
+      perspective: 700px;
+    }
+    #subtitle-text {
+      display: inline;
       color: #FFFFFF;
       font-size: 24px;
       font-weight: 700;
@@ -474,7 +479,7 @@ OBS_HTML_PAGE = r"""<!DOCTYPE html>
       <div id="subtitle-entry">
         <div id="subtitle-panel">
           <!-- Без пробілів/переносів усередині #text-wrap: white-space: pre-wrap зберігає їх як порожній рядок і відступ зліва -->
-          <div id="text-wrap"><span id="subtitle-text"></span><span id="cursor">▌</span></div>
+          <div id="text-wrap"><span id="subtitle-content"><span id="subtitle-text"></span><span id="cursor">▌</span></span></div>
         </div>
       </div>
     </div>
@@ -487,6 +492,7 @@ OBS_HTML_PAGE = r"""<!DOCTYPE html>
     const entryEl = document.getElementById('subtitle-entry');
     const panelEl = document.getElementById('subtitle-panel');
     const textWrapEl = document.getElementById('text-wrap');
+    const contentEl = document.getElementById('subtitle-content');
     const textEl = document.getElementById('subtitle-text');
     const cursorEl = document.getElementById('cursor');
 
@@ -502,7 +508,8 @@ OBS_HTML_PAGE = r"""<!DOCTYPE html>
     function reservePulsePadding(params) {
       const scale = Math.max(1, Number(params?.scaleMax || 1.08));
       const combinedScale = currentStyle.animate_motion_block ? scale * scale : scale;
-      const textWidth = Math.max(textEl.scrollWidth, textEl.getBoundingClientRect().width);
+      const measureEl = contentEl || textEl;
+      const textWidth = Math.max(measureEl.scrollWidth, measureEl.getBoundingClientRect().width);
       const basePad = Number(textWrapEl.dataset.basePaddingX || 0);
       const extraPad = Math.ceil(textWidth * (combinedScale - 1) / 2) + 3;
       textWrapEl.style.paddingLeft = `${basePad + extraPad}px`;
@@ -850,6 +857,9 @@ OBS_HTML_PAGE = r"""<!DOCTYPE html>
     }
 
     function cancelAllTextAnimations() {
+      if (contentEl) {
+        contentEl.getAnimations().forEach(a => a.cancel());
+      }
       if (textEl) {
         textEl.getAnimations({ subtree: true }).forEach(a => a.cancel());
       }
@@ -1038,7 +1048,7 @@ OBS_HTML_PAGE = r"""<!DOCTYPE html>
             { transform: 'translateY(0)', opacity: 1 }
           ];
           if (effectiveEntrySplit === 'whole') {
-            textEl.animate(riseFrames, { duration: eDuration, delay: eDelay, easing: eEasing, fill: 'both' });
+            (contentEl || textEl).animate(riseFrames, { duration: eDuration, delay: eDelay, easing: eEasing, fill: 'both' });
           } else {
             units.forEach((unit, idx) => {
               const delay = eDelay + idx * eStagger;
@@ -1057,7 +1067,7 @@ OBS_HTML_PAGE = r"""<!DOCTYPE html>
             unit.inner.animate(waveFrames, { duration: eDuration, delay: eDelay + idx * eStagger, easing: waveEasing, fill: 'both' });
           });
         } else if (effectiveEntrySplit === 'whole') {
-          textEl.animate(eKeyframes, { duration: eDuration, delay: eDelay, easing: eEasing, fill: 'both' });
+          (contentEl || textEl).animate(eKeyframes, { duration: eDuration, delay: eDelay, easing: eEasing, fill: 'both' });
         } else {
           units.forEach((u, idx) => {
             u.outer.animate(eKeyframes, { duration: eDuration, delay: eDelay + idx * eStagger, easing: eEasing, fill: 'both' });
@@ -1090,7 +1100,7 @@ OBS_HTML_PAGE = r"""<!DOCTYPE html>
             if (entrySplit === 'whole' && units[0]) {
               units[0].inner.animate(mKeyframes, { duration: mDur, delay: mDelay, easing: mEase, direction: mDir, fill: 'backwards', iterations: Infinity });
             } else {
-              textEl.animate(mKeyframes, { duration: mDur, delay: mDelay, easing: mEase, direction: mDir, fill: 'backwards', iterations: Infinity });
+              (contentEl || textEl).animate(mKeyframes, { duration: mDur, delay: mDelay, easing: mEase, direction: mDir, fill: 'backwards', iterations: Infinity });
             }
           } else {
             units.forEach((u, idx) => {
@@ -1132,7 +1142,8 @@ OBS_HTML_PAGE = r"""<!DOCTYPE html>
           });
         }
         if (!splitMotionUnits) {
-          textEl.animate(mDef.getKeyframes(mp), {
+          const motionTarget = mDef.isTextGradient ? textEl : (contentEl || textEl);
+          motionTarget.animate(mDef.getKeyframes(mp), {
             duration: Number(mp.duration || mDef.defaults.duration || 1600),
             delay: mDelay,
             easing: mp.easing || mDef.defaults.easing || 'ease-in-out',
