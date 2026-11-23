@@ -1204,7 +1204,7 @@ class MainWindow(QMainWindow):
 
         QTimer.singleShot(150, self._apply_window_capture_protection)
         QTimer.singleShot(160, self._apply_native_win_icon)
-        QTimer.singleShot(50, lambda: tts_manager.schedule_smart_warmup(0.05, "startup"))
+        QTimer.singleShot(1200, lambda: tts_manager.schedule_smart_warmup(0.3, "startup"))
         self.startup_update_found.connect(self._on_startup_update_found)
         QTimer.singleShot(700, self._check_post_update_notice)
         QTimer.singleShot(4500, self._auto_check_for_updates_on_startup)

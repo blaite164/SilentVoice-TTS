@@ -22,9 +22,6 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple
 
 import numpy as np
-import onnxruntime as ort
-import soundfile as sf
-from scipy.signal import resample_poly
 
 from core.config import ENGINES_DIR, config
 from core.win_api import assign_process_to_kill_on_close_job
@@ -151,6 +148,8 @@ def to_22k_mono(audio: np.ndarray, sr: int) -> np.ndarray:
     if y.ndim == 2:
         y = y.mean(axis=1)
     if sr > 0 and sr != TARGET_SR and len(y) > 0:
+        from scipy.signal import resample_poly
+
         g = gcd(int(sr), TARGET_SR)
         y = resample_poly(y, TARGET_SR // g, int(sr) // g).astype(np.float32)
     peak = float(np.max(np.abs(y))) if len(y) else 0.0
@@ -377,8 +376,8 @@ class OpenVoiceCloner:
 
     def __init__(self) -> None:
         self._lock = threading.RLock()
-        self._cpu_enc: Optional[ort.InferenceSession] = None
-        self._cpu_conv: Optional[ort.InferenceSession] = None
+        self._cpu_enc: Optional[Any] = None
+        self._cpu_conv: Optional[Any] = None
         self._gpu_worker = _GpuWorkerProcess()
         self._ref_cache_key: Optional[Tuple[str, int, int, str]] = None
         self._ref_cache_emb: Optional[np.ndarray] = None
@@ -429,9 +428,11 @@ class OpenVoiceCloner:
             self._ref_cache_emb = None
             self._warmed_key = None
 
-    def _ensure_cpu_sessions(self) -> Tuple[ort.InferenceSession, ort.InferenceSession]:
+    def _ensure_cpu_sessions(self) -> Tuple[Any, Any]:
         if self._cpu_enc is not None and self._cpu_conv is not None:
             return self._cpu_enc, self._cpu_conv
+        import onnxruntime as ort
+
         so = ort.SessionOptions()
         so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
         so.intra_op_num_threads = max(2, (os.cpu_count() or 8) // 2)
@@ -450,6 +451,8 @@ class OpenVoiceCloner:
         key = (str(ref_path.resolve()), int(st.st_mtime_ns), int(st.st_size), backend)
         if self._ref_cache_key == key and self._ref_cache_emb is not None:
             return self._ref_cache_emb
+
+        import soundfile as sf
 
         audio, sr = sf.read(str(ref_path), dtype="float32", always_2d=False)
         ref_y = extract_voiced_speech(to_22k_mono(audio, int(sr)), TARGET_SR)

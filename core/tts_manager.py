@@ -1948,7 +1948,10 @@ class TTSEngineManager(QObject):
             t.start()
 
     def _run_smart_warmup(self, reason: str, retry: int) -> None:
-        from core.voice_cloner import voice_cloner
+        voice_cloner = None
+        if bool(config.get("openvoice_enabled", False)):
+            from core.voice_cloner import voice_cloner as _vc
+            voice_cloner = _vc
 
         targets = self._resolve_local_warmup_targets()
         online_targets = self._resolve_online_warmup_targets()
@@ -1963,7 +1966,7 @@ class TTSEngineManager(QObject):
                 }
             except Exception:
                 pass
-        ov_enabled = bool(config.get("openvoice_enabled", False)) and voice_cloner.models_present()
+        ov_enabled = voice_cloner is not None and voice_cloner.models_present()
 
         pending_targets = [
             item for item in targets if (item[0], item[2]) not in self._warmed_models
@@ -1977,7 +1980,7 @@ class TTSEngineManager(QObject):
             if ("online", f"prov:{item[2]}") not in self._warmed_models or self._dsp_needs_prewarm(item[0], item[1])
         ]
         ov_pending = False
-        if ov_enabled:
+        if ov_enabled and voice_cloner is not None:
             ov_ref = str(config.get("openvoice_ref_path", "") or "")
             ov_sig = (
                 "gpu" if voice_cloner._use_gpu() else "cpu",
@@ -2082,7 +2085,7 @@ class TTSEngineManager(QObject):
                 except Exception as exc:
                     print(f"[TTSWarmup] Попередній прогрів {engine_id} пропущено: {exc}", file=sys.stderr, flush=True)
 
-            if ov_pending and avail_mb >= 768 and self._running and not self._is_synthesizing and self._active_downloads == 0:
+            if ov_pending and voice_cloner is not None and avail_mb >= 768 and self._running and not self._is_synthesizing and self._active_downloads == 0:
                 emitted_status = True
                 self.status_changed.emit(tr("tts.status.warming_up", "⏳ Підготовка голосу ({title})...", title="OpenVoice v2"))
                 t0 = time.perf_counter()
