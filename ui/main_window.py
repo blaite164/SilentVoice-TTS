@@ -1339,7 +1339,10 @@ class MainWindow(QMainWindow):
         self.donate_btn.clicked.connect(self._open_donate_dialog)
         sb_layout.addWidget(self.donate_btn)
 
-        filters_row = QBoxLayout(QBoxLayout.Direction.LeftToRight)
+        self._sb_filters_container = QWidget()
+        self._sb_filters_container.setStyleSheet("background: transparent;")
+        filters_row = QBoxLayout(QBoxLayout.Direction.LeftToRight, self._sb_filters_container)
+        filters_row.setContentsMargins(0, 0, 0, 0)
         filters_row.setSpacing(6)
         self._sb_filters_row = filters_row
 
@@ -1378,7 +1381,7 @@ class MainWindow(QMainWindow):
         self.sidebar_gender_combo.currentIndexChanged.connect(self._on_sidebar_gender_changed)
         filters_row.addWidget(self.sidebar_gender_combo, 1)
 
-        sb_layout.addLayout(filters_row)
+        sb_layout.addWidget(self._sb_filters_container)
 
         sb_layout.addStretch(1)
 
@@ -1536,6 +1539,8 @@ class MainWindow(QMainWindow):
             self.toggle_typing_sidebar_btn.setStyleSheet("padding: 7px 8px;")
 
         self._update_typing_sidebar_btn(bool(getattr(self, "_typing_btn_active", False)))
+        if hasattr(self, "pages"):
+            self._update_sidebar_filters_visibility(self.pages.currentIndex())
 
     def _get_default_test_phrase(self, lang: Optional[str] = None) -> str:
         """Повертає стандартну тестову фразу мовою вибраних голосів (app_language)."""
@@ -1741,12 +1746,36 @@ class MainWindow(QMainWindow):
                 self.ai_add_combo.setCurrentIndex(idx)
         self.ai_add_combo.blockSignals(False)
 
+    def _update_sidebar_filters_visibility(self, page_index: int) -> None:
+        """
+        Показує фільтри мови та статі лише на тих розділах, де вони реально впливають на вміст:
+        - 0 («Голос та Озвучка»): мова + стать
+        - 1 («Швидкі фрази»): лише мова (оновлює стандартні фрази й мову скидання)
+        - 2..5 («Кнопки та Ввід», «Текст на екран», «Субтитри OBS», «Звук та Система»): приховані
+        """
+        if not hasattr(self, "_sb_filters_container"):
+            return
+        show_lang = page_index in (0, 1)
+        show_gender = page_index == 0
+        self._sb_filters_container.setVisible(show_lang or show_gender)
+        self.sidebar_lang_combo.setVisible(show_lang)
+        self.sidebar_gender_combo.setVisible(show_gender)
+        if show_lang:
+            if getattr(self, "_sidebar_compact", False):
+                self.sidebar_lang_combo.setFixedWidth(38)
+            elif show_gender:
+                self.sidebar_lang_combo.setFixedWidth(54)
+            else:
+                self.sidebar_lang_combo.setMinimumWidth(0)
+                self.sidebar_lang_combo.setMaximumWidth(16777215)
+
     def switch_page(self, index: int) -> None:
         self.pages.setCurrentIndex(index)
         for i, btn in enumerate(self.nav_buttons):
             btn.setProperty("active", "true" if i == index else "false")
             btn.style().unpolish(btn)
             btn.style().polish(btn)
+        self._update_sidebar_filters_visibility(index)
         # При переході на вкладку «Звук та Система» (index == 5) автоматично оновлюємо список
         # аудіопристроїв, щоб підключені вже після запуску навушники одразу відображалися у списку.
         if index == 5 and hasattr(self, "primary_dev_combo"):
