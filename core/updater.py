@@ -27,7 +27,7 @@ from core.config import DATA_DIR, config
 from core.i18n import get_ui_language, tr
 from core.proxy_helper import get_active_api_proxies
 
-APP_VERSION = "1.0.1"
+APP_VERSION = "1.0.2"
 _INNO_SUPPORTED_LANGS = {"uk", "en", "pl", "de", "fr", "es", "ru"}
 
 # Впишіть сюди адресу свого репозиторію GitHub та/або GitLab (або "логін/репозиторій"):
