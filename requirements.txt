@@ -13,8 +13,8 @@ edge-tts==7.3.1
 telethon==1.45.0
 qrcode==8.2
 huggingface_hub==1.31.0
-holos-tts-onnx==0.4
-ipa-uk==0.0.1
-ukrainian_word_stress==1.1.1
+holos-tts-onnx @ git+https://github.com/patriotyk/HolosTTS.git@86c5b32cbb217ca030a15f8331f36ea9b85ff7d5#subdirectory=holos_onnx/python
+ipa-uk @ git+https://github.com/patriotyk/ipa-uk.git@3faf05ec50fd4880965b6c76f8e479a4f82117f5
+ukrainian-word-stress @ git+https://github.com/patriotyk/ukrainian-word-stress.git@d5b37ea0abe9711930d9c3b0b13edec5a0675512
 TeraTTS==1.0
 ruaccent==1.5.8.3
