@@ -58,6 +58,7 @@ if ROOT_DIR not in sys.path:
 from PySide6.QtCore import QEvent, QMessageLogContext, QObject, QtMsgType, Signal, qInstallMessageHandler
 from PySide6.QtWidgets import QAbstractScrollArea, QApplication, QComboBox, QLineEdit
 
+from core.app_logger import MAX_LOG_FILES, format_log_timestamp, open_session_log_streams
 from core.config import DATA_DIR, config
 from core.i18n import (
     _find_locale_path,
@@ -71,10 +72,13 @@ from ui.dialogs import ErrorPopupDialog, FirstRunLanguageDialog
 from ui.main_window import MainWindow, create_app_icon
 
 CRASH_LOG_PATH = DATA_DIR / "crash.log"
-APP_LOG_PATH = DATA_DIR / "app.log"
+LOGS_DIR = DATA_DIR / "logs"
+APP_LOG_PATH = LOGS_DIR / "app.log"
 INSTANCE_PORT_PATH = DATA_DIR / "instance.port"
 _CRASH_LOG_FILE = None
 _APP_LOG_FILE = None
+_ORIG_STDOUT = sys.stdout
+_ORIG_STDERR = sys.stderr
 _INSTANCE_MUTEX = None
 _QUIT_EVENT = None
 _QUITTING_NORMALLY = False
@@ -82,26 +86,14 @@ _SINGLE_INSTANCE_SOCK = None
 
 
 def _ensure_stdio_streams() -> None:
-    """У windowed-збірці (console=False) sys.stdout/sys.stderr є None — перенаправляємо в безпечний потік."""
-    global _APP_LOG_FILE
-    if sys.stdout is not None and sys.stderr is not None:
-        for stream in (sys.stdout, sys.stderr):
+    """Гарантує безпечні sys.stdout/sys.stderr на ранньому старті (включно з windowed-збіркою)."""
+    for stream in (sys.stdout, sys.stderr):
+        if stream is not None and hasattr(stream, "reconfigure"):
             try:
-                if hasattr(stream, "reconfigure"):
-                    stream.reconfigure(encoding="utf-8", errors="replace")
+                stream.reconfigure(encoding="utf-8", errors="replace")
             except Exception:
                 pass
-        return
-    try:
-        DATA_DIR.mkdir(parents=True, exist_ok=True)
-        if APP_LOG_PATH.exists() and APP_LOG_PATH.stat().st_size > 512 * 1024:
-            APP_LOG_PATH.write_text("", encoding="utf-8")
-        _APP_LOG_FILE = open(APP_LOG_PATH, "a", encoding="utf-8", errors="replace", buffering=1)
-        if sys.stdout is None:
-            sys.stdout = _APP_LOG_FILE
-        if sys.stderr is None:
-            sys.stderr = _APP_LOG_FILE
-    except Exception:
+    if sys.stdout is None or sys.stderr is None:
         try:
             devnull = open(os.devnull, "w", encoding="utf-8")
             if sys.stdout is None:
@@ -112,11 +104,33 @@ def _ensure_stdio_streams() -> None:
             pass
 
 
+def _init_session_logging() -> None:
+    """
+    Відкриває окремий файл логу для поточного запуску в ``DATA_DIR / "logs"``,
+    додає мітку часу до кожного рядка та зберігає не більше ``MAX_LOG_FILES`` (5) останніх логів.
+    """
+    global APP_LOG_PATH, _APP_LOG_FILE
+    try:
+        log_path, raw_file, stdout_stream, stderr_stream = open_session_log_streams(
+            LOGS_DIR,
+            orig_stdout=_ORIG_STDOUT,
+            orig_stderr=_ORIG_STDERR,
+            max_files=MAX_LOG_FILES,
+        )
+        APP_LOG_PATH = log_path
+        _APP_LOG_FILE = raw_file
+        sys.stdout = stdout_stream
+        sys.stderr = stderr_stream
+    except Exception:
+        _ensure_stdio_streams()
+
+
 def _write_crash_log(header: str, exc_type=None, exc_value=None, exc_tb=None) -> None:
     try:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
+        stamp = format_log_timestamp()
         with open(CRASH_LOG_PATH, "a", encoding="utf-8") as fh:
-            fh.write("\n" + "=" * 68 + "\n" + header + "\n")
+            fh.write("\n" + "=" * 68 + "\n" + f"{stamp} {header}\n")
             if exc_type is not None:
                 traceback.print_exception(exc_type, exc_value, exc_tb, file=fh)
     except Exception:
@@ -300,7 +314,6 @@ def main() -> int:
         print(report, flush=True)
         return 0 if ok else 1
 
-    print("[SilentVoice] Запуск програми...", flush=True)
     # При першому запуску визначаємо локаль Windows; далі мова інтерфейсу зберігається явно і не перемикається автоматично
     _saved_ui_lang = str(config.get("ui_language", "") or "").strip().lower()
     if _saved_ui_lang:
@@ -368,6 +381,9 @@ def main() -> int:
         print("[SilentVoice] Програма вже запущена — активуємо існуюче вікно.", flush=True)
         _activate_existing_instance()
         return 0
+
+    _init_session_logging()
+    print(f"[SilentVoice] Запуск програми... (лог: {APP_LOG_PATH.name})", flush=True)
 
     def _release_instance_lock() -> None:
         global _INSTANCE_MUTEX, _QUIT_EVENT, _QUITTING_NORMALLY, _SINGLE_INSTANCE_SOCK
