@@ -12,6 +12,7 @@ from collections import deque
 import ctypes
 from ctypes import wintypes
 import queue
+import sys
 import threading
 import time
 import urllib.request
@@ -676,12 +677,25 @@ def ensure_portaudio_synced_with_windows() -> bool:
     _LAST_ACTIVE_CORE_AUDIO_OUTPUTS = live_outputs
     refreshed = refresh_portaudio_devices()
     if refreshed:
-        print(
+        _log_audio(
             f"[AudioRouter] Змінився список пристроїв Windows ({len(live_outputs)} активних): "
-            f"оновлено PortAudio -> {list(live_outputs)}",
-            flush=True,
+            f"оновлено PortAudio -> {list(live_outputs)}"
         )
     return refreshed
+
+
+def _log_audio(msg: str) -> None:
+    """Безпечний вивід діагностичних логів AudioRouter без UnicodeEncodeError на cp1252-консолях."""
+    try:
+        print(msg, flush=True)
+    except UnicodeEncodeError:
+        try:
+            enc = getattr(sys.stdout, "encoding", None) or "ascii"
+            print(msg.encode(enc, errors="replace").decode(enc, errors="replace"), flush=True)
+        except Exception:
+            pass
+    except Exception:
+        pass
 
 
 def _core_audio_snapshot(core_defaults: Optional[Dict[str, str]] = None) -> Tuple[str, str, str]:
@@ -1164,17 +1178,15 @@ class _PersistentDevicePlayer:
                         now = time.monotonic()
                         self._last_active_at = now
                         self._last_callback_at = now
-                        print(
+                        _log_audio(
                             f"[AudioRouter] Відкрито потік: idx={self.device_idx} ({dev_name or 'default'}) "
-                            f"sr={target_sr} ch={ch} dtype={dt} fmt={self.requested_format}",
-                            flush=True,
+                            f"sr={target_sr} ch={ch} dtype={dt} fmt={self.requested_format}"
                         )
                         return
                     except Exception as exc:
                         last_exc = exc
-        print(
-            f"[AudioRouter] Не вдалося відкрити потік idx={self.device_idx} ({dev_name or 'default'}): {last_exc}",
-            flush=True,
+        _log_audio(
+            f"[AudioRouter] Не вдалося відкрити потік idx={self.device_idx} ({dev_name or 'default'}): {last_exc}"
         )
         raise RuntimeError(f"Cannot open audio device {self.device_idx}: {last_exc}")
 
@@ -1821,9 +1833,8 @@ class DualAudioRouter:
                 primary_idx, secondary_targets = resolve_playback_device_indices(primary_name, primary_off)
 
                 if monitor_only:
-                    print(
-                        f"[AudioRouter] Маршрут [preview]: secondary={[ _describe_device_for_log(i) for i in secondary_targets ]}",
-                        flush=True,
+                    _log_audio(
+                        f"[AudioRouter] Маршрут [preview]: secondary={[ _describe_device_for_log(i) for i in secondary_targets ]}"
                     )
                     mon_samples = apply_volume_and_limiter(cleaned, secondary_vol if secondary_vol > 0 else 90)
                     mon_handles: List[_LocalTrackHandle] = []
@@ -1897,10 +1908,9 @@ class DualAudioRouter:
                             device_jobs.append(("secondary", s_idx, sec_samples_for_swap, True))
                             used_indices.add(s_idx)
 
-                print(
+                _log_audio(
                     f"[AudioRouter] Маршрут [tts]: primary={_describe_device_for_log(primary_idx) if (send_primary and not primary_off) else 'off'}, "
-                    f"secondary={[ _describe_device_for_log(i) for i in secondary_targets ] if (secondary_enabled or not send_primary) else 'off'}",
-                    flush=True,
+                    f"secondary={[ _describe_device_for_log(i) for i in secondary_targets ] if (secondary_enabled or not send_primary) else 'off'}"
                 )
 
                 local_handles: List[_LocalTrackHandle] = []
@@ -2092,11 +2102,10 @@ class DualAudioRouter:
                 secondary_vol = int(config.get("secondary_volume", 85))
 
                 primary_idx, secondary_targets = resolve_playback_device_indices(primary_name, primary_off)
-                print(
+                _log_audio(
                     f"[AudioRouter] Маршрут [stream/{'preview' if monitor_only else 'tts'}]: "
                     f"primary={_describe_device_for_log(primary_idx) if (not monitor_only and send_primary and not primary_off) else 'off'}, "
-                    f"secondary={[ _describe_device_for_log(i) for i in secondary_targets ] if (monitor_only or secondary_enabled or not send_primary) else 'off'}",
-                    flush=True,
+                    f"secondary={[ _describe_device_for_log(i) for i in secondary_targets ] if (monitor_only or secondary_enabled or not send_primary) else 'off'}"
                 )
 
                 if monitor_only:

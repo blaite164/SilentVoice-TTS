@@ -85,6 +85,12 @@ def _ensure_stdio_streams() -> None:
     """У windowed-збірці (console=False) sys.stdout/sys.stderr є None — перенаправляємо в безпечний потік."""
     global _APP_LOG_FILE
     if sys.stdout is not None and sys.stderr is not None:
+        for stream in (sys.stdout, sys.stderr):
+            try:
+                if hasattr(stream, "reconfigure"):
+                    stream.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
         return
     try:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
