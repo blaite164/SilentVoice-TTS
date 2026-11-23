@@ -322,8 +322,20 @@ def _gemini_translate_json_chunk(
     raise RuntimeError(last_err or "Gemini translation failed")
 
 
+def _infer_source_lang_for_mymemory(text: str) -> str:
+    """Визначає мову джерела для MyMemory, коли передано source_lang='auto'."""
+    low = text.lower()
+    if any(ch in low for ch in ("і", "ї", "є", "ґ")):
+        return "uk"
+    cyr = sum(1 for ch in low if "\u0400" <= ch <= "\u04ff")
+    lat = sum(1 for ch in low if "a" <= ch <= "z")
+    if cyr > lat:
+        return "ru"
+    return "en"
+
+
 def _standard_translate_text(text: str, target_lang: str, source_lang: str = "en", timeout: float = 3.5) -> str:
-    """Перекладає текст стандартним перекладачем проєкту (Google Translate gtx -> MyMemory)."""
+    """Перекладає текст стандартним перекладачем проєкту (clients5 -> gtx -> MyMemory)."""
     import requests
     clean = str(text or "").strip()
     tl = "uk" if str(target_lang).strip().lower() in ("uk", "ua") else str(target_lang).strip().lower()
@@ -339,7 +351,29 @@ def _standard_translate_text(text: str, target_lang: str, source_lang: str = "en
         proxies = None
     headers = {"User-Agent": "Mozilla/5.0"}
 
-    # 1. Google Translate (gtx)
+    # 1. Google Translate (clients5 dict-chrome-ex — стабільніший при 429 на gtx)
+    try:
+        resp = requests.get(
+            "https://clients5.google.com/translate_a/t",
+            params={"client": "dict-chrome-ex", "sl": sl, "tl": tl, "q": clean},
+            headers=headers,
+            proxies=proxies,
+            timeout=timeout,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            translated = ""
+            if isinstance(data, list) and data:
+                if isinstance(data[0], list) and data[0] and isinstance(data[0][0], str):
+                    translated = data[0][0].strip()
+                elif isinstance(data[0], str):
+                    translated = "".join(s for s in data if isinstance(s, str)).strip()
+            if translated:
+                return translated
+    except Exception:
+        pass
+
+    # 2. Google Translate (gtx)
     try:
         resp = requests.get(
             "https://translate.googleapis.com/translate_a/single",
@@ -358,12 +392,13 @@ def _standard_translate_text(text: str, target_lang: str, source_lang: str = "en
     except Exception:
         pass
 
-    # 2. Резерв: MyMemory
-    if sl != "auto":
+    # 3. Резерв: MyMemory (не підтримує sl=auto — визначаємо мову за абеткою)
+    mm_sl = _infer_source_lang_for_mymemory(clean) if sl == "auto" else sl
+    if mm_sl != tl:
         try:
             resp = requests.get(
                 "https://api.mymemory.translated.net/get",
-                params={"q": clean[:450], "langpair": f"{sl}|{tl}"},
+                params={"q": clean[:450], "langpair": f"{mm_sl}|{tl}"},
                 headers=headers,
                 proxies=proxies,
                 timeout=timeout,

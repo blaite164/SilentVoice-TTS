@@ -646,12 +646,14 @@ def localize_release_notes(
     from core.i18n import _standard_translate_text
 
     translated_chunks: List[str] = []
-    for chunk in _split_markdown_chunks(selected, max_chars=1200):
+    for chunk in _split_markdown_chunks(selected, max_chars=420):
         # Не перекладаємо рядки, які складаються лише з хешів/посилань/роздільників
         stripped = chunk.strip()
         if not stripped or re.fullmatch(r"[-=*_`#\s]+", stripped):
             translated_chunks.append(chunk)
             continue
         tr_chunk = _standard_translate_text(chunk, target_lang=tl, source_lang="auto", timeout=timeout)
+        if tr_chunk:
+            tr_chunk = re.sub(r"(?m)^[—–]\s+", "- ", tr_chunk)
         translated_chunks.append(tr_chunk or chunk)
     return "\n".join(translated_chunks).strip() or selected
