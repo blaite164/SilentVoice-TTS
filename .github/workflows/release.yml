@@ -43,10 +43,11 @@ jobs:
       - name: Install dependencies (CPU PyTorch + pinned requirements)
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
           python -m pip install --upgrade pip
-          pip install --extra-index-url https://download.pytorch.org/whl/cpu torch==2.15.0 torchaudio==2.11.1
-          pip install -r requirements.txt
-          pip install pyinstaller==6.18.0 noisereduce==3.0.3
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt torchaudio==2.11.1 pyinstaller==6.18.0 noisereduce==3.0.3
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run unit tests
         shell: pwsh
