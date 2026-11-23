@@ -9767,27 +9767,36 @@ class MainWindow(QMainWindow):
         self.mic_dev_combo.clear()
 
         self.primary_dev_combo.addItem(tr("ui_415", "🔇 Вимкнено (Off)"), "__off__")
-        self.primary_dev_combo.addItem(tr("ui_416", "Стандартний пристрій Windows"), "")
         self.secondary_dev_combo.addItem(tr("ui_417", "Стандартні навушники / колонки Windows"), "")
 
-        # Якщо VB-Cable не встановлено і пристрій Каналу 1 не задано вручну — вмикаємо режим Off
-        if not vb_ok and (not cur_prim or "cable" in cur_prim.lower()):
-            cur_prim = "__off__"
-            config.set("primary_output_device", "__off__")
-
-        prim_idx = 0 if cur_prim == "__off__" else 1
+        prim_idx = 0
         sec_idx = 0
-        for p_pos, d in enumerate(devices, start=2):
+        cable_input_pos: Optional[int] = None
+        cable_input_name = ""
+        for pos, d in enumerate(devices, start=1):
             d_name = str(d["name"])
+            d_low = d_name.lower()
             self.primary_dev_combo.addItem(d_name, d_name)
             self.secondary_dev_combo.addItem(d_name, d_name)
+            if cable_input_pos is None and "cable input" in d_low:
+                cable_input_pos = pos
+                cable_input_name = d_name
             if cur_prim and cur_prim != "__off__" and (
-                d_name.lower() == cur_prim.lower()
-                or ("cable input" in cur_prim.lower() and "cable input" in d_name.lower())
+                d_low == cur_prim.lower()
+                or ("cable input" in cur_prim.lower() and "cable input" in d_low)
             ):
-                prim_idx = p_pos
-            if cur_sec and d_name.lower() == cur_sec.lower():
-                sec_idx = p_pos - 1
+                prim_idx = pos
+            if cur_sec and d_low == cur_sec.lower():
+                sec_idx = pos
+
+        # За замовчуванням обираємо CABLE Input (VB-Audio Virtual Cable);
+        # якщо його немає або пристрій не знайдено — лишаємо «Вимкнено (Off)» (ніколи не стандартні динаміки).
+        if cur_prim != "__off__":
+            if prim_idx == 0 and not cur_prim and cable_input_pos is not None:
+                prim_idx = cable_input_pos
+                config.set("primary_output_device", cable_input_name)
+            elif prim_idx == 0:
+                config.set("primary_output_device", "__off__")
 
         self.primary_dev_combo.setCurrentIndex(prim_idx)
         self.secondary_dev_combo.setCurrentIndex(sec_idx)
@@ -9813,7 +9822,7 @@ class MainWindow(QMainWindow):
         audio_router.sync_mic_passthrough()
 
     def _on_audio_devices_changed(self) -> None:
-        prim_val = str(self.primary_dev_combo.currentData() or "")
+        prim_val = str(self.primary_dev_combo.currentData() or "__off__")
         prim_is_off = prim_val == "__off__"
         self.prim_vol_slider.setEnabled(not prim_is_off)
         mic_active_ui = self.chk_mic_passthrough.isChecked() and not prim_is_off
@@ -9847,6 +9856,8 @@ class MainWindow(QMainWindow):
     def _on_vbcable_done(self, ok: bool, msg: str) -> None:
         self.install_vb_btn.setEnabled(True)
         self.install_vb_btn.setText(tr("ui_370", "⚡ Встановити віртуальний мікрофон (1 клік)"))
+        if ok and str(config.get("primary_output_device", "")).strip() in ("", "__off__"):
+            config.set("primary_output_device", "CABLE Input (VB-Audio Virtual Cable)")
         self._populate_audio_devices(refresh_backend=True)
         if ok:
             QMessageBox.information(self, tr("ui_419", "Віртуальний мікрофон VB-Cable"), msg)

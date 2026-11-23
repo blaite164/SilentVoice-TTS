@@ -869,14 +869,12 @@ def resolve_playback_device_indices(
 
     primary_idx: Optional[int] = None
     if not primary_off:
-        if primary_name:
-            primary_idx = resolve_output_device_index(primary_name)
-            if primary_idx is None and refresh_portaudio_devices():
-                primary_idx = resolve_output_device_index(primary_name)
-                # Повторно резолвимо secondary_targets із того самого оновленого знімка PortAudio
-                secondary_targets = resolve_secondary_output_targets(_allow_refresh=False)
-        else:
-            primary_idx = resolve_default_output_device_index(skip_cable=False, _allow_refresh=False)
+        target_primary = primary_name or "CABLE Input (VB-Audio Virtual Cable)"
+        primary_idx = resolve_output_device_index(target_primary)
+        if primary_idx is None and refresh_portaudio_devices():
+            primary_idx = resolve_output_device_index(target_primary)
+            # Повторно резолвимо secondary_targets із того самого оновленого знімка PortAudio
+            secondary_targets = resolve_secondary_output_targets(_allow_refresh=False)
 
     return primary_idx, secondary_targets
 
@@ -1891,10 +1889,10 @@ class DualAudioRouter:
                 used_indices: set = set()
                 prim_samples: Optional[np.ndarray] = None
                 sec_samples_for_swap: Optional[np.ndarray] = None
-                allow_prim_fallback = not bool(primary_name)
+                allow_prim_fallback = False
 
-                # 1. Основний вивід (Віртуальний мікрофон / обраний або стандартний пристрій)
-                if send_primary and not primary_off and primary_vol > 0 and (primary_idx is not None or not primary_name):
+                # 1. Основний вивід (Віртуальний мікрофон / обраний пристрій; якщо не знайдено — вимкнено)
+                if send_primary and not primary_off and primary_vol > 0 and primary_idx is not None:
                     prim_samples = apply_volume_and_limiter(cleaned, primary_vol)
                     device_jobs.append(("primary", primary_idx, prim_samples, allow_prim_fallback))
                     used_indices.add(primary_idx)
@@ -1909,7 +1907,7 @@ class DualAudioRouter:
                             used_indices.add(s_idx)
 
                 _log_audio(
-                    f"[AudioRouter] Маршрут [tts]: primary={_describe_device_for_log(primary_idx) if (send_primary and not primary_off) else 'off'}, "
+                    f"[AudioRouter] Маршрут [tts]: primary={_describe_device_for_log(primary_idx) if (send_primary and not primary_off and primary_idx is not None) else 'off'}, "
                     f"secondary={[ _describe_device_for_log(i) for i in secondary_targets ] if (secondary_enabled or not send_primary) else 'off'}"
                 )
 
@@ -2104,7 +2102,7 @@ class DualAudioRouter:
                 primary_idx, secondary_targets = resolve_playback_device_indices(primary_name, primary_off)
                 _log_audio(
                     f"[AudioRouter] Маршрут [stream/{'preview' if monitor_only else 'tts'}]: "
-                    f"primary={_describe_device_for_log(primary_idx) if (not monitor_only and send_primary and not primary_off) else 'off'}, "
+                    f"primary={_describe_device_for_log(primary_idx) if (not monitor_only and send_primary and not primary_off and primary_idx is not None) else 'off'}, "
                     f"secondary={[ _describe_device_for_log(i) for i in secondary_targets ] if (monitor_only or secondary_enabled or not send_primary) else 'off'}"
                 )
 
@@ -2166,8 +2164,8 @@ class DualAudioRouter:
                         vban_done.set()
 
                     used_indices: set = set()
-                    allow_prim_fallback = not bool(primary_name)
-                    if send_primary and not primary_off and primary_vol > 0 and (primary_idx is not None or not primary_name):
+                    allow_prim_fallback = False
+                    if send_primary and not primary_off and primary_vol > 0 and primary_idx is not None:
                         h = self._start_stream_on_single_device(primary_idx, stream_sr, allow_prim_fallback)
                         if h is not None:
                             local_handles.append(h)

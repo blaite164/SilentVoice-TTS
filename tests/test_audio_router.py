@@ -864,6 +864,95 @@ class PersistentStreamTests(unittest.TestCase):
             pump_thread.join(timeout=1.0)
             router.shutdown()
 
+    def test_empty_primary_defaults_to_cable_input_or_off_never_windows_default(self) -> None:
+        with_cable = [
+            {"index": 6, "name": "CABLE Input (VB-Audio Virtual Cable)", "hostapi": "MME", "default_samplerate": 44100},
+            {"index": 10, "name": "Speakers (Realtek(R) Audio)", "hostapi": "MME", "default_samplerate": 44100},
+        ]
+        without_cable = [
+            {"index": 10, "name": "Speakers (Realtek(R) Audio)", "hostapi": "MME", "default_samplerate": 44100},
+        ]
+        with (
+            patch.object(audio_router_mod, "ensure_portaudio_synced_with_windows", return_value=False),
+            patch.object(audio_router_mod, "get_output_devices", return_value=with_cable),
+            patch.object(audio_router_mod, "resolve_secondary_output_targets", return_value=[10]),
+            patch.object(audio_router_mod, "refresh_portaudio_devices", return_value=False),
+        ):
+            p_idx, s_idxs = audio_router_mod.resolve_playback_device_indices("", primary_off=False)
+            self.assertEqual(p_idx, 6)
+            self.assertEqual(s_idxs, [10])
+
+        with (
+            patch.object(audio_router_mod, "ensure_portaudio_synced_with_windows", return_value=False),
+            patch.object(audio_router_mod, "get_output_devices", return_value=without_cable),
+            patch.object(audio_router_mod, "resolve_secondary_output_targets", return_value=[10]),
+            patch.object(audio_router_mod, "refresh_portaudio_devices", return_value=False),
+        ):
+            p_idx2, s_idxs2 = audio_router_mod.resolve_playback_device_indices("", primary_off=False)
+            self.assertIsNone(p_idx2)
+            self.assertEqual(s_idxs2, [10])
+
+    def test_primary_dev_combo_omits_windows_default_and_falls_back_to_off(self) -> None:
+        import os
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+        from PySide6.QtWidgets import QApplication, QCheckBox, QComboBox, QLabel, QPushButton, QSlider
+        import ui.main_window as mw_mod
+
+        _app = QApplication.instance() or QApplication([])
+
+        def _make_dummy():
+            d = type("DummyMW", (), {})()
+            d.install_vb_btn = QPushButton()
+            d.vbcable_status_lbl = QLabel()
+            d.primary_dev_combo = QComboBox()
+            d.secondary_dev_combo = QComboBox()
+            d.mic_dev_combo = QComboBox()
+            d.prim_vol_slider = QSlider()
+            d.chk_mic_passthrough = QCheckBox()
+            d.mic_vol_slider = QSlider()
+            return d
+
+        devs_with_cable = [
+            {"index": 6, "name": "CABLE Input (VB-Audio Virtual Cable)", "hostapi": "MME", "default_samplerate": 44100},
+            {"index": 10, "name": "Speakers (Realtek(R) Audio)", "hostapi": "MME", "default_samplerate": 44100},
+        ]
+        devs_no_cable = [
+            {"index": 10, "name": "Speakers (Realtek(R) Audio)", "hostapi": "MME", "default_samplerate": 44100},
+        ]
+
+        # 1. With VB-Cable present and default config -> selects CABLE Input, no "" item in primary_dev_combo
+        cfg_store = {"primary_output_device": "CABLE Input (VB-Audio Virtual Cable)"}
+        dummy1 = _make_dummy()
+        with (
+            patch.object(mw_mod, "get_core_audio_active_all_device_names", return_value=((), ())),
+            patch.object(mw_mod, "check_vbcable_installed", return_value=(True, "CABLE Input (VB-Audio Virtual Cable)")),
+            patch.object(mw_mod, "get_output_devices", return_value=devs_with_cable),
+            patch.object(mw_mod, "get_input_devices", return_value=[]),
+            patch.object(mw_mod.config, "get", side_effect=lambda k, d=None: cfg_store.get(k, d)),
+            patch.object(mw_mod.config, "set", side_effect=lambda k, v: cfg_store.__setitem__(k, v)),
+            patch.object(mw_mod.audio_router, "sync_mic_passthrough"),
+        ):
+            mw_mod.MainWindow._populate_audio_devices(dummy1, refresh_backend=False)
+            all_data = [dummy1.primary_dev_combo.itemData(i) for i in range(dummy1.primary_dev_combo.count())]
+            self.assertNotIn("", all_data)
+            self.assertEqual(dummy1.primary_dev_combo.currentData(), "CABLE Input (VB-Audio Virtual Cable)")
+
+        # 2. Without VB-Cable -> falls back to "__off__", NOT Windows default
+        cfg_store2 = {"primary_output_device": "CABLE Input (VB-Audio Virtual Cable)"}
+        dummy2 = _make_dummy()
+        with (
+            patch.object(mw_mod, "get_core_audio_active_all_device_names", return_value=((), ())),
+            patch.object(mw_mod, "check_vbcable_installed", return_value=(False, None)),
+            patch.object(mw_mod, "get_output_devices", return_value=devs_no_cable),
+            patch.object(mw_mod, "get_input_devices", return_value=[]),
+            patch.object(mw_mod.config, "get", side_effect=lambda k, d=None: cfg_store2.get(k, d)),
+            patch.object(mw_mod.config, "set", side_effect=lambda k, v: cfg_store2.__setitem__(k, v)),
+            patch.object(mw_mod.audio_router, "sync_mic_passthrough"),
+        ):
+            mw_mod.MainWindow._populate_audio_devices(dummy2, refresh_backend=False)
+            self.assertEqual(dummy2.primary_dev_combo.currentData(), "__off__")
+            self.assertEqual(cfg_store2["primary_output_device"], "__off__")
+
 
 if __name__ == "__main__":
     unittest.main()
