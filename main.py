@@ -307,6 +307,13 @@ def main() -> int:
         if bool(config.get("first_run_lang_checked", False)):
             config.set("ui_language", _init_ui)
 
+    # Опційне підвищення прав (UAC) для коректної роботи глобальних хоткеїв у Windows.
+    # Через механізм Windows UIPI (User Interface Privilege Isolation) процес без прав
+    # адміністратора не може перехоплювати глобальний ввід (WH_KEYBOARD_LL) поверх ігор
+    # або програм (наприклад, Discord / ігри з античітом), запущених з підвищеними правами.
+    # Також права адміністратора потрібні для одноразового встановлення драйвера VB-Audio
+    # Virtual Cable. Користувач може будь-коли вимкнути цю поведінку в налаштуваннях
+    # ("run_as_admin": false) або запустити з аргументом `--no-admin-relaunch`.
     if (
         bool(config.get("run_as_admin", True))
         and not is_running_as_admin()

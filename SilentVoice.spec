@@ -84,8 +84,10 @@ hidden_imports = [
     "socks",
     "edge_tts",
     "telethon",
+    "telethon.sessions",
     "telethon.tl.types",
     "telethon.tl.functions",
+    "core.secret_store",
     "qrcode",
     # Локальні TTS та обробка тексту
     "piper",

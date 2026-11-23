@@ -25,10 +25,12 @@ from urllib.parse import unquote, urlparse
 from core.config import DATA_DIR, config
 from core.i18n import tr
 from core.proxy_helper import format_socks5_url, get_active_socks5_url
+from core.secret_store import DPAPI_PREFIX, is_dpapi_available, protect_secret, unprotect_secret
 
 BOT_USERNAME = "silero_voice_bot"
 SESSION_PATH_BASE = DATA_DIR / "telegram_silero"
 SESSION_FILE = SESSION_PATH_BASE.with_suffix(".session")
+SESSION_DPAPI_FILE = DATA_DIR / "telegram_silero.session.dpapi"
 APP_KEYS_FILE = DATA_DIR / "tg_app_keys.json"
 
 _TG_MASK = (115, 196, 43, 143, 22, 229, 73, 162)
@@ -126,8 +128,14 @@ def load_default_api_credentials() -> Tuple[int, str, str]:
         try:
             raw = json.loads(APP_KEYS_FILE.read_text(encoding="utf-8"))
             aid_s = str(raw.get("api_id", "") or "").strip()
-            ahash = str(raw.get("api_hash", "") or "").strip()
+            raw_hash = str(raw.get("api_hash", "") or "").strip()
+            ahash = unprotect_secret(raw_hash) if raw_hash.startswith(DPAPI_PREFIX) else raw_hash
             if aid_s.isdigit() and int(aid_s) > 0 and ahash:
+                if is_dpapi_available() and not raw_hash.startswith(DPAPI_PREFIX):
+                    try:
+                        save_default_api_credentials(int(aid_s), ahash)
+                    except Exception:
+                        pass
                 return int(aid_s), ahash, "app_keys_file"
         except Exception:
             pass
@@ -148,10 +156,11 @@ def load_default_api_credentials() -> Tuple[int, str, str]:
 
 
 def save_default_api_credentials(api_id: int, api_hash: str) -> None:
-    """Локально зберігає API ID / API Hash у data/tg_app_keys.json для наступних підключень."""
+    """Локально зберігає API ID / API Hash (зашифрований через Windows DPAPI) у data/tg_app_keys.json."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
+    protected_hash = protect_secret(str(api_hash).strip())
     APP_KEYS_FILE.write_text(
-        json.dumps({"api_id": int(api_id), "api_hash": str(api_hash).strip()}, ensure_ascii=False, indent=2),
+        json.dumps({"api_id": int(api_id), "api_hash": protected_hash}, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
 
@@ -515,7 +524,7 @@ class TelegramSileroManager:
             "connected": self._connected,
             "user": dict(self._user_info) if self._user_info else None,
             "confirmed_speaker": self._confirmed_speaker,
-            "session_exists": SESSION_FILE.exists(),
+            "session_exists": self._has_saved_session(),
         }
 
     # ------------------------------------------------------------------
@@ -661,7 +670,11 @@ class TelegramSileroManager:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _remove_session_files() -> None:
+    def _has_saved_session() -> bool:
+        return SESSION_DPAPI_FILE.exists() or SESSION_FILE.exists()
+
+    @staticmethod
+    def _remove_legacy_sqlite_session_files() -> None:
         for suffix in (".session", ".session-journal", ".session-wal", ".session-shm"):
             p = SESSION_PATH_BASE.with_suffix(suffix)
             if p.exists():
@@ -669,6 +682,86 @@ class TelegramSileroManager:
                     p.unlink()
                 except Exception:
                     pass
+
+    @classmethod
+    def _remove_session_files(cls) -> None:
+        if SESSION_DPAPI_FILE.exists():
+            try:
+                SESSION_DPAPI_FILE.unlink()
+            except Exception:
+                pass
+        cls._remove_legacy_sqlite_session_files()
+
+    @classmethod
+    def _save_protected_session_string(cls, session_str: str) -> None:
+        clean = str(session_str or "").strip()
+        if not clean:
+            return
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        protected = protect_secret(clean)
+        tmp_file = SESSION_DPAPI_FILE.with_suffix(".dpapi.tmp")
+        try:
+            tmp_file.write_text(protected, encoding="utf-8")
+            os.replace(tmp_file, SESSION_DPAPI_FILE)
+        finally:
+            if tmp_file.exists():
+                try:
+                    tmp_file.unlink()
+                except Exception:
+                    pass
+
+    @classmethod
+    def _load_telethon_session(cls) -> Any:
+        """
+        Завантажує Telethon StringSession, зашифровану через Windows DPAPI.
+        Якщо знайдено старий відкритий SQLite-файл `.session` — автоматично
+        мігрує його у DPAPI-файл та видаляє незашифрований `.session` з диска.
+        """
+        from telethon.sessions import StringSession
+
+        if SESSION_DPAPI_FILE.exists():
+            try:
+                raw = SESSION_DPAPI_FILE.read_text(encoding="utf-8").strip()
+                dec = unprotect_secret(raw).strip() if raw else ""
+                if dec:
+                    return StringSession(dec)
+            except Exception as exc:
+                print(f"[TelegramSilero] Не вдалося прочитати DPAPI-сесію: {exc}")
+
+        if SESSION_FILE.exists():
+            try:
+                from telethon.sessions import SQLiteSession
+
+                legacy = SQLiteSession(str(SESSION_PATH_BASE))
+                try:
+                    migrated = StringSession.save(legacy)
+                finally:
+                    try:
+                        legacy.close()
+                    except Exception:
+                        pass
+                if migrated:
+                    cls._save_protected_session_string(migrated)
+                    cls._remove_legacy_sqlite_session_files()
+                    return StringSession(migrated)
+            except Exception as exc:
+                print(f"[TelegramSilero] Помилка міграції старої SQLite-сесії в DPAPI: {exc}")
+                return str(SESSION_PATH_BASE)
+
+        return StringSession()
+
+    @classmethod
+    def _persist_client_session(cls, client: Any) -> None:
+        if client is None:
+            return
+        try:
+            sess = getattr(client, "session", None)
+            if sess is not None and hasattr(sess, "save"):
+                saved = sess.save()
+                if isinstance(saved, str) and saved.strip():
+                    cls._save_protected_session_string(saved)
+        except Exception as exc:
+            print(f"[TelegramSilero] Не вдалося зберегти DPAPI-сесію: {exc}")
 
     async def _async_disconnect(self, delete_session: bool = False) -> None:
         if self._active_synth_task is not None and not self._active_synth_task.done():
@@ -694,6 +787,8 @@ class TelegramSileroManager:
                         await asyncio.wait_for(client.log_out(), timeout=6.0)
                     except Exception:
                         pass
+                else:
+                    self._persist_client_session(client)
                 await asyncio.wait_for(client.disconnect(), timeout=6.0)
             except Exception:
                 pass
@@ -718,7 +813,8 @@ class TelegramSileroManager:
         if proxy_tuple is not None:
             kwargs["proxy"] = proxy_tuple
 
-        client = TelegramClient(str(SESSION_PATH_BASE), int(api_id), api_hash, **kwargs)
+        session_obj = self._load_telethon_session()
+        client = TelegramClient(session_obj, int(api_id), api_hash, **kwargs)
         await asyncio.wait_for(client.connect(), timeout=35.0)
         return client
 
@@ -726,6 +822,7 @@ class TelegramSileroManager:
         me = await asyncio.wait_for(client.get_me(), timeout=15.0)
         if me is None:
             return {}
+        self._persist_client_session(client)
         info = {
             "id": int(getattr(me, "id", 0) or 0),
             "first_name": str(getattr(me, "first_name", "") or ""),
@@ -935,7 +1032,7 @@ class TelegramSileroManager:
         proxy_mode: str,
         proxy_url: str,
     ) -> Dict[str, Any]:
-        if not SESSION_FILE.exists():
+        if not self._has_saved_session():
             self._connected = False
             self._user_info = None
             return {"state": "auth_required", "connected": False, "user": None}
@@ -982,7 +1079,7 @@ class TelegramSileroManager:
         proxy_mode = str(creds.get("proxy_mode") or self._proxy_mode or "auto").strip().lower()
         proxy_url = str(creds.get("proxy_url") or self._proxy_url or "").strip()
 
-        if api_id and api_hash and SESSION_FILE.exists():
+        if api_id and api_hash and self._has_saved_session():
             res = await self._async_connect_existing(api_id, api_hash, proxy_mode, proxy_url)
             if res.get("connected") and self._client is not None:
                 bot = await asyncio.wait_for(self._client.get_entity(BOT_USERNAME), timeout=15.0)

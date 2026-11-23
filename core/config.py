@@ -14,6 +14,8 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from core.secret_store import protect_config_dict, unprotect_config_dict
+
 if getattr(sys, "frozen", False):
     BASE_DIR = Path(sys.executable).resolve().parent
     BUNDLE_DIR = Path(getattr(sys, "_MEIPASS", BASE_DIR))
@@ -356,6 +358,9 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "start_minimized": False,
     "minimize_to_tray_on_close": True,
     "autostart_windows": False,
+    # За замовчуванням увімкнено через Windows UIPI: без прав адміністратора глобальний
+    # перехват клавіатури (WH_KEYBOARD_LL) не працює поверх ігор/античітів, запущених
+    # з підвищеними правами. Користувач може вимкнути цю опцію в налаштуваннях.
     "run_as_admin": True,
     "auto_check_updates": True,
     "update_repo_url": "",
@@ -392,16 +397,19 @@ class ConfigManager:
             try:
                 raw = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
                 if isinstance(raw, dict):
+                    raw_plain, needs_dpapi_migration = unprotect_config_dict(raw)
                     merged = copy.deepcopy(DEFAULT_CONFIG)
-                    for k, v in raw.items():
+                    for k, v in raw_plain.items():
                         merged[k] = v
-                    if "first_run_lang_checked" not in raw and (
-                        bool(raw.get("language_confirmed", False))
-                        or bool(str(raw.get("ui_language", "")).strip())
-                        or bool(str(raw.get("app_language", "")).strip())
+                    if "first_run_lang_checked" not in raw_plain and (
+                        bool(raw_plain.get("language_confirmed", False))
+                        or bool(str(raw_plain.get("ui_language", "")).strip())
+                        or bool(str(raw_plain.get("app_language", "")).strip())
                     ):
                         merged["first_run_lang_checked"] = True
                     self._data = merged
+                    if needs_dpapi_migration:
+                        self.save()
             except Exception as exc:
                 print(f"[Config] Помилка читання config.json: {exc}")
 
@@ -410,7 +418,8 @@ class ConfigManager:
             if self._save_timer is not None:
                 self._save_timer.cancel()
                 self._save_timer = None
-            payload = json.dumps(self._data, ensure_ascii=False, indent=2)
+            disk_data = protect_config_dict(self._data)
+            payload = json.dumps(disk_data, ensure_ascii=False, indent=2)
         with self._io_lock:
             tmp_file = CONFIG_FILE.with_name(f"config_{os.getpid()}_{threading.get_ident()}.tmp")
             try:
