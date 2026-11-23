@@ -92,3 +92,59 @@ jobs:
           files: |
             dist/installer/SilentVoice_Setup_*.exe
             dist/installer/SHA256SUMS.txt
+
+      - name: Mirror Release to GitLab (optional, requires GITLAB_TOKEN secret)
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if (-not $env:GITLAB_TOKEN) {
+            Write-Host "GITLAB_TOKEN secret is not configured — skipping GitLab release mirror."
+            exit 0
+          }
+          python -c "
+          import glob, os, pathlib, requests
+          tok = os.environ['GITLAB_TOKEN'].strip()
+          tag = os.environ['RELEASE_TAG'].strip()
+          ver = tag.lstrip('vV')
+          proj = 'blaite164%2Fsilentvoice-tts'
+          headers = {'PRIVATE-TOKEN': tok}
+          exe_files = sorted(glob.glob('dist/installer/SilentVoice_Setup_*.exe'))
+          if not exe_files:
+              raise SystemExit('No installer exe found in dist/installer/')
+          exe_path = pathlib.Path(exe_files[-1])
+          sum_path = pathlib.Path('dist/installer/SHA256SUMS.txt')
+          base_pkg = f'https://gitlab.com/api/v4/projects/{proj}/packages/generic/silentvoice/{ver}'
+          exe_url = f'{base_pkg}/{exe_path.name}'
+          sum_url = f'{base_pkg}/SHA256SUMS.txt'
+          with open(sum_path, 'rb') as f:
+              r = requests.put(sum_url, headers=headers, data=f, timeout=(30, 120))
+              r.raise_for_status()
+          with open(exe_path, 'rb') as f:
+              r = requests.put(exe_url, headers=headers, data=f, timeout=(30, 600))
+              r.raise_for_status()
+          sha_line = sum_path.read_text(encoding='utf-8-sig').strip()
+          desc = f'SilentVoice TTS {tag}\n\n**SHA-256:**\n' + chr(96)*3 + f'text\n{sha_line}\n' + chr(96)*3
+          rel_api = f'https://gitlab.com/api/v4/projects/{proj}/releases'
+          payload = {
+              'name': f'SilentVoice {tag}',
+              'tag_name': tag,
+              'ref': 'main',
+              'description': desc,
+              'assets': {
+                  'links': [
+                      {'name': exe_path.name, 'url': exe_url, 'link_type': 'package'},
+                      {'name': 'SHA256SUMS.txt', 'url': sum_url, 'link_type': 'other'},
+                  ]
+              },
+          }
+          if requests.get(f'{rel_api}/{tag}', headers=headers, timeout=20).status_code == 200:
+              r = requests.put(f'{rel_api}/{tag}', headers=headers, json={'description': desc}, timeout=30)
+          else:
+              r = requests.post(rel_api, headers=headers, json=payload, timeout=30)
+          r.raise_for_status()
+          print('GitLab mirror release published:', tag)
+          "
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
