@@ -1463,14 +1463,14 @@ class MainWindow(QMainWindow):
         self._update_sidebar_compact_mode()
 
     def _update_sidebar_compact_mode(self, force: bool = False) -> None:
-        """При фізичній ширині < 1138px звужує бокове меню до іконок; при висоті <= 783px лишає в «Швидких діях» лише 2 кнопки і статус під ними."""
+        """При фізичній ширині < 1138px звужує бокове меню до іконок; при висоті <= 773px лишає в «Швидких діях» лише 2 кнопки і статус під ними."""
         if not hasattr(self, "right_sidebar"):
             return
         dpr = max(1.0, float(self.devicePixelRatioF()))
         phys_w = round(self.width() * dpr)
         phys_h = round(self.height() * dpr)
         compact = phys_w < 1138
-        short_h = phys_h <= 783
+        short_h = phys_h <= 773
         if not force and compact == self._sidebar_compact and short_h == self._sidebar_short_h:
             return
         self._sidebar_compact = compact
