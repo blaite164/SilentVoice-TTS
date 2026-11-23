@@ -9,18 +9,32 @@ app_logger.py — Система логування SilentVoice TTS.
 from __future__ import annotations
 
 import datetime
+import json
 import os
+import platform
+import re
 import sys
 import threading
 import time
 import traceback
+import zipfile
 from pathlib import Path
-from typing import Callable, TextIO
+from typing import Any, Callable, TextIO
+from urllib.parse import urlencode
 
 MAX_LOG_FILES = 5
+MAX_CRASH_REPORT_ZIPS = 5
 LOG_FILE_PREFIX = "app_"
 LOG_FILE_SUFFIX = ".log"
 MAX_CRASH_LOG_BYTES = 2 * 1024 * 1024
+PENDING_CRASH_FILENAME = "pending_crash.json"
+LAST_SESSION_FILENAME = "last_session.json"
+_WIN_USER_PATH_RE = re.compile(r"([A-Za-z]:[\\/]+Users[\\/]+)([^\\/\r\n\"'<>|]+)", re.IGNORECASE)
+_UNIX_USER_PATH_RE = re.compile(r"(/(?:home|Users)/)([^/\r\n\"'<>|]+)")
+_SECRET_TOKEN_RE = re.compile(
+    r"((?:Bearer\s+|(?:Token|api[_-]?key|secret)\s*[:=]\s*)['\"]?)([A-Za-z0-9_\-\.]{12,})",
+    re.IGNORECASE,
+)
 
 
 def format_log_timestamp(now: datetime.datetime | None = None) -> str:
@@ -385,4 +399,232 @@ class UIWatchdog:
                     self._on_freeze(stalled_sec, dump)
                 except Exception:
                     pass
+
+
+def sanitize_log_text(text: str) -> str:
+    """Маскує ім'я користувача ОС у шляхах та потенційні токени перед пакуванням у звіт."""
+    cleaned = _WIN_USER_PATH_RE.sub(r"\1<USER>", text)
+    cleaned = _UNIX_USER_PATH_RE.sub(r"\1<USER>", cleaned)
+    cleaned = _SECRET_TOKEN_RE.sub(r"\1<REDACTED>", cleaned)
+    return cleaned
+
+
+def _read_json_file(path: Path) -> dict[str, Any] | None:
+    try:
+        if path.exists():
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                return data
+    except Exception:
+        pass
+    return None
+
+
+def _write_json_file(path: Path, data: dict[str, Any]) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def mark_session_started(
+    data_dir: Path,
+    session_log_name: str,
+    crash_log_path: Path,
+) -> None:
+    """Фіксує старт сесії, щоб при наступному запуску виявити нативний краш без чистого виходу."""
+    try:
+        crash_size = crash_log_path.stat().st_size if crash_log_path.exists() else 0
+    except OSError:
+        crash_size = 0
+    _write_json_file(
+        data_dir / LAST_SESSION_FILENAME,
+        {
+            "session_log": session_log_name,
+            "crash_log_size": crash_size,
+            "clean_exit": False,
+            "started_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        },
+    )
+
+
+def mark_session_clean_exit(data_dir: Path) -> None:
+    """Позначає поточну сесію як коректно завершену."""
+    state_path = data_dir / LAST_SESSION_FILENAME
+    state = _read_json_file(state_path)
+    if state is not None:
+        state["clean_exit"] = True
+        state["ended_at"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        _write_json_file(state_path, state)
+
+
+def record_pending_crash(
+    data_dir: Path,
+    kind: str,
+    summary: str,
+    session_log_name: str = "",
+) -> None:
+    """
+    Зберігає маркер серйозної помилки/зависання, щоб показати вікно звіту
+    при наступному запуску програми.
+    """
+    _write_json_file(
+        data_dir / PENDING_CRASH_FILENAME,
+        {
+            "kind": str(kind or "crash"),
+            "summary": str(summary or "").strip()[:400],
+            "session_log": str(session_log_name or ""),
+            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        },
+    )
+
+
+def clear_pending_freeze(data_dir: Path) -> None:
+    """Прибирає маркер зависання, якщо головний потік самостійно відновив роботу."""
+    pending_path = data_dir / PENDING_CRASH_FILENAME
+    data = _read_json_file(pending_path)
+    if data is not None and data.get("kind") == "freeze":
+        try:
+            pending_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def consume_pending_crash_report(
+    data_dir: Path,
+    crash_log_path: Path,
+    logs_dir: Path,
+) -> dict[str, Any] | None:
+    """
+    Перевіряє, чи завершився попередній запуск серйозним крашем або зависанням.
+    Повертає словник з деталями інциденту й одразу очищує маркер, щоб діалог не повторювався.
+    """
+    pending_path = data_dir / PENDING_CRASH_FILENAME
+    pending = _read_json_file(pending_path)
+    if pending is not None:
+        try:
+            pending_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        return pending
+
+    last_state = _read_json_file(data_dir / LAST_SESSION_FILENAME)
+    if last_state is not None and not bool(last_state.get("clean_exit", True)):
+        prev_crash_size = int(last_state.get("crash_log_size", 0) or 0)
+        try:
+            cur_crash_size = crash_log_path.stat().st_size if crash_log_path.exists() else 0
+        except OSError:
+            cur_crash_size = 0
+        if cur_crash_size > prev_crash_size:
+            return {
+                "kind": "native_crash",
+                "summary": "Abnormal termination detected (crash.log updated)",
+                "session_log": str(last_state.get("session_log", "") or ""),
+                "timestamp": str(last_state.get("started_at", "") or datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+            }
+
+    return None
+
+
+def _prune_old_crash_zips(reports_dir: Path, keep_count: int = MAX_CRASH_REPORT_ZIPS) -> None:
+    if not reports_dir.exists():
+        return
+    zips = sorted(
+        (p for p in reports_dir.glob("SilentVoice_crash_*.zip") if p.is_file()),
+        key=lambda p: (p.stat().st_mtime if p.exists() else 0.0, p.name),
+        reverse=True,
+    )
+    for stale in zips[keep_count:]:
+        try:
+            stale.unlink()
+        except OSError:
+            pass
+
+
+def _read_tail_text(path: Path, max_bytes: int = 512 * 1024) -> str:
+    data = path.read_bytes()
+    if len(data) > max_bytes:
+        data = b"... [truncated] ...\n" + data[-max_bytes:]
+    return data.decode("utf-8", errors="replace")
+
+
+def build_crash_report_zip(
+    data_dir: Path,
+    crash_log_path: Path,
+    logs_dir: Path,
+    report_info: dict[str, Any],
+    app_version: str = "",
+) -> Path:
+    """
+    Пакує лише діагностичні логи (без config.json і секретів) у готовий ZIP-архів
+    у папці ``data_dir / "crash_reports"``.
+    """
+    reports_dir = data_dir / "crash_reports"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    _prune_old_crash_zips(reports_dir, keep_count=max(0, MAX_CRASH_REPORT_ZIPS - 1))
+
+    stamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    zip_path = reports_dir / f"SilentVoice_crash_{stamp}.zip"
+
+    sys_lines = [
+        f"App: SilentVoice TTS {app_version or 'unknown'}",
+        f"OS: {platform.system()} {platform.release()} ({platform.version()})",
+        f"Python: {sys.version.splitlines()[0]}",
+        f"Incident kind: {report_info.get('kind', 'crash')}",
+        f"Timestamp: {report_info.get('timestamp', '')}",
+        f"Summary: {sanitize_log_text(str(report_info.get('summary', '') or ''))}",
+    ]
+
+    session_log_name = str(report_info.get("session_log", "") or "").strip()
+    session_log_path: Path | None = None
+    if session_log_name:
+        candidate = logs_dir / Path(session_log_name).name
+        if candidate.is_file():
+            session_log_path = candidate
+
+    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("system_info.txt", "\n".join(sys_lines) + "\n")
+        if crash_log_path.is_file() and crash_log_path.stat().st_size > 0:
+            zf.writestr("crash.log", sanitize_log_text(_read_tail_text(crash_log_path)))
+        if session_log_path is not None and session_log_path.stat().st_size > 0:
+            zf.writestr(session_log_path.name, sanitize_log_text(_read_tail_text(session_log_path)))
+
+    return zip_path
+
+
+def build_github_issue_url(
+    repo_url: str,
+    report_info: dict[str, Any],
+    app_version: str = "",
+    zip_name: str = "",
+) -> str:
+    """Формує посилання на створення GitHub Issue із заповненим заголовком та шаблоном."""
+    base = str(repo_url or "").rstrip("/")
+    kind = str(report_info.get("kind", "crash") or "crash")
+    tag = "Freeze" if kind == "freeze" else "Crash"
+    summary = sanitize_log_text(str(report_info.get("summary", "") or "")).splitlines()
+    first_line = (summary[0] if summary else "Unexpected error")[:90]
+    ver_label = f"v{app_version.lstrip('v')}" if app_version else ""
+    title = f"[{tag}] {ver_label}: {first_line}".strip()
+
+    body_lines = [
+        f"**Version:** {ver_label or 'unknown'}",
+        f"**OS:** {platform.system()} {platform.release()}",
+        f"**Incident:** `{kind}` ({report_info.get('timestamp', '')})",
+        "",
+        "### Summary",
+        "```",
+        sanitize_log_text(str(report_info.get("summary", "") or "No details"))[:500],
+        "```",
+        "",
+        "### What were you doing when this happened?",
+        "<!-- Briefly describe your last action -->",
+        "",
+        "### Diagnostic Archive",
+        f"<!-- Drag and drop `{zip_name or 'SilentVoice_crash_*.zip'}` here -->",
+    ]
+    query = urlencode({"title": title, "body": "\n".join(body_lines)})
+    return f"{base}/issues/new?{query}"
+
 

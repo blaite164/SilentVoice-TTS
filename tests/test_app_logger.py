@@ -4,17 +4,26 @@ import os
 import tempfile
 import threading
 import unittest
+import zipfile
 from pathlib import Path
 
 from core.app_logger import (
     MAX_LOG_FILES,
     TimestampedLogStream,
     UIWatchdog,
+    build_crash_report_zip,
+    build_github_issue_url,
+    clear_pending_freeze,
+    consume_pending_crash_report,
     create_session_log_path,
     format_all_threads_dump,
+    mark_session_clean_exit,
+    mark_session_started,
     open_session_log_streams,
     prune_old_logs,
+    record_pending_crash,
     rotate_crash_log_if_needed,
+    sanitize_log_text,
 )
 
 
@@ -179,6 +188,86 @@ class AppLoggerTests(unittest.TestCase):
             backup = Path(tmp) / "crash.log.old"
             self.assertTrue(backup.exists())
             self.assertEqual(len(backup.read_text(encoding="utf-8")), 200)
+
+    def test_sanitize_log_text_masks_usernames_and_tokens(self) -> None:
+        raw = r"Error at C:\Users\AliceSmith\AppData\Local\SilentVoice and Bearer sk-1234567890abcdef"
+        cleaned = sanitize_log_text(raw)
+        self.assertNotIn("AliceSmith", cleaned)
+        self.assertIn(r"C:\Users\<USER>", cleaned)
+        self.assertNotIn("sk-1234567890abcdef", cleaned)
+        self.assertIn("Bearer <REDACTED>", cleaned)
+
+    def test_pending_crash_lifecycle_and_recovered_freeze_ignored(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp)
+            logs_dir = data_dir / "logs"
+            crash_log = data_dir / "crash.log"
+
+            # 1. Тимчасове зависання, яке відновилося — не повинно показувати діалог
+            record_pending_crash(data_dir, "freeze", "UI freeze (12.1s)", "app_1.log")
+            clear_pending_freeze(data_dir)
+            self.assertIsNone(consume_pending_crash_report(data_dir, crash_log, logs_dir))
+
+            # 2. Справжній краш — повертається один раз і одразу очищується
+            record_pending_crash(data_dir, "crash", "RuntimeError: boom", "app_2.log")
+            first = consume_pending_crash_report(data_dir, crash_log, logs_dir)
+            self.assertIsNotNone(first)
+            assert first is not None
+            self.assertEqual(first["kind"], "crash")
+            self.assertEqual(first["session_log"], "app_2.log")
+            self.assertIsNone(consume_pending_crash_report(data_dir, crash_log, logs_dir))
+
+            # 3. Нативний краш (crash.log виріс, але clean_exit=False)
+            crash_log.write_text("old\n", encoding="utf-8")
+            mark_session_started(data_dir, "app_3.log", crash_log)
+            crash_log.write_text("old\nFatal Python error: Segmentation fault\n", encoding="utf-8")
+            native = consume_pending_crash_report(data_dir, crash_log, logs_dir)
+            self.assertIsNotNone(native)
+            assert native is not None
+            self.assertEqual(native["kind"], "native_crash")
+
+            # 4. Коректне завершення — не показує діалог
+            mark_session_started(data_dir, "app_4.log", crash_log)
+            mark_session_clean_exit(data_dir)
+            self.assertIsNone(consume_pending_crash_report(data_dir, crash_log, logs_dir))
+
+    def test_build_crash_report_zip_excludes_config_and_sanitizes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp)
+            logs_dir = data_dir / "logs"
+            logs_dir.mkdir()
+            crash_log = data_dir / "crash.log"
+            (data_dir / "config.json").write_text('{"api_key": "SECRET"}', encoding="utf-8")
+            crash_log.write_text(r"Traceback at C:\Users\Tester\main.py", encoding="utf-8")
+            (logs_dir / "app_test.log").write_text(r"[2026-11-23 20:00:00] C:\Users\Tester\ok", encoding="utf-8")
+
+            report_info = {
+                "kind": "freeze",
+                "summary": "UI freeze (15.0s)",
+                "session_log": "app_test.log",
+                "timestamp": "2026-11-23 20:00:15",
+            }
+            zp = build_crash_report_zip(data_dir, crash_log, logs_dir, report_info, app_version="1.0.1")
+            self.assertTrue(zp.exists())
+
+            with zipfile.ZipFile(zp, "r") as zf:
+                names = set(zf.namelist())
+                self.assertIn("system_info.txt", names)
+                self.assertIn("crash.log", names)
+                self.assertIn("app_test.log", names)
+                self.assertNotIn("config.json", names)
+                self.assertNotIn("Tester", zf.read("crash.log").decode("utf-8"))
+                self.assertNotIn("Tester", zf.read("app_test.log").decode("utf-8"))
+
+            url = build_github_issue_url(
+                "https://github.com/blaite164/SilentVoice-TTS",
+                report_info,
+                app_version="1.0.1",
+                zip_name=zp.name,
+            )
+            self.assertTrue(url.startswith("https://github.com/blaite164/SilentVoice-TTS/issues/new?"))
+            self.assertIn("Freeze", url)
+            self.assertIn(zp.name, url)
 
 
 if __name__ == "__main__":

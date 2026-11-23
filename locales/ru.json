@@ -1328,5 +1328,16 @@
   "donate.opt.crypto_desc": "Перевод в криптовалюте (подходит для РФ и любых стран)",
   "donate.btn.open": "Открыть →",
   "donate.opt.twitch_title": "💜 Twitch — Канал автора",
-  "donate.opt.twitch_desc": "Поддержите подпиской или заходите на стрим (B1M_164)"
+  "donate.opt.twitch_desc": "Поддержите подпиской или заходите на стрим (B1M_164)",
+  "crash_dlg.win_title": "Отчёт о сбое — SilentVoice",
+  "crash_dlg.title_freeze": "⚠️ Предыдущий запуск программы завис",
+  "crash_dlg.title_crash": "⚠️ Предыдущий запуск завершился аварийно",
+  "crash_dlg.desc": "SilentVoice сохранил диагностические логи последнего сбоя. Если отправите их автору на GitHub, это поможет быстро найти и исправить проблему.",
+  "crash_dlg.time": "Время: {time}",
+  "crash_dlg.privacy": "🔒 Приватность: в архив добавляются только crash.log, лог той сессии и версия ОС. Файл config.json, API-ключи и сессии НЕ включаются, а имя пользователя Windows маскируется.",
+  "crash_dlg.btn_github": "🐛 Отправить на GitHub",
+  "crash_dlg.btn_zip": "📂 Сохранить .zip",
+  "crash_dlg.err_zip": "Не удалось создать архив: {err}",
+  "crash_dlg.zip_ready": "✅ Архив готов: {name} — можете отправить его автору.",
+  "crash_dlg.github_opened": "✅ Открыты GitHub и папка с {name}. Просто перетащите этот .zip в окно отчёта!"
 }

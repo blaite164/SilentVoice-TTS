@@ -61,8 +61,13 @@ from PySide6.QtWidgets import QAbstractScrollArea, QApplication, QComboBox, QLin
 from core.app_logger import (
     MAX_LOG_FILES,
     UIWatchdog,
+    clear_pending_freeze,
+    consume_pending_crash_report,
     format_log_timestamp,
+    mark_session_clean_exit,
+    mark_session_started,
     open_session_log_streams,
+    record_pending_crash,
     rotate_crash_log_if_needed,
 )
 from core.config import DATA_DIR, config
@@ -73,8 +78,9 @@ from core.i18n import (
     set_ui_language,
     tr,
 )
+from core.updater import APP_VERSION, DEFAULT_GITHUB_REPO
 from core.win_api import is_running_as_admin, restart_as_admin
-from ui.dialogs import ErrorPopupDialog, FirstRunLanguageDialog
+from ui.dialogs import CrashReportDialog, ErrorPopupDialog, FirstRunLanguageDialog
 from ui.main_window import MainWindow, create_app_icon
 
 CRASH_LOG_PATH = DATA_DIR / "crash.log"
@@ -155,6 +161,13 @@ def _write_crash_log(
 def _console_excepthook(exc_type, exc_value, exc_tb) -> None:
     """Виводить будь-яку необроблену помилку Python у консоль, crash.log та показує вікно помилки."""
     _write_crash_log("[ERROR] Необроблена помилка в головному потоці:", exc_type, exc_value, exc_tb)
+    err_name = getattr(exc_type, "__name__", "Error")
+    record_pending_crash(
+        DATA_DIR,
+        kind="crash",
+        summary=f"{err_name}: {exc_value}",
+        session_log_name=APP_LOG_PATH.name,
+    )
     if sys.stderr is not None:
         print("\n" + "=" * 68, file=sys.stderr)
         print("[ERROR] Необроблена помилка в головному потоці:", file=sys.stderr)
@@ -203,6 +216,13 @@ def _qt_message_handler(mode: QtMsgType, context: QMessageLogContext, message: s
     if mode in (QtMsgType.QtCriticalMsg, QtMsgType.QtFatalMsg):
         level = "FATAL" if mode == QtMsgType.QtFatalMsg else "CRITICAL"
         _write_crash_log(f"[Qt {level}] {message}")
+        if mode == QtMsgType.QtFatalMsg:
+            record_pending_crash(
+                DATA_DIR,
+                kind="crash",
+                summary=f"QtFatal: {message}",
+                session_log_name=APP_LOG_PATH.name,
+            )
     if mode in (QtMsgType.QtWarningMsg, QtMsgType.QtCriticalMsg, QtMsgType.QtFatalMsg):
         print(f"[Qt] {message}", file=sys.stderr, flush=True)
 
@@ -417,7 +437,9 @@ def main() -> int:
         _activate_existing_instance()
         return 0
 
+    pending_crash_report = consume_pending_crash_report(DATA_DIR, CRASH_LOG_PATH, LOGS_DIR)
     _init_session_logging()
+    mark_session_started(DATA_DIR, APP_LOG_PATH.name, CRASH_LOG_PATH)
     print(f"[SilentVoice] Запуск програми... (лог: {APP_LOG_PATH.name})", flush=True)
 
     def _release_instance_lock() -> None:
@@ -568,9 +590,16 @@ def main() -> int:
     def _on_ui_freeze(stalled_sec: float, thread_dump: str) -> None:
         header = f"[UI FREEZE] Головний потік не відповідає вже {stalled_sec:.1f} с (лог сесії: {APP_LOG_PATH.name}):"
         _write_crash_log(header, body=thread_dump)
+        record_pending_crash(
+            DATA_DIR,
+            kind="freeze",
+            summary=f"UI freeze ({stalled_sec:.1f}s)",
+            session_log_name=APP_LOG_PATH.name,
+        )
         print(f"[Watchdog] Виявлено зависання інтерфейсу ({stalled_sec:.1f} с) — стек усіх потоків записано в crash.log.", flush=True)
 
     def _on_ui_recover(stalled_sec: float) -> None:
+        clear_pending_freeze(DATA_DIR)
         _write_crash_log(f"[UI RECOVERED] Головний потік відновив роботу після {stalled_sec:.1f} с.")
         print(f"[Watchdog] Інтерфейс відновив роботу після {stalled_sec:.1f} с.", flush=True)
 
@@ -587,6 +616,24 @@ def main() -> int:
     watchdog_timer.start()
     ui_watchdog.start()
 
+    if pending_crash_report is not None:
+        def _show_pending_crash_dialog() -> None:
+            try:
+                dlg = CrashReportDialog(
+                    report_info=pending_crash_report,
+                    data_dir=DATA_DIR,
+                    crash_log_path=CRASH_LOG_PATH,
+                    logs_dir=LOGS_DIR,
+                    app_version=APP_VERSION,
+                    repo_url=DEFAULT_GITHUB_REPO,
+                    parent=window if window.isVisible() else None,
+                )
+                dlg.exec()
+            except Exception:
+                pass
+
+        QTimer.singleShot(450, _show_pending_crash_dialog)
+
     try:
         return app.exec()
     finally:
@@ -598,6 +645,7 @@ def main() -> int:
             ui_watchdog.stop()
         except Exception:
             pass
+        mark_session_clean_exit(DATA_DIR)
         print("[SilentVoice] Завершення роботи...", flush=True)
         try:
             window.force_quit_app()

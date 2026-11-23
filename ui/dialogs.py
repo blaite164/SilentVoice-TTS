@@ -5034,5 +5034,195 @@ class DonateDialog(QDialog):
         self.accept()
 
 
+class CrashReportDialog(QDialog):
+    """Вікно після серйозного крашу або зависання з пакуванням логів у .zip та переходом на GitHub Issues."""
+
+    def __init__(
+        self,
+        report_info: Dict[str, Any],
+        data_dir: Path,
+        crash_log_path: Path,
+        logs_dir: Path,
+        app_version: str,
+        repo_url: str,
+        parent: Optional[QWidget] = None,
+    ) -> None:
+        super().__init__(parent)
+        self._report_info = dict(report_info or {})
+        self._data_dir = Path(data_dir)
+        self._crash_log_path = Path(crash_log_path)
+        self._logs_dir = Path(logs_dir)
+        self._app_version = str(app_version or "")
+        self._repo_url = str(repo_url or "")
+        self._zip_path: Optional[Path] = None
+
+        kind = str(self._report_info.get("kind", "crash") or "crash")
+        is_freeze = kind == "freeze"
+
+        self.setWindowTitle(tr("crash_dlg.win_title", "Звіт про збій — SilentVoice"))
+        self.setMinimumWidth(520)
+        self.setStyleSheet(DIALOG_STYLESHEET)
+
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(22, 20, 22, 18)
+        lay.setSpacing(12)
+
+        title_text = (
+            tr("crash_dlg.title_freeze", "⚠️ Попередній запуск програми завис")
+            if is_freeze
+            else tr("crash_dlg.title_crash", "⚠️ Попередній запуск завершився аварійно")
+        )
+        title_lbl = QLabel(title_text)
+        title_lbl.setObjectName("dialogTitle")
+        title_lbl.setWordWrap(True)
+        lay.addWidget(title_lbl)
+
+        desc_lbl = QLabel(
+            tr(
+                "crash_dlg.desc",
+                "SilentVoice зберіг діагностичні логи останнього збою. Якщо надішлете їх автору на GitHub, це допоможе швидко знайти й виправити проблему.",
+            )
+        )
+        desc_lbl.setWordWrap(True)
+        desc_lbl.setStyleSheet("color: #CBD5E1; font-size: 13.5px; line-height: 1.45;")
+        lay.addWidget(desc_lbl)
+
+        summary_card = QFrame()
+        summary_card.setStyleSheet(
+            "QFrame { background-color: #262C40; border: 1px solid #3B4463; border-radius: 10px; }"
+        )
+        s_lay = QVBoxLayout(summary_card)
+        s_lay.setContentsMargins(14, 10, 14, 10)
+        s_lay.setSpacing(6)
+
+        ts_str = str(self._report_info.get("timestamp", "") or "")
+        summary_raw = str(self._report_info.get("summary", "") or "").strip()
+        meta_parts = []
+        if ts_str:
+            meta_parts.append(tr("crash_dlg.time", "Час: {time}").format(time=ts_str))
+        if self._app_version:
+            meta_parts.append(f"v{self._app_version.lstrip('v')}")
+        if meta_parts:
+            meta_lbl = QLabel(" · ".join(meta_parts))
+            meta_lbl.setStyleSheet("color: #94A3B8; font-size: 12px; border: none; background: transparent;")
+            s_lay.addWidget(meta_lbl)
+
+        if summary_raw:
+            sum_lbl = QLabel(summary_raw[:240])
+            sum_lbl.setWordWrap(True)
+            sum_lbl.setStyleSheet(
+                "color: #F8FAFC; font-family: Consolas, monospace; font-size: 12px; border: none; background: transparent;"
+            )
+            s_lay.addWidget(sum_lbl)
+
+        lay.addWidget(summary_card)
+
+        privacy_lbl = QLabel(
+            tr(
+                "crash_dlg.privacy",
+                "🔒 Приватність: до архіву додаються лише crash.log, лог тієї сесії та версія ОС. Файл config.json, API-ключі й сесії НЕ включаються, а ім'я користувача Windows маскується.",
+            )
+        )
+        privacy_lbl.setWordWrap(True)
+        privacy_lbl.setStyleSheet("color: #94A3B8; font-size: 12px; line-height: 1.4;")
+        lay.addWidget(privacy_lbl)
+
+        self._status_lbl = QLabel("")
+        self._status_lbl.setWordWrap(True)
+        self._status_lbl.setStyleSheet("color: #4ADE80; font-size: 12.5px; font-weight: 600;")
+        self._status_lbl.setVisible(False)
+        lay.addWidget(self._status_lbl)
+
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(10)
+
+        self.github_btn = QPushButton(tr("crash_dlg.btn_github", "🐛 Відправити на GitHub"))
+        self.github_btn.setProperty("class", "primaryBtn")
+        self.github_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.github_btn.clicked.connect(self._on_open_github)
+        btn_row.addWidget(self.github_btn)
+
+        self.zip_btn = QPushButton(tr("crash_dlg.btn_zip", "📂 Зберегти .zip"))
+        self.zip_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.zip_btn.clicked.connect(self._on_open_zip_only)
+        btn_row.addWidget(self.zip_btn)
+
+        btn_row.addStretch(1)
+
+        self.close_btn = QPushButton(tr("dlg_005", "Закрити"))
+        self.close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.close_btn.clicked.connect(self.reject)
+        btn_row.addWidget(self.close_btn)
+
+        lay.addLayout(btn_row)
+
+    def _ensure_zip(self) -> Optional[Path]:
+        if self._zip_path is not None and self._zip_path.exists():
+            return self._zip_path
+        try:
+            from core.app_logger import build_crash_report_zip
+
+            self._zip_path = build_crash_report_zip(
+                data_dir=self._data_dir,
+                crash_log_path=self._crash_log_path,
+                logs_dir=self._logs_dir,
+                report_info=self._report_info,
+                app_version=self._app_version,
+            )
+            return self._zip_path
+        except Exception as exc:
+            self._status_lbl.setStyleSheet("color: #F87171; font-size: 12.5px; font-weight: 600;")
+            self._status_lbl.setText(tr("crash_dlg.err_zip", "Не вдалося створити архів: {err}").format(err=exc))
+            self._status_lbl.setVisible(True)
+            return None
+
+    def _reveal_in_explorer(self, path: Path) -> None:
+        import os
+        import subprocess
+
+        try:
+            if os.name == "nt":
+                subprocess.Popen(["explorer", f"/select,{path}"])
+                return
+        except Exception:
+            pass
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(path.parent)))
+
+    def _on_open_zip_only(self) -> None:
+        zp = self._ensure_zip()
+        if zp is None:
+            return
+        self._reveal_in_explorer(zp)
+        self._status_lbl.setStyleSheet("color: #4ADE80; font-size: 12.5px; font-weight: 600;")
+        self._status_lbl.setText(
+            tr("crash_dlg.zip_ready", "✅ Архів готовий: {name} — можете надіслати його автору.").format(name=zp.name)
+        )
+        self._status_lbl.setVisible(True)
+
+    def _on_open_github(self) -> None:
+        from core.app_logger import build_github_issue_url
+
+        zp = self._ensure_zip()
+        if zp is None:
+            return
+        self._reveal_in_explorer(zp)
+        url = build_github_issue_url(
+            repo_url=self._repo_url,
+            report_info=self._report_info,
+            app_version=self._app_version,
+            zip_name=zp.name,
+        )
+        QDesktopServices.openUrl(QUrl(url))
+        self._status_lbl.setStyleSheet("color: #4ADE80; font-size: 12.5px; font-weight: 600;")
+        self._status_lbl.setText(
+            tr(
+                "crash_dlg.github_opened",
+                "✅ Відкрито GitHub і папку з {name}. Просто перетягніть цей .zip у вікно звіту!",
+            ).format(name=zp.name)
+        )
+        self._status_lbl.setVisible(True)
+
+
+
 
 

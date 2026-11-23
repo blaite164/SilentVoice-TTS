@@ -1328,5 +1328,16 @@
   "donate.opt.crypto_desc": "Don en cryptomonnaie (disponible dans le monde entier)",
   "donate.btn.open": "Ouvrir →",
   "donate.opt.twitch_title": "💜 Twitch — Chaîne de l’auteur",
-  "donate.opt.twitch_desc": "Soutenez avec un follow ou passez sur le stream (B1M_164)"
+  "donate.opt.twitch_desc": "Soutenez avec un follow ou passez sur le stream (B1M_164)",
+  "crash_dlg.win_title": "Rapport de plantage — SilentVoice",
+  "crash_dlg.title_freeze": "⚠️ La session précédente s'est figée",
+  "crash_dlg.title_crash": "⚠️ La session précédente s'est terminée anormalement",
+  "crash_dlg.desc": "SilentVoice a enregistré les journaux de diagnostic du dernier incident. Les envoyer à l'auteur sur GitHub aidera à résoudre le problème rapidement.",
+  "crash_dlg.time": "Heure : {time}",
+  "crash_dlg.privacy": "🔒 Confidentialité : seuls crash.log, le journal de session et la version de l'OS sont inclus. config.json, clés API et sessions ne sont JAMAIS inclus, et votre nom d'utilisateur est masqué.",
+  "crash_dlg.btn_github": "🐛 Signaler sur GitHub",
+  "crash_dlg.btn_zip": "📂 Enregistrer .zip",
+  "crash_dlg.err_zip": "Impossible de créer l'archive : {err}",
+  "crash_dlg.zip_ready": "✅ Archive prête : {name} — vous pouvez l'envoyer à l'auteur.",
+  "crash_dlg.github_opened": "✅ GitHub et le dossier contenant {name} ont été ouverts. Glissez simplement ce .zip dans le rapport !"
 }

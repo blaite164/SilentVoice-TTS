@@ -1328,5 +1328,16 @@
   "donate.opt.crypto_desc": "Donate via cryptocurrency (available worldwide)",
   "donate.btn.open": "Open →",
   "donate.opt.twitch_title": "💜 Twitch — Author Channel",
-  "donate.opt.twitch_desc": "Support with a follow or drop by the stream (B1M_164)"
+  "donate.opt.twitch_desc": "Support with a follow or drop by the stream (B1M_164)",
+  "crash_dlg.win_title": "Crash Report — SilentVoice",
+  "crash_dlg.title_freeze": "⚠️ The previous session froze",
+  "crash_dlg.title_crash": "⚠️ The previous session crashed unexpectedly",
+  "crash_dlg.desc": "SilentVoice saved diagnostic logs from the last incident. Sending them to the author on GitHub will help identify and fix the issue quickly.",
+  "crash_dlg.time": "Time: {time}",
+  "crash_dlg.privacy": "🔒 Privacy: only crash.log, the session log, and OS version are included. config.json, API keys, and sessions are NEVER included, and your Windows username is masked.",
+  "crash_dlg.btn_github": "🐛 Report on GitHub",
+  "crash_dlg.btn_zip": "📂 Save .zip",
+  "crash_dlg.err_zip": "Failed to create archive: {err}",
+  "crash_dlg.zip_ready": "✅ Archive ready: {name} — you can send it to the author.",
+  "crash_dlg.github_opened": "✅ Opened GitHub and the folder with {name}. Just drag and drop this .zip into the issue!"
 }

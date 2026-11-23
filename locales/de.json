@@ -1328,5 +1328,16 @@
   "donate.opt.crypto_desc": "Spende per Kryptowährung (weltweit verfügbar)",
   "donate.btn.open": "Öffnen →",
   "donate.opt.twitch_title": "💜 Twitch — Kanal des Autors",
-  "donate.opt.twitch_desc": "Unterstütze mit einem Follow oder schau im Stream vorbei (B1M_164)"
+  "donate.opt.twitch_desc": "Unterstütze mit einem Follow oder schau im Stream vorbei (B1M_164)",
+  "crash_dlg.win_title": "Absturzbericht — SilentVoice",
+  "crash_dlg.title_freeze": "⚠️ Die vorherige Sitzung ist eingefroren",
+  "crash_dlg.title_crash": "⚠️ Die vorherige Sitzung ist unerwartet abgestürzt",
+  "crash_dlg.desc": "SilentVoice hat Diagnoseprotokolle des letzten Vorfalls gespeichert. Wenn Sie diese auf GitHub melden, hilft das, das Problem schnell zu beheben.",
+  "crash_dlg.time": "Zeit: {time}",
+  "crash_dlg.privacy": "🔒 Datenschutz: Nur crash.log, das Sitzungsprotokoll und die OS-Version werden gepackt. config.json, API-Schlüssel und Sitzungen werden NIE eingeschlossen; Ihr Benutzername wird maskiert.",
+  "crash_dlg.btn_github": "🐛 Auf GitHub melden",
+  "crash_dlg.btn_zip": "📂 .zip speichern",
+  "crash_dlg.err_zip": "Archiv konnte nicht erstellt werden: {err}",
+  "crash_dlg.zip_ready": "✅ Archiv bereit: {name} — Sie können es an den Autor senden.",
+  "crash_dlg.github_opened": "✅ GitHub und der Ordner mit {name} wurden geöffnet. Ziehen Sie die .zip-Datei einfach in das Ticket!"
 }

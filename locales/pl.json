@@ -1328,5 +1328,16 @@
   "donate.opt.crypto_desc": "Wsparcie w kryptowalutach (dostępne na całym świecie)",
   "donate.btn.open": "Otwórz →",
   "donate.opt.twitch_title": "💜 Twitch — Kanał autora",
-  "donate.opt.twitch_desc": "Wesprzyj obserwacją lub wpadnij na stream (B1M_164)"
+  "donate.opt.twitch_desc": "Wesprzyj obserwacją lub wpadnij na stream (B1M_164)",
+  "crash_dlg.win_title": "Raport awarii — SilentVoice",
+  "crash_dlg.title_freeze": "⚠️ Poprzednia sesja zawiesiła się",
+  "crash_dlg.title_crash": "⚠️ Poprzednia sesja zakończyła się awarią",
+  "crash_dlg.desc": "SilentVoice zapisał logi diagnostyczne z ostatniego zdarzenia. Wysłanie ich autorowi na GitHub pomoże szybko znaleźć i naprawić problem.",
+  "crash_dlg.time": "Czas: {time}",
+  "crash_dlg.privacy": "🔒 Prywatność: archiwum zawiera tylko crash.log, log tamtej sesji i wersję systemu. Plik config.json, klucze API i sesje NIGDY nie są dołączane, a nazwa użytkownika jest maskowana.",
+  "crash_dlg.btn_github": "🐛 Zgłoś na GitHub",
+  "crash_dlg.btn_zip": "📂 Zapisz .zip",
+  "crash_dlg.err_zip": "Nie udało się utworzyć archiwum: {err}",
+  "crash_dlg.zip_ready": "✅ Archiwum gotowe: {name} — możesz wysłać je autorowi.",
+  "crash_dlg.github_opened": "✅ Otwarto GitHub i folder z {name}. Po prostu przeciągnij ten plik .zip do zgłoszenia!"
 }
