@@ -27,7 +27,7 @@ from core.config import DATA_DIR, config
 from core.i18n import tr
 from core.proxy_helper import get_active_api_proxies
 
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.0.1"
 
 # Впишіть сюди адресу свого репозиторію GitHub та/або GitLab (або "логін/репозиторій"):
 DEFAULT_GITHUB_REPO = "https://github.com/blaite164/SilentVoice-TTS"

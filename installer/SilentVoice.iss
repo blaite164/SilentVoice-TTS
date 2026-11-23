@@ -1,6 +1,6 @@
 ; SilentVoice.iss — Інсталятор та деінсталятор (Inno Setup 6) для SilentVoice TTS
 #define AppName "SilentVoice TTS"
-#define AppVersion "1.0.0"
+#define AppVersion "1.0.1"
 #define AppPublisher "SilentVoice"
 #define AppExeName "SilentVoice.exe"
 #define AppMutexName "SilentVoiceTTS_Mutex"
