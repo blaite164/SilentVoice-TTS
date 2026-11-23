@@ -13,6 +13,8 @@
 
 </div>
 
+> **Озвучка тексту для німих людей у реальному часі** | **Бесплатная озвучка текста для немых людей**
+
 ---
 
 **Can't or don't want to speak into a microphone? Just type, and SilentVoice will speak for you — in voice calls, multiplayer games, or live streams.**
