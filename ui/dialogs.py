@@ -4492,6 +4492,7 @@ class AppUpdateDialog(QDialog):
         self._cancel_event = threading.Event()
         self._downloading = False
         self._checking = False
+        self._downloaded_path: Optional[Path] = None
 
         self.setWindowTitle(tr("update.dlg.title", "Оновлення SilentVoice TTS"))
         self.setMinimumWidth(540)
@@ -4615,6 +4616,7 @@ class AppUpdateDialog(QDialog):
         self._save_repo_url()
         custom_repo = self.repo_edit.text().strip()
         self._checking = True
+        self._downloaded_path = None
         self.check_btn.setEnabled(False)
         self.install_btn.setVisible(False)
         self.open_page_btn.setVisible(False)
@@ -4686,13 +4688,27 @@ class AppUpdateDialog(QDialog):
     def _start_download_and_install(self) -> None:
         if self._release is None or self._downloading:
             return
+        # Якщо інсталятор уже завантажено у цій сесії (наприклад, користувач скасував UAC) — запускаємо одразу
+        if self._downloaded_path is not None and self._downloaded_path.is_file():
+            self._launch_downloaded_installer(self._downloaded_path)
+            return
+
         self._downloading = True
         self._cancel_event.clear()
         self.install_btn.setEnabled(False)
         self.check_btn.setEnabled(False)
         self.repo_edit.setEnabled(False)
+        self.close_btn.setText(tr("ui.cancel_btn", "Скасувати"))
+        self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
         self.progress_bar.setVisible(True)
+        self.status_lbl.setStyleSheet("font-size: 13.5px; color: #A5B4FC; padding: 4px 0;")
+        self.status_lbl.setText(
+            tr(
+                "update.dlg.connecting",
+                "⏳ Підключення до сервера та початок завантаження оновлення...",
+            )
+        )
 
         rel = self._release
 
@@ -4714,20 +4730,30 @@ class AppUpdateDialog(QDialog):
     def _on_download_progress(self, pct: int, dl_mb: float, tot_mb: float) -> None:
         self.progress_bar.setValue(pct)
         self.status_lbl.setStyleSheet("font-size: 13.5px; color: #E2E8F0; padding: 4px 0;")
-        self.status_lbl.setText(
-            tr(
-                "update.dlg.downloading",
-                "⬇️ Завантаження інсталятора: {dl:.1f} / {tot:.1f} МБ ({pct}%)",
-                dl=dl_mb,
-                tot=tot_mb if tot_mb > 0 else dl_mb,
-                pct=pct,
+        if tot_mb > 0:
+            self.status_lbl.setText(
+                tr(
+                    "update.dlg.downloading",
+                    "⬇️ Завантаження інсталятора: {dl:.1f} / {tot:.1f} МБ ({pct}%)",
+                    dl=dl_mb,
+                    tot=tot_mb,
+                    pct=pct,
+                )
             )
-        )
+        else:
+            self.status_lbl.setText(
+                tr(
+                    "update.dlg.downloading_unknown",
+                    "⬇️ Завантаження інсталятора: {dl:.1f} МБ...",
+                    dl=dl_mb,
+                )
+            )
 
     def _on_download_finished(self, file_path: str, err: str) -> None:
         self._downloading = False
         self.check_btn.setEnabled(True)
         self.repo_edit.setEnabled(True)
+        self.close_btn.setText(tr("dlg_005", "Закрити"))
         if err:
             self.install_btn.setEnabled(True)
             self.progress_bar.setVisible(False)
@@ -4735,13 +4761,33 @@ class AppUpdateDialog(QDialog):
             self.status_lbl.setText(f"⚠️ {err}")
             return
 
+        installer_path = Path(file_path)
+        self._downloaded_path = installer_path
+        self._launch_downloaded_installer(installer_path)
+
+    def _launch_downloaded_installer(self, installer_path: Path) -> None:
         from core.updater import launch_update_installer
 
+        self.progress_bar.setValue(100)
+        self.progress_bar.setVisible(True)
+        self.install_btn.setEnabled(False)
         self.status_lbl.setStyleSheet("font-size: 13.5px; color: #4ADE80; padding: 4px 0;")
-        self.status_lbl.setText(tr("update.dlg.launching", "🚀 Запуск інсталятора оновлення..."))
+        self.status_lbl.setText(
+            tr(
+                "update.dlg.launching_visible",
+                "✅ Завантаження завершено! Запускаємо інсталятор — зараз відкриється вікно встановлення, а після завершення SilentVoice перезапуститься сам.",
+            )
+        )
+        QApplication.processEvents()
+
+        target_ver = str(getattr(self._release, "version", "") or "").strip()
+        if target_ver:
+            config.set("pending_update_target_version", target_ver)
+
         try:
-            launched = launch_update_installer(Path(file_path), silent=True)
+            launched = launch_update_installer(installer_path, silent=True)
         except Exception as exc:
+            config.set("pending_update_target_version", "")
             self.install_btn.setEnabled(True)
             self.status_lbl.setStyleSheet("font-size: 13.5px; color: #FCA5A5; padding: 4px 0;")
             self.status_lbl.setText(f"⚠️ {exc}")
@@ -4750,9 +4796,17 @@ class AppUpdateDialog(QDialog):
         if launched:
             self.accept()
             if self._on_quit_for_install is not None:
-                QTimer.singleShot(150, self._on_quit_for_install)
+                QTimer.singleShot(300, self._on_quit_for_install)
         else:
+            config.set("pending_update_target_version", "")
             self.install_btn.setEnabled(True)
+            self.status_lbl.setStyleSheet("font-size: 13.5px; color: #FBBF24; padding: 4px 0;")
+            self.status_lbl.setText(
+                tr(
+                    "update.dlg.uac_cancelled",
+                    "⚠️ Запуск інсталятора скасовано (UAC). Файл оновлення вже завантажено — натисніть «Оновити зараз», щоб продовжити встановлення.",
+                )
+            )
 
     def reject(self) -> None:
         if self._downloading:

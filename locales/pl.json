@@ -1339,5 +1339,11 @@
   "crash_dlg.btn_zip": "📂 Zapisz .zip",
   "crash_dlg.err_zip": "Nie udało się utworzyć archiwum: {err}",
   "crash_dlg.zip_ready": "✅ Archiwum gotowe: {name} — możesz wysłać je autorowi.",
-  "crash_dlg.github_opened": "✅ Otwarto GitHub i folder z {name}. Po prostu przeciągnij ten plik .zip do zgłoszenia!"
+  "crash_dlg.github_opened": "✅ Otwarto GitHub i folder z {name}. Po prostu przeciągnij ten plik .zip do zgłoszenia!",
+  "update.dlg.connecting": "⏳ Łączenie z serwerem i rozpoczynanie pobierania aktualizacji...",
+  "update.dlg.downloading_unknown": "⬇️ Pobieranie instalatora: {dl:.1f} MB...",
+  "update.dlg.launching_visible": "✅ Pobieranie zakończone! Uruchamiamy instalator — pojawi się okno postępu instalacji, a po zakończeniu SilentVoice uruchomi się sam.",
+  "update.dlg.uac_cancelled": "⚠️ Anulowano uruchomienie instalatora (UAC). Plik aktualizacji jest już pobrany — kliknij „Zaktualizuj teraz”, aby kontynuować.",
+  "update.completed_status": "✅ Zaktualizowano do v{version}",
+  "update.completed_toast": "Aktualizacja zakończona pomyślnie! Zainstalowano wersję v{version}."
 }

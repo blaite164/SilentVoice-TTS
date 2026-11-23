@@ -24,10 +24,11 @@ from urllib.parse import quote, urlsplit
 import requests
 
 from core.config import DATA_DIR, config
-from core.i18n import tr
+from core.i18n import get_ui_language, tr
 from core.proxy_helper import get_active_api_proxies
 
 APP_VERSION = "1.0.1"
+_INNO_SUPPORTED_LANGS = {"uk", "en", "pl", "de", "fr", "es", "ru"}
 
 # Впишіть сюди адресу свого репозиторію GitHub та/або GitLab (або "логін/репозиторій"):
 DEFAULT_GITHUB_REPO = "https://github.com/blaite164/SilentVoice-TTS"
@@ -401,6 +402,26 @@ def download_update_installer(
 
     dest_path = UPDATES_DIR / safe_name
     part_path = UPDATES_DIR / f"{safe_name}.part"
+
+    # Якщо інсталятор уже завантажено раніше (наприклад, користувач скасував UAC)
+    # і його SHA-256 збігається з релізом — не перекачуємо ~200 МБ повторно.
+    if dest_path.is_file() and release.sha256:
+        try:
+            existing_hash = hashlib.sha256()
+            with open(dest_path, "rb") as existing_f:
+                head = existing_f.read(2)
+                if head == b"MZ":
+                    existing_hash.update(head)
+                    for block in iter(lambda: existing_f.read(65536), b""):
+                        existing_hash.update(block)
+                    if existing_hash.hexdigest().lower() == release.sha256.strip().lower():
+                        size_mb = dest_path.stat().st_size / (1024.0 * 1024.0)
+                        if progress_cb is not None:
+                            progress_cb(100, size_mb, size_mb)
+                        return dest_path
+        except OSError:
+            pass
+
     proxies = get_active_api_proxies()
     headers = {"User-Agent": f"SilentVoice-TTS/{APP_VERSION}"}
 
@@ -468,21 +489,44 @@ def download_update_installer(
         raise
 
 
-def launch_update_installer(installer_path: Path, silent: bool = True) -> bool:
+def build_installer_args(silent: bool = True, ui_lang: Optional[str] = None) -> List[str]:
+    """
+    Формує аргументи запуску інсталятора Inno Setup.
+    Використовує /SILENT (замість /VERYSILENT), щоб оновлення відбувалося без кліків,
+    але користувач бачив вікно прогресу встановлення до автоматичного перезапуску програми.
+    """
+    lang_code = str(ui_lang or get_ui_language() or "en").strip().lower()
+    if lang_code not in _INNO_SUPPORTED_LANGS:
+        lang_code = "en"
+    if silent:
+        return [
+            "/SILENT",
+            "/SP-",
+            "/SUPPRESSMSGBOXES",
+            "/NORESTART",
+            "/CLOSEAPPLICATIONS",
+            "/AUTORELAUNCH=1",
+            f"/LANG={lang_code}",
+        ]
+    return ["/AUTORELAUNCH=1", f"/LANG={lang_code}"]
+
+
+def launch_update_installer(
+    installer_path: Path,
+    silent: bool = True,
+    ui_lang: Optional[str] = None,
+) -> bool:
     """
     Запускає завантажений інсталятор Inno Setup.
-    У тихому режимі передає /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS /AUTORELAUNCH=1,
-    після чого інсталятор сам оновить файли та перезапустить SilentVoice.
+    У режимі автооновлення передає /SILENT /SP- /SUPPRESSMSGBOXES /NORESTART
+    /CLOSEAPPLICATIONS /AUTORELAUNCH=1 /LANG=<lang>: показує вікно прогресу
+    встановлення без зайвих запитань і сам перезапускає SilentVoice після завершення.
     """
     exe = Path(installer_path).resolve()
     if not exe.is_file():
         raise FileNotFoundError(str(exe))
 
-    args_list = (
-        ["/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS", "/AUTORELAUNCH=1"]
-        if silent
-        else ["/AUTORELAUNCH=1"]
-    )
+    args_list = build_installer_args(silent=silent, ui_lang=ui_lang)
     args_str = " ".join(args_list)
 
     if sys.platform == "win32":

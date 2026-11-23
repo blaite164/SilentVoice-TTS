@@ -1339,5 +1339,11 @@
   "crash_dlg.btn_zip": "📂 Сохранить .zip",
   "crash_dlg.err_zip": "Не удалось создать архив: {err}",
   "crash_dlg.zip_ready": "✅ Архив готов: {name} — можете отправить его автору.",
-  "crash_dlg.github_opened": "✅ Открыты GitHub и папка с {name}. Просто перетащите этот .zip в окно отчёта!"
+  "crash_dlg.github_opened": "✅ Открыты GitHub и папка с {name}. Просто перетащите этот .zip в окно отчёта!",
+  "update.dlg.connecting": "⏳ Подключение к серверу и начало загрузки обновления...",
+  "update.dlg.downloading_unknown": "⬇️ Загрузка установщика: {dl:.1f} МБ...",
+  "update.dlg.launching_visible": "✅ Загрузка завершена! Запускаем установщик — сейчас появится окно установки, а после завершения SilentVoice перезапустится сам.",
+  "update.dlg.uac_cancelled": "⚠️ Запуск установщика отменён (UAC). Файл обновления уже скачан — нажмите «Обновить сейчас», чтобы продолжить установку.",
+  "update.completed_status": "✅ Обновлено до версии v{version}",
+  "update.completed_toast": "Обновление успешно завершено! Установлена версия v{version}."
 }

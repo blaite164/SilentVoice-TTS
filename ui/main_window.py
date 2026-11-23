@@ -1206,6 +1206,7 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(160, self._apply_native_win_icon)
         QTimer.singleShot(50, lambda: tts_manager.schedule_smart_warmup(0.05, "startup"))
         self.startup_update_found.connect(self._on_startup_update_found)
+        QTimer.singleShot(700, self._check_post_update_notice)
         QTimer.singleShot(4500, self._auto_check_for_updates_on_startup)
 
     def eventFilter(self, watched, event) -> bool:
@@ -9183,6 +9184,36 @@ class MainWindow(QMainWindow):
     def _on_startup_update_found(self, release: object) -> None:
         if release is not None:
             self._open_update_dialog(initial_release=release)
+
+    def _check_post_update_notice(self) -> None:
+        target_ver = str(config.get("pending_update_target_version", "") or "").strip()
+        if not target_ver:
+            return
+        config.set("pending_update_target_version", "")
+        from core.updater import APP_VERSION, is_newer_version
+
+        if is_newer_version(target_ver, APP_VERSION):
+            return
+        try:
+            self.live_status_label.setText(
+                tr("update.completed_status", "✅ Оновлено до версії v{version}", version=APP_VERSION)
+            )
+        except Exception:
+            pass
+        try:
+            if getattr(self, "tray", None) is not None and self.tray.isVisible():
+                self.tray.showMessage(
+                    "SilentVoice TTS",
+                    tr(
+                        "update.completed_toast",
+                        "Оновлення успішно завершено! Встановлено версію v{version}.",
+                        version=APP_VERSION,
+                    ),
+                    QSystemTrayIcon.MessageIcon.Information,
+                    6000,
+                )
+        except Exception:
+            pass
 
     def _export_settings_profile(self) -> None:
         dialog = SettingsTransferDialog(list(TRANSFER_CATEGORIES), mode="export", parent=self)
