@@ -328,7 +328,7 @@ def _standard_translate_text(text: str, target_lang: str, source_lang: str = "en
     clean = str(text or "").strip()
     tl = "uk" if str(target_lang).strip().lower() in ("uk", "ua") else str(target_lang).strip().lower()
     sl = str(source_lang or "en").strip().lower() or "en"
-    if not clean or not tl or tl == "en":
+    if not clean or not tl or (sl != "auto" and tl == sl):
         return clean
 
     proxies = None
@@ -359,20 +359,21 @@ def _standard_translate_text(text: str, target_lang: str, source_lang: str = "en
         pass
 
     # 2. Резерв: MyMemory
-    try:
-        resp = requests.get(
-            "https://api.mymemory.translated.net/get",
-            params={"q": clean[:450], "langpair": f"en|{tl}"},
-            headers=headers,
-            proxies=proxies,
-            timeout=timeout,
-        )
-        if resp.status_code == 200:
-            tr_txt = str((resp.json().get("responseData") or {}).get("translatedText") or "").strip()
-            if tr_txt and tr_txt.lower() != clean.lower():
-                return tr_txt
-    except Exception:
-        pass
+    if sl != "auto":
+        try:
+            resp = requests.get(
+                "https://api.mymemory.translated.net/get",
+                params={"q": clean[:450], "langpair": f"{sl}|{tl}"},
+                headers=headers,
+                proxies=proxies,
+                timeout=timeout,
+            )
+            if resp.status_code == 200:
+                tr_txt = str((resp.json().get("responseData") or {}).get("translatedText") or "").strip()
+                if tr_txt and tr_txt.lower() != clean.lower():
+                    return tr_txt
+        except Exception:
+            pass
 
     return clean
 

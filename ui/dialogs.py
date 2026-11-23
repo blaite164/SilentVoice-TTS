@@ -4477,6 +4477,7 @@ class AppUpdateDialog(QDialog):
     check_finished = Signal(object, bool, str)
     download_progress = Signal(int, float, float)
     download_finished = Signal(str, str)
+    notes_localized = Signal(int, str)
 
     def __init__(
         self,
@@ -4493,15 +4494,18 @@ class AppUpdateDialog(QDialog):
         self._downloading = False
         self._checking = False
         self._downloaded_path: Optional[Path] = None
+        self._notes_req_id = 0
 
         self.setWindowTitle(tr("update.dlg.title", "Оновлення SilentVoice TTS"))
-        self.setMinimumWidth(540)
-        self.setMaximumWidth(680)
+        self.setMinimumWidth(720)
+        self.setMinimumHeight(480)
+        self.resize(780, 560)
         self.setStyleSheet(DIALOG_STYLESHEET)
 
         self.check_finished.connect(self._on_check_finished)
         self.download_progress.connect(self._on_download_progress)
         self.download_finished.connect(self._on_download_finished)
+        self.notes_localized.connect(self._on_notes_localized)
 
         lay = QVBoxLayout(self)
         lay.setContentsMargins(22, 18, 22, 16)
@@ -4547,7 +4551,7 @@ class AppUpdateDialog(QDialog):
 
         self.notes_edit = QTextEdit()
         self.notes_edit.setReadOnly(True)
-        self.notes_edit.setMinimumHeight(140)
+        self.notes_edit.setMinimumHeight(240)
         self.notes_edit.setPlaceholderText(
             tr(
                 "update.dlg.notes_placeholder",
@@ -4644,15 +4648,54 @@ class AppUpdateDialog(QDialog):
         self._release = release
         self._apply_release_ui(release, is_newer)
 
+    def _set_notes_markdown(self, text: str) -> None:
+        cleaned = str(text or "").strip()
+        if not cleaned:
+            self.notes_edit.setPlainText(
+                tr("update.dlg.no_notes", "Опис змін для цього релізу не вказано.")
+            )
+            return
+        try:
+            self.notes_edit.setMarkdown(cleaned)
+        except Exception:
+            self.notes_edit.setPlainText(cleaned)
+
+    def _on_notes_localized(self, req_id: int, localized_text: str) -> None:
+        if req_id != self._notes_req_id:
+            return
+        if localized_text.strip():
+            self._set_notes_markdown(localized_text)
+
     def _apply_release_ui(self, release: Any, is_newer: bool) -> None:
-        from core.updater import APP_VERSION
+        from core.updater import APP_VERSION, extract_release_notes_section, localize_release_notes
 
         if release is None:
             return
         notes = str(getattr(release, "notes", "") or "").strip()
-        self.notes_edit.setPlainText(
-            notes or tr("update.dlg.no_notes", "Опис змін для цього релізу не вказано.")
-        )
+        self._notes_req_id += 1
+        req_id = self._notes_req_id
+        ui_lang = get_ui_language()
+
+        if not notes:
+            self._set_notes_markdown("")
+        else:
+            preview_notes, already_localized = extract_release_notes_section(notes, ui_lang)
+            self._set_notes_markdown(preview_notes)
+            if not already_localized:
+                def _translate_worker() -> None:
+                    try:
+                        translated = localize_release_notes(notes, target_lang=ui_lang)
+                        if translated and translated.strip() != preview_notes.strip():
+                            self.notes_localized.emit(req_id, translated)
+                    except Exception:
+                        pass
+
+                threading.Thread(
+                    target=_translate_worker,
+                    daemon=True,
+                    name="UpdateNotesTranslator",
+                ).start()
+
         html_url = str(getattr(release, "html_url", "") or "").strip()
         self.open_page_btn.setVisible(bool(html_url))
 

@@ -29,6 +29,16 @@ from core.proxy_helper import get_active_api_proxies
 
 APP_VERSION = "1.0.2"
 _INNO_SUPPORTED_LANGS = {"uk", "en", "pl", "de", "fr", "es", "ru"}
+_SECTION_HEADING_RE = re.compile(r"(?m)^##\s+(.+)$")
+_LANG_SECTION_MARKERS = {
+    "uk": ("🇺🇦", "що нового", "українськ"),
+    "en": ("🇬🇧", "🇺🇸", "what's new", "whats new", "changelog", "release notes"),
+    "ru": ("🇷🇺", "что нового", "русск"),
+    "pl": ("🇵🇱", "co nowego", "polsk"),
+    "de": ("🇩🇪", "was ist neu", "neuheiten", "deutsch"),
+    "fr": ("🇫🇷", "nouveautés", "quoi de neuf", "français"),
+    "es": ("🇪🇸", "novedades", "qué hay de nuevo", "español"),
+}
 
 # Впишіть сюди адресу свого репозиторію GitHub та/або GitLab (або "логін/репозиторій"):
 DEFAULT_GITHUB_REPO = "https://github.com/blaite164/SilentVoice-TTS"
@@ -546,3 +556,102 @@ def launch_update_installer(
 
     subprocess.Popen([str(exe)] + args_list, cwd=str(exe.parent))
     return True
+
+
+def _detect_heading_lang(heading_text: str) -> Optional[str]:
+    low = str(heading_text or "").strip().lower()
+    for lang, markers in _LANG_SECTION_MARKERS.items():
+        if any(m in low for m in markers):
+            return lang
+    return None
+
+
+def extract_release_notes_section(notes: str, target_lang: str) -> Tuple[str, bool]:
+    """
+    Якщо опис релізу містить кілька мовних секцій (`## 🇺🇦 ...`, `## 🇬🇧 ...`),
+    повертає `(текст_секції, already_in_target_lang)`.
+    - Якщо секція потрібною мовою вже є — повертає її напряму (`already_in_target_lang=True`).
+    - Якщо є кілька секцій, але потрібної немає — бере англійську (або першу) як найкраще джерело для перекладу.
+    - Якщо секцій по мовах немає — повертає весь текст (`already_in_target_lang=False`).
+    """
+    raw = str(notes or "").strip()
+    if not raw:
+        return "", True
+    tl = "uk" if str(target_lang or "").strip().lower() in ("uk", "ua") else str(target_lang or "en").strip().lower()
+
+    matches = list(_SECTION_HEADING_RE.finditer(raw))
+    if not matches:
+        return raw, False
+
+    sections: List[Tuple[Optional[str], str]] = []
+    for idx, match in enumerate(matches):
+        start = match.start()
+        end = matches[idx + 1].start() if idx + 1 < len(matches) else len(raw)
+        block = raw[start:end].strip()
+        # Прибираємо розділювач `---` в кінці секції
+        block = re.sub(r"\n+---+\s*$", "", block).strip()
+        sections.append((_detect_heading_lang(match.group(1)), block))
+
+    lang_sections = {lang: block for lang, block in sections if lang is not None}
+    if not lang_sections:
+        return raw, False
+
+    if tl in lang_sections:
+        return lang_sections[tl], True
+
+    # Для перекладу на іншу мову краще брати англійську секцію, щоб не перекладати дубль двома мовами
+    if "en" in lang_sections:
+        return lang_sections["en"], False
+    return next(iter(lang_sections.values())), False
+
+
+def _split_markdown_chunks(text: str, max_chars: int = 1200) -> List[str]:
+    chunks: List[str] = []
+    cur_lines: List[str] = []
+    cur_len = 0
+    for line in text.splitlines():
+        add_len = len(line) + 1
+        if cur_lines and cur_len + add_len > max_chars:
+            chunks.append("\n".join(cur_lines))
+            cur_lines = [line]
+            cur_len = add_len
+        else:
+            cur_lines.append(line)
+            cur_len += add_len
+    if cur_lines:
+        chunks.append("\n".join(cur_lines))
+    return chunks
+
+
+def localize_release_notes(
+    notes: str,
+    target_lang: Optional[str] = None,
+    timeout: float = 4.5,
+) -> str:
+    """
+    Повертає опис оновлення мовою інтерфейсу:
+    1) Якщо в описі вже є секція мовою користувача — повертає саме її.
+    2) Інакше автоматично перекладає текст через стандартний перекладач (`Google Translate gtx`),
+       зберігаючи структуру рядків; при відсутності інтернету або помилці повертає оригінал.
+    """
+    raw = str(notes or "").strip()
+    if not raw:
+        return ""
+    tl = "uk" if str(target_lang or get_ui_language() or "en").strip().lower() in ("uk", "ua") else str(target_lang or get_ui_language() or "en").strip().lower()
+
+    selected, already_localized = extract_release_notes_section(raw, tl)
+    if already_localized or not selected:
+        return selected
+
+    from core.i18n import _standard_translate_text
+
+    translated_chunks: List[str] = []
+    for chunk in _split_markdown_chunks(selected, max_chars=1200):
+        # Не перекладаємо рядки, які складаються лише з хешів/посилань/роздільників
+        stripped = chunk.strip()
+        if not stripped or re.fullmatch(r"[-=*_`#\s]+", stripped):
+            translated_chunks.append(chunk)
+            continue
+        tr_chunk = _standard_translate_text(chunk, target_lang=tl, source_lang="auto", timeout=timeout)
+        translated_chunks.append(tr_chunk or chunk)
+    return "\n".join(translated_chunks).strip() or selected

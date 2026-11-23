@@ -51,6 +51,61 @@ class UpdaterUxTests(unittest.TestCase):
             self.assertTrue(progress_calls)
             self.assertEqual(progress_calls[-1][0], 100)
 
+    def test_extract_and_localize_bilingual_release_notes(self) -> None:
+        bilingual = (
+            "## 🇺🇦 Що нового у v1.0.2\n"
+            "- Виправлено курсор OBS\n\n"
+            "---\n\n"
+            "## 🇬🇧 What's New in v1.0.2\n"
+            "- Fixed OBS cursor\n"
+        )
+        uk_txt, uk_done = updater.extract_release_notes_section(bilingual, "uk")
+        self.assertTrue(uk_done)
+        self.assertIn("Виправлено курсор OBS", uk_txt)
+        self.assertNotIn("Fixed OBS cursor", uk_txt)
+
+        en_txt, en_done = updater.extract_release_notes_section(bilingual, "en")
+        self.assertTrue(en_done)
+        self.assertIn("Fixed OBS cursor", en_txt)
+        self.assertNotIn("Виправлено курсор OBS", en_txt)
+
+        de_src, de_done = updater.extract_release_notes_section(bilingual, "de")
+        self.assertFalse(de_done)
+        self.assertIn("Fixed OBS cursor", de_src)
+
+        with mock.patch("core.i18n._standard_translate_text", side_effect=AssertionError("Should not translate")):
+            self.assertEqual(updater.localize_release_notes(bilingual, target_lang="uk"), uk_txt)
+
+        with mock.patch("core.i18n._standard_translate_text", return_value="## 🇩🇪 Was ist neu\n- OBS-Cursor behoben") as m_tr:
+            de_out = updater.localize_release_notes(bilingual, target_lang="de")
+            self.assertIn("OBS-Cursor behoben", de_out)
+            m_tr.assert_called_once()
+            self.assertEqual(m_tr.call_args.kwargs["target_lang"], "de")
+            self.assertEqual(m_tr.call_args.kwargs["source_lang"], "auto")
+
+    def test_update_dialog_opens_wide(self) -> None:
+        import os
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+        from PySide6.QtWidgets import QApplication
+        from ui.dialogs import AppUpdateDialog
+
+        _app = QApplication.instance() or QApplication([])
+        rel = updater.UpdateReleaseInfo(
+            version="9.9.9",
+            tag_name="v9.9.9",
+            title="v9.9.9",
+            notes="## 🇺🇦 Що нового\n- Тест",
+            installer_url="https://example.invalid/setup.exe",
+            installer_name="setup.exe",
+        )
+        with mock.patch("core.i18n._standard_translate_text", return_value="## Translated\n- Test"):
+            dlg = AppUpdateDialog(initial_release=rel)
+            try:
+                self.assertGreaterEqual(dlg.minimumWidth(), 720)
+                self.assertGreaterEqual(dlg.width(), 720)
+            finally:
+                dlg.close()
+
 
 if __name__ == "__main__":
     unittest.main()
