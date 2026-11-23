@@ -83,28 +83,41 @@ class UpdaterUxTests(unittest.TestCase):
             self.assertEqual(m_tr.call_args.kwargs["target_lang"], "de")
             self.assertEqual(m_tr.call_args.kwargs["source_lang"], "auto")
 
-    def test_update_dialog_opens_wide(self) -> None:
+    def test_update_dialog_opens_wide_and_toggles_original_notes(self) -> None:
         import os
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
         from PySide6.QtWidgets import QApplication
+        from core.i18n import set_ui_language
         from ui.dialogs import AppUpdateDialog
 
         _app = QApplication.instance() or QApplication([])
+        set_ui_language("uk")
+        bilingual = "## 🇺🇦 Що нового\n- Тест\n\n## 🇬🇧 What's New\n- Test"
         rel = updater.UpdateReleaseInfo(
             version="9.9.9",
             tag_name="v9.9.9",
             title="v9.9.9",
-            notes="## 🇺🇦 Що нового\n- Тест",
+            notes=bilingual,
             installer_url="https://example.invalid/setup.exe",
             installer_name="setup.exe",
         )
-        with mock.patch("core.i18n._standard_translate_text", return_value="## Translated\n- Test"):
-            dlg = AppUpdateDialog(initial_release=rel)
-            try:
-                self.assertGreaterEqual(dlg.minimumWidth(), 720)
-                self.assertGreaterEqual(dlg.width(), 720)
-            finally:
-                dlg.close()
+        dlg = AppUpdateDialog(initial_release=rel)
+        try:
+            self.assertGreaterEqual(dlg.minimumWidth(), 720)
+            self.assertGreaterEqual(dlg.width(), 720)
+            self.assertFalse(dlg.toggle_notes_lang_btn.isHidden())
+            self.assertIn("Показати оригінал", dlg.toggle_notes_lang_btn.text())
+            self.assertNotIn("What's New", dlg.notes_edit.toPlainText())
+
+            dlg._toggle_notes_original()
+            self.assertIn("Перекласти", dlg.toggle_notes_lang_btn.text())
+            self.assertIn("What's New", dlg.notes_edit.toPlainText())
+
+            dlg._toggle_notes_original()
+            self.assertIn("Показати оригінал", dlg.toggle_notes_lang_btn.text())
+            self.assertNotIn("What's New", dlg.notes_edit.toPlainText())
+        finally:
+            dlg.close()
 
 
 if __name__ == "__main__":

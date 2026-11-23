@@ -1345,5 +1345,7 @@
   "update.dlg.launching_visible": "✅ Download abgeschlossen! Das Installationsprogramm startet — ein Fortschrittsfenster erscheint und SilentVoice startet danach automatisch neu.",
   "update.dlg.uac_cancelled": "⚠️ Start des Installationsprogramms abgebrochen (UAC). Die Datei ist bereits heruntergeladen — klicken Sie erneut auf „Jetzt aktualisieren“.",
   "update.completed_status": "✅ Auf v{version} aktualisiert",
-  "update.completed_toast": "Aktualisierung erfolgreich abgeschlossen! Version v{version} ist jetzt installiert."
+  "update.completed_toast": "Aktualisierung erfolgreich abgeschlossen! Version v{version} ist jetzt installiert.",
+  "update.dlg.show_original_btn": "🌐 Original anzeigen",
+  "update.dlg.translate_btn": "🌐 Übersetzen"
 }

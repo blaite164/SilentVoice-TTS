@@ -4495,6 +4495,9 @@ class AppUpdateDialog(QDialog):
         self._checking = False
         self._downloaded_path: Optional[Path] = None
         self._notes_req_id = 0
+        self._raw_notes = ""
+        self._translated_notes = ""
+        self._showing_original = False
 
         self.setWindowTitle(tr("update.dlg.title", "Оновлення SilentVoice TTS"))
         self.setMinimumWidth(720)
@@ -4581,6 +4584,12 @@ class AppUpdateDialog(QDialog):
         self.open_page_btn.clicked.connect(self._open_release_page)
         btn_row.addWidget(self.open_page_btn)
 
+        self.toggle_notes_lang_btn = QPushButton(tr("update.dlg.show_original_btn", "🌐 Показати оригінал"))
+        self.toggle_notes_lang_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.toggle_notes_lang_btn.setVisible(False)
+        self.toggle_notes_lang_btn.clicked.connect(self._toggle_notes_original)
+        btn_row.addWidget(self.toggle_notes_lang_btn)
+
         btn_row.addStretch(1)
 
         self.install_btn = QPushButton(tr("update.dlg.install_btn", "⚡ Оновити зараз (1 клік)"))
@@ -4624,6 +4633,7 @@ class AppUpdateDialog(QDialog):
         self.check_btn.setEnabled(False)
         self.install_btn.setVisible(False)
         self.open_page_btn.setVisible(False)
+        self.toggle_notes_lang_btn.setVisible(False)
         self.status_lbl.setStyleSheet("font-size: 13.5px; color: #A5B4FC; padding: 4px 0;")
         self.status_lbl.setText(tr("update.dlg.checking", "⏳ Перевірка наявності оновлень..."))
 
@@ -4660,11 +4670,38 @@ class AppUpdateDialog(QDialog):
         except Exception:
             self.notes_edit.setPlainText(cleaned)
 
+    def _update_notes_toggle_btn(self) -> None:
+        has_diff = bool(
+            self._raw_notes.strip()
+            and self._translated_notes.strip()
+            and self._translated_notes.strip() != self._raw_notes.strip()
+        )
+        self.toggle_notes_lang_btn.setVisible(has_diff)
+        if not has_diff:
+            return
+        if self._showing_original:
+            self.toggle_notes_lang_btn.setText(tr("update.dlg.translate_btn", "🌐 Перекласти"))
+        else:
+            self.toggle_notes_lang_btn.setText(tr("update.dlg.show_original_btn", "🌐 Показати оригінал"))
+
+    def _toggle_notes_original(self) -> None:
+        if not self._raw_notes.strip():
+            return
+        self._showing_original = not self._showing_original
+        if self._showing_original:
+            self._set_notes_markdown(self._raw_notes)
+        else:
+            self._set_notes_markdown(self._translated_notes or self._raw_notes)
+        self._update_notes_toggle_btn()
+
     def _on_notes_localized(self, req_id: int, localized_text: str) -> None:
         if req_id != self._notes_req_id:
             return
         if localized_text.strip():
-            self._set_notes_markdown(localized_text)
+            self._translated_notes = localized_text.strip()
+            if not self._showing_original:
+                self._set_notes_markdown(self._translated_notes)
+            self._update_notes_toggle_btn()
 
     def _apply_release_ui(self, release: Any, is_newer: bool) -> None:
         from core.updater import APP_VERSION, extract_release_notes_section, localize_release_notes
@@ -4675,12 +4712,18 @@ class AppUpdateDialog(QDialog):
         self._notes_req_id += 1
         req_id = self._notes_req_id
         ui_lang = get_ui_language()
+        self._raw_notes = notes
+        self._translated_notes = ""
+        self._showing_original = False
 
         if not notes:
             self._set_notes_markdown("")
+            self._update_notes_toggle_btn()
         else:
             preview_notes, already_localized = extract_release_notes_section(notes, ui_lang)
+            self._translated_notes = preview_notes.strip()
             self._set_notes_markdown(preview_notes)
+            self._update_notes_toggle_btn()
             if not already_localized:
                 def _translate_worker() -> None:
                     try:

@@ -1345,5 +1345,7 @@
   "update.dlg.launching_visible": "✅ Загрузка завершена! Запускаем установщик — сейчас появится окно установки, а после завершения SilentVoice перезапустится сам.",
   "update.dlg.uac_cancelled": "⚠️ Запуск установщика отменён (UAC). Файл обновления уже скачан — нажмите «Обновить сейчас», чтобы продолжить установку.",
   "update.completed_status": "✅ Обновлено до версии v{version}",
-  "update.completed_toast": "Обновление успешно завершено! Установлена версия v{version}."
+  "update.completed_toast": "Обновление успешно завершено! Установлена версия v{version}.",
+  "update.dlg.show_original_btn": "🌐 Показать оригинал",
+  "update.dlg.translate_btn": "🌐 Перевести"
 }

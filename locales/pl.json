@@ -1345,5 +1345,7 @@
   "update.dlg.launching_visible": "✅ Pobieranie zakończone! Uruchamiamy instalator — pojawi się okno postępu instalacji, a po zakończeniu SilentVoice uruchomi się sam.",
   "update.dlg.uac_cancelled": "⚠️ Anulowano uruchomienie instalatora (UAC). Plik aktualizacji jest już pobrany — kliknij „Zaktualizuj teraz”, aby kontynuować.",
   "update.completed_status": "✅ Zaktualizowano do v{version}",
-  "update.completed_toast": "Aktualizacja zakończona pomyślnie! Zainstalowano wersję v{version}."
+  "update.completed_toast": "Aktualizacja zakończona pomyślnie! Zainstalowano wersję v{version}.",
+  "update.dlg.show_original_btn": "🌐 Pokaż oryginał",
+  "update.dlg.translate_btn": "🌐 Przetłumacz"
 }
