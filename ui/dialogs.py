@@ -195,6 +195,47 @@ QComboBox QLineEdit {
 """
 
 
+def center_dialog_on_screen(dlg: QDialog, *, adjust_size: bool = False) -> None:
+    """Центрує діалогове вікно по центру активного екрана та гарантує, що воно не виходить за його межі."""
+    try:
+        if adjust_size:
+            dlg.adjustSize()
+        screen = None
+        parent = dlg.parentWidget()
+        if parent is not None:
+            try:
+                p_win = parent.window()
+                if p_win is not None and p_win.windowHandle() is not None:
+                    screen = p_win.windowHandle().screen()
+                if screen is None and p_win is not None:
+                    screen = QGuiApplication.screenAt(p_win.frameGeometry().center())
+            except Exception:
+                screen = None
+        if screen is None:
+            screen = dlg.screen() or QGuiApplication.primaryScreen()
+        if screen is None:
+            return
+
+        avail = screen.availableGeometry()
+        max_w = max(320, avail.width() - 32)
+        max_h = max(240, avail.height() - 48)
+        cur_w = min(dlg.width(), max_w)
+        cur_h = min(dlg.height(), max_h)
+        if cur_w != dlg.width() or cur_h != dlg.height():
+            dlg.resize(cur_w, cur_h)
+
+        fg = dlg.frameGeometry()
+        frame_w = max(dlg.width(), fg.width())
+        frame_h = max(dlg.height(), fg.height())
+        tx = avail.left() + (avail.width() - frame_w) // 2
+        ty = avail.top() + (avail.height() - frame_h) // 2
+        tx = max(avail.left() + 8, min(tx, avail.right() - frame_w - 8))
+        ty = max(avail.top() + 8, min(ty, avail.bottom() - frame_h - 8))
+        dlg.move(tx, ty)
+    except Exception:
+        pass
+
+
 class InfoPopupDialog(QDialog):
     """Просте та зрозуміле вікно пояснення функції при натисканні на кнопку (!)."""
 
@@ -234,23 +275,10 @@ class InfoPopupDialog(QDialog):
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
-        self.adjustSize()
-        screen = QGuiApplication.primaryScreen()
-        avail = screen.availableGeometry() if screen is not None else None
-        p = self.parentWidget()
-        if p is not None and p.isVisible() and not p.isMinimized() and p.width() > 100 and p.height() > 100:
-            pg = p.frameGeometry()
-            tx = pg.center().x() - self.width() // 2
-            ty = pg.center().y() - self.height() // 2
-        elif avail is not None:
-            tx = avail.center().x() - self.width() // 2
-            ty = avail.center().y() - self.height() // 2
-        else:
-            return
-        if avail is not None:
-            tx = max(avail.left() + 12, min(tx, avail.right() - self.width() - 12))
-            ty = max(avail.top() + 12, min(ty, avail.bottom() - self.height() - 12))
-        self.move(tx, ty)
+        center_dialog_on_screen(self, adjust_size=True)
+        if not getattr(self, "_sv_centered_once", False):
+            self._sv_centered_once = True
+            QTimer.singleShot(0, lambda: center_dialog_on_screen(self, adjust_size=True))
 
 
 class LocalModelDownloadNoticeDialog(QDialog):
@@ -1066,6 +1094,13 @@ class OpenVoiceGuideDialog(QDialog):
         if cb is not None:
             cb.setText(self.sample_text_edit.toPlainText())
         self.copy_status_lbl.setText(tr("ov.guide.copied", "✓ Скопійовано в буфер обміну!"))
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        center_dialog_on_screen(self)
+        if not getattr(self, "_sv_centered_once", False):
+            self._sv_centered_once = True
+            QTimer.singleShot(0, lambda: center_dialog_on_screen(self))
 
 
 class LocalModelsDialog(QDialog):
@@ -1988,6 +2023,16 @@ class ApiGuideDialog(QDialog):
         guides = self._build_guides()
         providers_to_show = [provider] if (provider and (provider in guides or provider in AI_PROVIDERS)) else list(guides.keys())
 
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        cards_host = QWidget()
+        cards_host.setStyleSheet("background: transparent;")
+        cards_lay = QVBoxLayout(cards_host)
+        cards_lay.setContentsMargins(0, 0, 2, 0)
+        cards_lay.setSpacing(12)
+
         for prov_key in providers_to_show:
             if prov_key in guides:
                 hdr_text, body_html, btn_label, url = guides[prov_key]
@@ -2017,7 +2062,7 @@ class ApiGuideDialog(QDialog):
                     )
             if prov_key in guides:
                 extra_btn = None
-            root.addWidget(
+            cards_lay.addWidget(
                 self._make_card(
                     hdr_text,
                     body_html,
@@ -2028,6 +2073,9 @@ class ApiGuideDialog(QDialog):
                 )
             )
 
+        scroll.setWidget(cards_host)
+        root.addWidget(scroll, 1)
+
         btn_row = QHBoxLayout()
         btn_row.addStretch(1)
         close_btn = QPushButton(tr("dlg_001", "Зрозуміло"))
@@ -2036,6 +2084,20 @@ class ApiGuideDialog(QDialog):
         close_btn.clicked.connect(self.accept)
         btn_row.addWidget(close_btn)
         root.addLayout(btn_row)
+
+        # Підбираємо комфортну висоту під вміст картки, не виходячи за межі екрана
+        cards_host.adjustSize()
+        hint_h = cards_host.sizeHint().height() + 92
+        screen = QGuiApplication.primaryScreen()
+        max_h = max(360, screen.availableGeometry().height() - 80) if screen is not None else 760
+        self.resize(580, min(max(260, hint_h), max_h))
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        center_dialog_on_screen(self)
+        if not getattr(self, "_sv_centered_once", False):
+            self._sv_centered_once = True
+            QTimer.singleShot(0, lambda: center_dialog_on_screen(self))
 
     def _make_card(
         self,
