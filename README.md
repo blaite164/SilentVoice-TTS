@@ -25,7 +25,7 @@ Built specifically for **non-verbal individuals**, people with speech difficulti
 
 Watch the overview covering installation, local & cloud TTS models, AI typo correction, Twitch chat integration, and animated OBS subtitles:
 
-> ℹ️ *Note: Currently, a quick video overview is only available in [Ukrainian](https://youtu.be/NP0lvSwCfqI) and [Russian](https://youtu.be/1g_w6JSZIcM).*
+> ℹ️ *Note: Currently, a quick video overview is only available in [Ukrainian](https://youtu.be/qGdbhC7rr3I) and [Russian](https://youtu.be/mXmoLLr2lJI).*
 
 <div align="center">
 

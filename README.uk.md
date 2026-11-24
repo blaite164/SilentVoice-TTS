@@ -25,7 +25,7 @@
 
 <div align="center">
 
-[![SilentVoice — Відеоогляд](https://img.youtube.com/vi/NP0lvSwCfqI/maxresdefault.jpg)](https://youtu.be/NP0lvSwCfqI)
+[![SilentVoice — Відеоогляд](https://img.youtube.com/vi/qGdbhC7rr3I/maxresdefault.jpg)](https://youtu.be/qGdbhC7rr3I)
 
 *Натисніть на прев'ю, щоб відкрити відеоогляд на YouTube*
 

@@ -25,7 +25,7 @@
 
 <div align="center">
 
-[![SilentVoice — Видеообзор](https://img.youtube.com/vi/1g_w6JSZIcM/maxresdefault.jpg)](https://youtu.be/1g_w6JSZIcM)
+[![SilentVoice — Видеообзор](https://img.youtube.com/vi/mXmoLLr2lJI/maxresdefault.jpg)](https://youtu.be/mXmoLLr2lJI)
 
 *Нажмите на превью, чтобы посмотреть видеообзор на YouTube*
 
