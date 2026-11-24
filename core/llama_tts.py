@@ -94,21 +94,16 @@ QWEN3_QUANT_SPECS: Dict[str, Dict[str, str]] = {
         "file": "Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf",
         "url": "https://huggingface.co/ggml-org/Qwen3-TTS-12Hz-1.7B-Base-GGUF/resolve/main/Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf",
     },
-    "q5": {
-        "id": "q5",
-        "label": "Q5_K_M",
-        "file": "Qwen3-TTS-12Hz-1.7B-Base.Q5_K_M.gguf",
-        "url": "https://huggingface.co/mradermacher/Qwen3-TTS-12Hz-1.7B-Base-GGUF/resolve/main/Qwen3-TTS-12Hz-1.7B-Base.Q5_K_M.gguf",
-    },
 }
 QWEN3_LEGACY_MODEL_FILES: Tuple[str, ...] = (
+    "Qwen3-TTS-12Hz-1.7B-Base.Q5_K_M.gguf",
     "Qwen3-TTS-12Hz-1.7B-Base-Q4_K_M.gguf",
 )
 QWEN3_MODEL_FILE = QWEN3_QUANT_SPECS["q8"]["file"]
 QWEN3_MMPROJ_FILE = "mmproj-Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf"
 QWEN3_MODEL_URL = QWEN3_QUANT_SPECS["q8"]["url"]
 QWEN3_MMPROJ_URL = "https://huggingface.co/ggml-org/Qwen3-TTS-12Hz-1.7B-Base-GGUF/resolve/main/mmproj-Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf"
-QWEN3_AUTO_Q8_VRAM_GB = 9.0  # При < 9 ГБ VRAM (4/6/8 ГБ карти) питаємо Q8 чи Q5; при >= 9 ГБ одразу ставимо Q8
+QWEN3_AUTO_Q8_VRAM_GB = 9.0  # При < 9 ГБ VRAM (4/6/8 ГБ карти) пропонуємо ZONOS3-Mini чи Qwen3 Q8; при >= 9 ГБ одразу ставимо Qwen3 Q8
 QWEN3_NATIVE_SR = 24000
 QWEN3_CTX_SIZE = 2048
 QWEN3_SUPPORTED_LANGS = frozenset(("zh", "en", "de", "it", "pt", "es", "ja", "ko", "fr", "ru"))
@@ -163,22 +158,20 @@ def is_runtime_installed() -> bool:
 
 
 def normalize_qwen3_quant(quant: Optional[str] = None) -> str:
-    """Нормалізує обране квантування Qwen3-TTS 1.7B до 'q8' або 'q5'."""
-    raw = str(quant if quant is not None else config.get("qwen3_tts_quant", "q8") or "q8").strip().lower()
-    if raw.startswith("q5"):
-        return "q5"
+    """Повертає єдине підтримуване квантування Qwen3-TTS 1.7B ('q8')."""
+    _ = quant
     return "q8"
 
 
 def get_qwen3_model_spec(quant: Optional[str] = None) -> Dict[str, str]:
-    """Повертає специфікацію GGUF-файлу (file/url/label) для обраного квантування Qwen3-TTS."""
+    """Повертає специфікацію GGUF-файлу (file/url/label) для Qwen3-TTS 1.7B (Q8_0)."""
     return dict(QWEN3_QUANT_SPECS[normalize_qwen3_quant(quant)])
 
 
 def should_prompt_qwen3_quant_for_vram(vram_gb: Optional[float]) -> bool:
     """
     Повертає True, якщо на ПК менше 9 ГБ відеопам'яті (або обсяг VRAM невідомий),
-    щоб запропонувати вибір між Q8 та Q5. При >= 9 ГБ VRAM автоматично ставиться Q8 без запитань.
+    щоб запропонувати вибір між ZONOS3-Mini та Qwen3-TTS 1.7B (Q8). При >= 9 ГБ VRAM одразу ставиться Qwen3 Q8.
     """
     if vram_gb is None:
         return True
@@ -189,12 +182,9 @@ def should_prompt_qwen3_quant_for_vram(vram_gb: Optional[float]) -> bool:
 
 
 def find_installed_qwen3_model_file(preferred_quant: Optional[str] = None) -> Optional[Path]:
-    """Знаходить встановлений GGUF-файл моделі Qwen3-TTS (обране квантування, інше або legacy Q4_K_M)."""
-    pref = normalize_qwen3_quant(preferred_quant)
-    other = "q5" if pref == "q8" else "q8"
+    """Знаходить встановлений GGUF-файл моделі Qwen3-TTS (Q8_0 або legacy-файли)."""
+    _ = preferred_quant
     candidates = [
-        QWEN3_QUANT_SPECS[pref]["file"],
-        QWEN3_QUANT_SPECS[other]["file"],
         QWEN3_MODEL_FILE,
         *QWEN3_LEGACY_MODEL_FILES,
     ]

@@ -9688,7 +9688,13 @@ class MainWindow(QMainWindow):
                 q_dlg = Qwen3QuantChoiceDialog(vram_gb, self)
                 if q_dlg.exec() != QDialog.DialogCode.Accepted:
                     return
-                config.set("qwen3_tts_quant", q_dlg.selected_quant)
+                chosen_engine = str(getattr(q_dlg, "selected_engine", "qwen3_tts") or "qwen3_tts").strip()
+                if chosen_engine == "zonos3_mini":
+                    engine_id = "zonos3_mini"
+                    if tts_manager.is_downloading(engine_id) or tts_manager.is_engine_installed(engine_id):
+                        return
+                else:
+                    config.set("qwen3_tts_quant", "q8")
             else:
                 config.set("qwen3_tts_quant", "q8")
         ui = self._engine_cards_ui.get(engine_id)

@@ -912,12 +912,11 @@
   "dlg.local_notice.dont_show": "Більше не показувати це повідомлення",
   "dlg.local_notice.cancel": "Скасувати",
   "dlg.local_notice.continue": "Завантажити",
-  "dlg.qwen_quant.title": "Вибір версії Qwen3-TTS 1.7B",
+  "dlg.qwen_quant.title": "Вибір GPU-моделі TTS",
   "dlg.qwen_quant.header_vram": "Виявлено менше 9 ГБ відеопам’яті (~{vram} ГБ VRAM)",
-  "dlg.qwen_quant.header_unknown": "Оберіть версію Qwen3-TTS 1.7B для вашої відеокарти",
-  "dlg.qwen_quant.body": "<b>Яку версію Qwen 1.7B ви хочете встановити?</b><br><br>• <b>Qwen 1.7B (Q8)</b> — краща якість голосу, але більше використання відеопам’яті (<b>~3± ГБ VRAM</b>).<br>• <b>Qwen 1.7B (Q5)</b> — трохи нижча якість, але менше використання відеопам’яті (<b>~2.2 ГБ VRAM</b>).<br><br><i>Якщо у вас менше 9 ГБ відеопам’яті й ви плануєте грати в ігри паралельно з програмою, версія Q8 може не залишити достатньо відеопам’яті для гри.</i>",
-  "dlg.qwen_quant.opt_q5": "Qwen 1.7B (Q5) — менше відеопам’яті (~2.2 ГБ VRAM, рекомендовано для ігор)",
-  "dlg.qwen_quant.opt_q8": "Qwen 1.7B (Q8) — краща якість (~3± ГБ VRAM)",
+  "dlg.qwen_quant.header_unknown": "Оберіть GPU-модель TTS для вашої відеокарти",
+  "dlg.qwen_quant.body": "<b>Яку модель ви хочете встановити?</b><br><br>• <b>ZONOS3-Mini</b> — менше використання відеопам’яті (<b>~2.5 ГБ VRAM</b>) та швидший старт мовлення.<br>• <b>Qwen3-TTS 1.7B (Q8)</b> — краща якість голосу, але більше використання відеопам’яті (<b>~3.9 ГБ VRAM</b>).<br><br><i>Якщо у вас менше 9 ГБ відеопам’яті й ви плануєте грати в ігри паралельно з програмою, Qwen3-TTS (Q8) може не залишити достатньо відеопам’яті для гри.</i>",
+  "dlg.qwen_quant.opt_q8": "Qwen3-TTS 1.7B (Q8) — краща якість (~3.9 ГБ VRAM)",
   "dlg.qwen_quant.install": "Встановити",
   "tts.dl.waiting_net": "Втрачено інтернет — очікування відновлення ({done:.1f} МБ збережено)...",
   "obs.web.connecting": "🟡 Підключення до SilentVoice...",
@@ -1353,5 +1352,6 @@
   "tts.size.pocket_tts": "~209–641 МБ",
   "tts.size.zonos3_mini": "~1.9 ГБ",
   "tts.title.zonos3_mini": "ZONOS3-Mini (GGUF) - з клонуванням",
-  "tts.title.pocket_tts": "Pocket TTS (GGUF) - з клонуванням"
+  "tts.title.pocket_tts": "Pocket TTS (GGUF) - з клонуванням",
+  "dlg.qwen_quant.opt_zonos3": "ZONOS3-Mini — менше відеопам’яті (~2.5 ГБ VRAM, рекомендовано для ігор)"
 }

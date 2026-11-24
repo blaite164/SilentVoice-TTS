@@ -912,12 +912,11 @@
   "dlg.local_notice.dont_show": "Diese Meldung nicht mehr anzeigen",
   "dlg.local_notice.cancel": "Abbrechen",
   "dlg.local_notice.continue": "Herunterladen",
-  "dlg.qwen_quant.title": "Qwen3-TTS 1.7B-Version wählen",
+  "dlg.qwen_quant.title": "GPU-TTS-Modell wählen",
   "dlg.qwen_quant.header_vram": "Weniger als 9 GB Videospeicher erkannt (~{vram} GB VRAM)",
-  "dlg.qwen_quant.header_unknown": "Wählen Sie eine Qwen3-TTS 1.7B-Version für Ihre Grafikkarte",
-  "dlg.qwen_quant.body": "<b>Welche Quantisierung von Qwen 1.7B möchten Sie installieren?</b><br><br>• <b>Qwen 1.7B (Q8)</b> — bessere Sprachqualität, aber höherer VRAM-Verbrauch (<b>~3± GB VRAM</b>).<br>• <b>Qwen 1.7B (Q5)</b> — etwas geringere Qualität, aber weniger VRAM-Verbrauch (<b>~2.2 GB VRAM</b>).<br><br><i>Wenn Sie weniger als 9 GB Videospeicher haben und nebenbei spielen möchten, lässt Q8 möglicherweise nicht genug VRAM für das Spiel übrig.</i>",
-  "dlg.qwen_quant.opt_q5": "Qwen 1.7B (Q5) — weniger VRAM (~2.2 GB VRAM, empfohlen für Spiele)",
-  "dlg.qwen_quant.opt_q8": "Qwen 1.7B (Q8) — bessere Qualität (~3± GB VRAM)",
+  "dlg.qwen_quant.header_unknown": "Wählen Sie ein GPU-TTS-Modell für Ihre Grafikkarte",
+  "dlg.qwen_quant.body": "<b>Welches Modell möchten Sie installieren?</b><br><br>• <b>ZONOS3-Mini</b> — geringerer Videospeicherverbrauch (<b>~2,5 GB VRAM</b>) und schnellerer Sprachstart.<br>• <b>Qwen3-TTS 1.7B (Q8)</b> — bessere Sprachqualität, aber höherer Videospeicherverbrauch (<b>~3,9 GB VRAM</b>).<br><br><i>Wenn Sie weniger als 9 GB VRAM haben und parallel spielen möchten, lässt Qwen3-TTS (Q8) möglicherweise nicht genug VRAM für das Spiel übrig.</i>",
+  "dlg.qwen_quant.opt_q8": "Qwen3-TTS 1.7B (Q8) — bessere Qualität (~3,9 GB VRAM)",
   "dlg.qwen_quant.install": "Installieren",
   "tts.dl.waiting_net": "Verbindung unterbrochen — warte auf Internet ({done:.1f} MB gespeichert)...",
   "obs.web.connecting": "🟡 Verbindung zu SilentVoice wird hergestellt...",
@@ -1353,5 +1352,6 @@
   "tts.size.pocket_tts": "~209–641 MB",
   "tts.size.zonos3_mini": "~1,9 GB",
   "tts.title.zonos3_mini": "ZONOS3-Mini (GGUF) - mit Stimmklonen",
-  "tts.title.pocket_tts": "Pocket TTS (GGUF) - mit Stimmklonen"
+  "tts.title.pocket_tts": "Pocket TTS (GGUF) - mit Stimmklonen",
+  "dlg.qwen_quant.opt_zonos3": "ZONOS3-Mini — weniger VRAM (~2,5 GB VRAM, empfohlen für Spiele)"
 }

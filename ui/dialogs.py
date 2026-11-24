@@ -343,11 +343,11 @@ class LocalModelDownloadNoticeDialog(QDialog):
 
 
 class Qwen3QuantChoiceDialog(QDialog):
-    """Вибір квантування Qwen3-TTS 1.7B (Q8 або Q5), якщо на ПК менше 9 ГБ відеопам'яті."""
+    """Вибір моделі (ZONOS3-Mini або Qwen3-TTS 1.7B Q8), якщо на ПК менше 9 ГБ відеопам'яті."""
 
     def __init__(self, vram_gb: Optional[float], parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
-        self.setWindowTitle(tr("dlg.qwen_quant.title", "Вибір версії Qwen3-TTS 1.7B"))
+        self.setWindowTitle(tr("dlg.qwen_quant.title", "Вибір GPU-моделі TTS"))
         self.setMinimumWidth(480)
         self.setMaximumWidth(580)
         self.setStyleSheet(DIALOG_STYLESHEET)
@@ -367,7 +367,7 @@ class Qwen3QuantChoiceDialog(QDialog):
         else:
             hdr_text = "🎮 " + tr(
                 "dlg.qwen_quant.header_unknown",
-                "Оберіть версію Qwen3-TTS 1.7B для вашої відеокарти",
+                "Оберіть GPU-модель TTS для вашої відеокарти",
             )
         hdr = QLabel(hdr_text)
         hdr.setObjectName("dialogTitle")
@@ -376,11 +376,11 @@ class Qwen3QuantChoiceDialog(QDialog):
 
         body_text = tr(
             "dlg.qwen_quant.body",
-            "<b>Яку версію Qwen 1.7B ви хочете встановити?</b><br><br>"
-            "• <b>Qwen 1.7B (Q8)</b> — краща якість голосу, але більше використання відеопам’яті (<b>~3± ГБ VRAM</b>).<br>"
-            "• <b>Qwen 1.7B (Q5)</b> — трохи нижча якість, але менше використання відеопам’яті (<b>~2.2 ГБ VRAM</b>).<br><br>"
+            "<b>Яку модель ви хочете встановити?</b><br><br>"
+            "• <b>ZONOS3-Mini</b> — менше використання відеопам’яті (<b>~2.5 ГБ VRAM</b>) та швидший старт мовлення.<br>"
+            "• <b>Qwen3-TTS 1.7B (Q8)</b> — краща якість голосу, але більше використання відеопам’яті (<b>~3.9 ГБ VRAM</b>).<br><br>"
             "<i>Якщо у вас менше 9 ГБ відеопам’яті й ви плануєте грати в ігри паралельно з програмою, "
-            "версія Q8 може не залишити достатньо відеопам’яті для гри.</i>",
+            "Qwen3-TTS (Q8) може не залишити достатньо відеопам’яті для гри.</i>",
         )
         body = QLabel(body_text)
         body.setWordWrap(True)
@@ -399,17 +399,17 @@ class Qwen3QuantChoiceDialog(QDialog):
         )
         self._group = QButtonGroup(self)
 
-        self.radio_q5 = QRadioButton(
-            tr("dlg.qwen_quant.opt_q5", "Qwen 1.7B (Q5) — менше відеопам’яті (~2.2 ГБ VRAM, рекомендовано для ігор)")
+        self.radio_zonos3 = QRadioButton(
+            tr("dlg.qwen_quant.opt_zonos3", "ZONOS3-Mini — менше відеопам’яті (~2.5 ГБ VRAM, рекомендовано для ігор)")
         )
-        self.radio_q5.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.radio_q5.setStyleSheet(radio_style)
-        self.radio_q5.setChecked(True)
-        self._group.addButton(self.radio_q5)
-        lay.addWidget(self.radio_q5)
+        self.radio_zonos3.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.radio_zonos3.setStyleSheet(radio_style)
+        self.radio_zonos3.setChecked(True)
+        self._group.addButton(self.radio_zonos3)
+        lay.addWidget(self.radio_zonos3)
 
         self.radio_q8 = QRadioButton(
-            tr("dlg.qwen_quant.opt_q8", "Qwen 1.7B (Q8) — краща якість (~3± ГБ VRAM)")
+            tr("dlg.qwen_quant.opt_q8", "Qwen3-TTS 1.7B (Q8) — краща якість (~3.9 ГБ VRAM)")
         )
         self.radio_q8.setCursor(Qt.CursorShape.PointingHandCursor)
         self.radio_q8.setStyleSheet(radio_style)
@@ -433,8 +433,8 @@ class Qwen3QuantChoiceDialog(QDialog):
         lay.addLayout(btn_row)
 
     @property
-    def selected_quant(self) -> str:
-        return "q8" if self.radio_q8.isChecked() else "q5"
+    def selected_engine(self) -> str:
+        return "qwen3_tts" if self.radio_q8.isChecked() else "zonos3_mini"
 
 
 class HelpButton(QPushButton):

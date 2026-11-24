@@ -525,9 +525,11 @@ class LlamaTtsTests(unittest.TestCase):
             self.assertTrue(has_hardware_gpu())
             self.assertEqual(get_discrete_gpu_vram_gb(), 8.0)
 
-        # 2. Spec & installed detection support Q8, Q5, and legacy Q4_K_M
+        # 2. Q5_K_M is removed; only Q8_0 is offered, while legacy Q5_K_M/Q4_K_M files are still detected
+        self.assertNotIn("q5", llama_tts.QWEN3_QUANT_SPECS)
+        self.assertEqual(llama_tts.normalize_qwen3_quant("q5"), "q8")
         self.assertEqual(llama_tts.get_qwen3_model_spec("q8")["file"], "Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf")
-        self.assertEqual(llama_tts.get_qwen3_model_spec("q5")["file"], "Qwen3-TTS-12Hz-1.7B-Base.Q5_K_M.gguf")
+        self.assertEqual(llama_tts.get_qwen3_model_spec("q5")["file"], "Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf")
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -539,7 +541,7 @@ class LlamaTtsTests(unittest.TestCase):
             qw = root / "qwen3_tts"
             qw.mkdir()
             (qw / llama_tts.QWEN3_MMPROJ_FILE).write_bytes(b"mm")
-            (qw / "Qwen3-TTS-12Hz-1.7B-Base.Q5_K_M.gguf").write_bytes(b"q5")
+            (qw / llama_tts.QWEN3_MODEL_FILE).write_bytes(b"q8")
 
             with (
                 patch.object(llama_tts, "LLAMA_TTS_EXE", rt / "llama-tts.exe"),
@@ -549,20 +551,21 @@ class LlamaTtsTests(unittest.TestCase):
             ):
                 self.assertTrue(llama_tts.is_qwen3_tts_installed())
                 self.assertEqual(
-                    llama_tts.find_installed_qwen3_model_file("q5").name,
-                    "Qwen3-TTS-12Hz-1.7B-Base.Q5_K_M.gguf",
+                    llama_tts.find_installed_qwen3_model_file().name,
+                    "Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf",
                 )
 
-        # 3. Dialog defaults to Q5 when shown, and can switch to Q8
+        # 3. Dialog defaults to ZONOS3-Mini when VRAM < 9 GB, and can switch to Qwen3 Q8
         dlg_real = Qwen3QuantChoiceDialog(8.0)
-        self.assertEqual(dlg_real.selected_quant, "q5")
+        self.assertEqual(dlg_real.selected_engine, "zonos3_mini")
         dlg_real.radio_q8.setChecked(True)
-        self.assertEqual(dlg_real.selected_quant, "q8")
+        self.assertEqual(dlg_real.selected_engine, "qwen3_tts")
 
         # 4. MainWindow._start_model_download("qwen3_tts"):
-        #    - >= 12 GB VRAM -> does NOT open dialog, sets q8, starts download
-        #    - < 12 GB VRAM -> opens dialog, saves chosen q5, starts download
-        #    - < 12 GB VRAM & cancelled -> does NOT start download
+        #    - >= 9 GB VRAM -> does NOT open dialog, sets q8, starts qwen3_tts download
+        #    - < 9 GB VRAM & picks ZONOS3-Mini -> starts zonos3_mini download
+        #    - < 9 GB VRAM & picks Qwen3 Q8 -> sets q8, starts qwen3_tts download
+        #    - < 9 GB VRAM & cancelled -> does NOT start download
         dummy = MainWindow.__new__(MainWindow)
         dummy._ensure_language_confirmed = lambda: True
         dummy._engine_cards_ui = {}
@@ -587,10 +590,30 @@ class LlamaTtsTests(unittest.TestCase):
             self.assertEqual(saved_cfg.get("qwen3_tts_quant"), "q8")
             mock_dl.assert_called_once_with("qwen3_tts")
 
-        class _PickQ5Dlg:
+        class _PickZonosDlg:
             def __init__(self, vram_gb, parent=None):
                 self.vram_gb = vram_gb
-                self.selected_quant = "q5"
+                self.selected_engine = "zonos3_mini"
+
+            def exec(self):
+                return QDialog.DialogCode.Accepted
+
+        with (
+            patch("ui.main_window.config.get", side_effect=_cfg_get),
+            patch("ui.main_window.config.set", side_effect=_cfg_set),
+            patch("ui.main_window.tts_manager.is_downloading", return_value=False),
+            patch("ui.main_window.tts_manager.is_engine_installed", return_value=False),
+            patch("ui.main_window.get_discrete_gpu_vram_gb", return_value=8.0),
+            patch("ui.main_window.Qwen3QuantChoiceDialog", _PickZonosDlg),
+            patch("ui.main_window.tts_manager.download_engine_model") as mock_dl,
+        ):
+            dummy._start_model_download("qwen3_tts")
+            mock_dl.assert_called_once_with("zonos3_mini")
+
+        class _PickQwenDlg:
+            def __init__(self, vram_gb, parent=None):
+                self.vram_gb = vram_gb
+                self.selected_engine = "qwen3_tts"
 
             def exec(self):
                 return QDialog.DialogCode.Accepted
@@ -600,16 +623,16 @@ class LlamaTtsTests(unittest.TestCase):
             patch("ui.main_window.config.set", side_effect=_cfg_set),
             patch("ui.main_window.tts_manager.is_downloading", return_value=False),
             patch("ui.main_window.get_discrete_gpu_vram_gb", return_value=8.0),
-            patch("ui.main_window.Qwen3QuantChoiceDialog", _PickQ5Dlg),
+            patch("ui.main_window.Qwen3QuantChoiceDialog", _PickQwenDlg),
             patch("ui.main_window.tts_manager.download_engine_model") as mock_dl,
         ):
             dummy._start_model_download("qwen3_tts")
-            self.assertEqual(saved_cfg.get("qwen3_tts_quant"), "q5")
+            self.assertEqual(saved_cfg.get("qwen3_tts_quant"), "q8")
             mock_dl.assert_called_once_with("qwen3_tts")
 
         class _CancelDlg:
             def __init__(self, vram_gb, parent=None):
-                self.selected_quant = "q5"
+                self.selected_engine = "zonos3_mini"
 
             def exec(self):
                 return QDialog.DialogCode.Rejected
