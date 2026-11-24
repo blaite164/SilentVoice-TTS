@@ -38,7 +38,7 @@ LLAMA_TTS_EXE = LLAMA_TTS_DIR / "llama-tts.exe"
 LLAMA_TTS_SERVER_EXE = LLAMA_TTS_DIR / "llama-server.exe"
 LLAMA_TTS_READY_MARKER = LLAMA_TTS_DIR / "ready.marker"
 
-LLAMA_TTS_ENGINE_IDS: Tuple[str, ...] = ("qwen3_tts", "zonos3_mini", "kokoro_82m", "pocket_tts")
+LLAMA_TTS_ENGINE_IDS: Tuple[str, ...] = ("qwen3_tts", "zonos3_mini", "kokoro_82m", "soprano_1_1")
 LLAMA_STREAMING_ENGINE_IDS: Tuple[str, ...] = ("qwen3_tts", "zonos3_mini")
 
 QWEN3_TTS_DIR = ENGINES_DIR / "qwen3_tts"
@@ -58,35 +58,12 @@ KOKORO_MMPROJ_FILE = "mmproj-Kokoro-82M-F16.gguf"
 KOKORO_MODEL_URL = "https://huggingface.co/ggml-org/Kokoro-82M-GGUF/resolve/main/Kokoro-82M-F32.gguf"
 KOKORO_MMPROJ_URL = "https://huggingface.co/ggml-org/Kokoro-82M-GGUF/resolve/main/mmproj-Kokoro-82M-F16.gguf"
 
-# Pocket TTS (EryriLabs/pocket-tts-GGUF, 24 kHz, per-language EN/DE/ES/FR, CPU/GPU + zero-shot cloning)
-POCKET_TTS_DIR = ENGINES_DIR / "pocket_tts"
-POCKET_TTS_HF_BASE = "https://huggingface.co/EryriLabs/pocket-tts-GGUF/resolve/main"
-POCKET_TTS_LANG_FILES: Dict[str, Tuple[str, str, str, str]] = {
-    "en": (
-        "pocket-tts-en.gguf",
-        f"{POCKET_TTS_HF_BASE}/pocket-tts-en.gguf",
-        "mmproj-pocket-tts-en.gguf",
-        f"{POCKET_TTS_HF_BASE}/mmproj-pocket-tts-en.gguf",
-    ),
-    "de": (
-        "pocket-tts-german.gguf",
-        f"{POCKET_TTS_HF_BASE}/german/pocket-tts-german.gguf",
-        "mmproj-pocket-tts-german.gguf",
-        f"{POCKET_TTS_HF_BASE}/german/mmproj-pocket-tts-german.gguf",
-    ),
-    "es": (
-        "pocket-tts-spanish.gguf",
-        f"{POCKET_TTS_HF_BASE}/spanish/pocket-tts-spanish.gguf",
-        "mmproj-pocket-tts-spanish.gguf",
-        f"{POCKET_TTS_HF_BASE}/spanish/mmproj-pocket-tts-spanish.gguf",
-    ),
-    "fr": (
-        "pocket-tts-french.gguf",
-        f"{POCKET_TTS_HF_BASE}/french/pocket-tts-french.gguf",
-        "mmproj-pocket-tts-french.gguf",
-        f"{POCKET_TTS_HF_BASE}/french/mmproj-pocket-tts-french.gguf",
-    ),
-}
+# Soprano-1.1-80M (ggml-org/Soprano-1.1-80M-GGUF, 32 kHz, ultra-fast English TTS, CPU/GPU)
+SOPRANO_DIR = ENGINES_DIR / "soprano_1_1"
+SOPRANO_MODEL_FILE = "Soprano-1.1-80M-Q8_0.gguf"
+SOPRANO_MMPROJ_FILE = "mmproj-Soprano-1.1-80M-F16.gguf"
+SOPRANO_MODEL_URL = "https://huggingface.co/ggml-org/Soprano-1.1-80M-GGUF/resolve/main/Soprano-1.1-80M-Q8_0.gguf"
+SOPRANO_MMPROJ_URL = "https://huggingface.co/ggml-org/Soprano-1.1-80M-GGUF/resolve/main/mmproj-Soprano-1.1-80M-F16.gguf"
 QWEN3_QUANT_SPECS: Dict[str, Dict[str, str]] = {
     "q8": {
         "id": "q8",
@@ -223,20 +200,16 @@ def is_kokoro_installed() -> bool:
     )
 
 
-def _normalize_pocket_lang(lang: Optional[str] = None) -> str:
-    raw = str(lang if lang is not None else config.get("app_language", "en") or "en").strip().lower()
-    return raw if raw in POCKET_TTS_LANG_FILES else "en"
-
-
-def is_pocket_tts_installed(lang: Optional[str] = None) -> bool:
-    if not is_runtime_installed():
-        return False
-    code = _normalize_pocket_lang(lang)
-    m_file, _, mm_file, _ = POCKET_TTS_LANG_FILES[code]
-    return (POCKET_TTS_DIR / m_file).is_file() and (POCKET_TTS_DIR / mm_file).is_file()
+def is_soprano_installed() -> bool:
+    return (
+        is_runtime_installed()
+        and (SOPRANO_DIR / SOPRANO_MODEL_FILE).is_file()
+        and (SOPRANO_DIR / SOPRANO_MMPROJ_FILE).is_file()
+    )
 
 
 def is_llama_engine_installed(engine_id: str, lang: Optional[str] = None) -> bool:
+    _ = lang
     eid = str(engine_id or "").strip()
     if eid == "qwen3_tts":
         return is_qwen3_tts_installed()
@@ -244,22 +217,23 @@ def is_llama_engine_installed(engine_id: str, lang: Optional[str] = None) -> boo
         return is_zonos3_installed()
     if eid == "kokoro_82m":
         return is_kokoro_installed()
-    if eid == "pocket_tts":
-        return is_pocket_tts_installed(lang=lang)
+    if eid == "soprano_1_1":
+        return is_soprano_installed()
     return False
 
 
 def is_any_llama_tts_installed() -> bool:
-    if is_qwen3_tts_installed() or is_zonos3_installed() or is_kokoro_installed():
-        return True
-    for code in POCKET_TTS_LANG_FILES:
-        if is_pocket_tts_installed(code):
-            return True
-    return False
+    return (
+        is_qwen3_tts_installed()
+        or is_zonos3_installed()
+        or is_kokoro_installed()
+        or is_soprano_installed()
+    )
 
 
 def get_llama_engine_downloads(engine_id: str, lang: Optional[str] = None) -> list[Tuple[str, Path, str, int, int]]:
     """Повертає список файлів (url, dest_path, fname, base_pct, span_pct) для завантаження GGUF-рушія."""
+    _ = lang
     eid = str(engine_id or "").strip()
     if eid == "zonos3_mini":
         return [
@@ -271,12 +245,10 @@ def get_llama_engine_downloads(engine_id: str, lang: Optional[str] = None) -> li
             (KOKORO_MODEL_URL, KOKORO_DIR / KOKORO_MODEL_FILE, KOKORO_MODEL_FILE, 25, 25),
             (KOKORO_MMPROJ_URL, KOKORO_DIR / KOKORO_MMPROJ_FILE, KOKORO_MMPROJ_FILE, 50, 49),
         ]
-    if eid == "pocket_tts":
-        code = _normalize_pocket_lang(lang)
-        m_file, m_url, mm_file, mm_url = POCKET_TTS_LANG_FILES[code]
+    if eid == "soprano_1_1":
         return [
-            (m_url, POCKET_TTS_DIR / m_file, m_file, 25, 50),
-            (mm_url, POCKET_TTS_DIR / mm_file, mm_file, 75, 24),
+            (SOPRANO_MODEL_URL, SOPRANO_DIR / SOPRANO_MODEL_FILE, SOPRANO_MODEL_FILE, 25, 42),
+            (SOPRANO_MMPROJ_URL, SOPRANO_DIR / SOPRANO_MMPROJ_FILE, SOPRANO_MMPROJ_FILE, 67, 32),
         ]
     q_spec = get_qwen3_model_spec()
     return [
@@ -830,14 +802,12 @@ class _Qwen3ServerManager:
                     tr("tts.err.model_not_installed", "Модель {name} не встановлена. Натисніть «Встановити» у списку локальних TTS.", name="Kokoro-82M")
                 )
             return KOKORO_DIR / KOKORO_MODEL_FILE, KOKORO_DIR / KOKORO_MMPROJ_FILE, "Kokoro-82M"
-        if eng_id == "pocket_tts":
-            code = _normalize_pocket_lang(lang)
-            if not is_pocket_tts_installed(code):
+        if eng_id == "soprano_1_1":
+            if not is_soprano_installed():
                 raise RuntimeError(
-                    tr("tts.err.model_not_installed", "Модель {name} не встановлена. Натисніть «Встановити» у списку локальних TTS.", name="Pocket TTS")
+                    tr("tts.err.model_not_installed", "Модель {name} не встановлена. Натисніть «Встановити» у списку локальних TTS.", name="Soprano-1.1-80M")
                 )
-            m_file, _, mm_file, _ = POCKET_TTS_LANG_FILES[code]
-            return POCKET_TTS_DIR / m_file, POCKET_TTS_DIR / mm_file, "Pocket TTS"
+            return SOPRANO_DIR / SOPRANO_MODEL_FILE, SOPRANO_DIR / SOPRANO_MMPROJ_FILE, "Soprano-1.1-80M"
         if not is_qwen3_tts_installed():
             raise RuntimeError(
                 tr("tts.err.model_not_installed", "Модель {name} не встановлена. Натисніть «Встановити» у списку локальних TTS.", name="Qwen3-TTS")
@@ -850,7 +820,7 @@ class _Qwen3ServerManager:
             with self._lock:
                 eng_id = str(engine_id or self._target_engine_id or "qwen3_tts").strip() or "qwen3_tts"
                 model_path, mmproj_path, _title = self._resolve_engine_files(eng_id, lang=lang)
-                eff_device = "cpu" if (device_mode == "cpu" or (eng_id in ("kokoro_82m", "pocket_tts") and not has_hardware_gpu())) else "gpu"
+                eff_device = "cpu" if (device_mode == "cpu" or (eng_id in ("kokoro_82m", "soprano_1_1") and not has_hardware_gpu())) else "gpu"
 
                 if (
                     self._proc is not None
@@ -1379,14 +1349,9 @@ def _resolve_llama_call_params(
         dev = "gpu" if has_hardware_gpu() else "cpu"
         return clean_text, req_lang, None, req_voice, dev, True, False, 12.5
 
-    if eid == "pocket_tts":
-        pocket_lang = _normalize_pocket_lang(lang_code)
-        # Як зазначено у EryriLabs/pocket-tts-GGUF README: для іспанської початковий '¡' може обривати генерацію
-        if pocket_lang == "es":
-            clean_text = clean_text.lstrip("¡").strip() or clean_text
-        ref_wav = _resolve_optional_ref_wav("pocket_tts", pocket_lang, fallback_to_default_sample=True)
+    if eid == "soprano_1_1":
         dev = "gpu" if has_hardware_gpu() else "cpu"
-        return clean_text, pocket_lang, ref_wav, "", dev, False, True, 12.5
+        return clean_text, "", None, "", dev, False, False, 12.5
 
     raise RuntimeError(f"Unsupported llama.cpp TTS engine: {eid}")
 

@@ -1969,7 +1969,7 @@ class MainWindow(QMainWindow):
             self.local_models_layout.addWidget(empty_lbl)
 
         openvoice_built = False
-        clone_gguf_ids = ("qwen3_tts", "zonos3_mini", "pocket_tts")
+        clone_gguf_ids = ("qwen3_tts", "zonos3_mini")
         for spec in visible_engines:
             eng_id = spec["id"]
             if eng_id in clone_gguf_ids and not openvoice_built:
@@ -2024,7 +2024,7 @@ class MainWindow(QMainWindow):
                 listen_btn.clicked.connect(
                     lambda checked=False, eid=eng_id, title=spec["title"]: VoiceSamplesDialog(eid, title, self).exec()
                 )
-                if eng_id in ("supertonic3", "kokoro_82m"):
+                if eng_id in ("supertonic3", "kokoro_82m", "soprano_1_1"):
                     from core.tts_manager import get_sample_files_for_engine
                     if not get_sample_files_for_engine(eng_id):
                         listen_btn.setVisible(False)
@@ -9751,7 +9751,7 @@ class MainWindow(QMainWindow):
             btn.setToolTip(tr("ui_413", "Завантажити та встановити цей TTS на комп'ютер"))
         btn.style().unpolish(btn)
         btn.style().polish(btn)
-        if engine_id in ("openvoice", "qwen3_tts", "zonos3_mini", "pocket_tts"):
+        if engine_id in ("openvoice", "qwen3_tts", "zonos3_mini"):
             self._refresh_clone_card_ui(engine_id)
 
     def _populate_audio_devices(self, refresh_backend: bool = False) -> None:

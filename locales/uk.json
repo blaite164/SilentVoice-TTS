@@ -1349,9 +1349,8 @@
   "update.dlg.translate_btn": "🌐 Перекласти",
   "tts.size.supertonic3": "~380 МБ",
   "tts.size.kokoro_82m": "~258 МБ",
-  "tts.size.pocket_tts": "~209–641 МБ",
   "tts.size.zonos3_mini": "~1.9 ГБ",
   "tts.title.zonos3_mini": "ZONOS3-Mini (GGUF) - з клонуванням",
-  "tts.title.pocket_tts": "Pocket TTS (GGUF) - з клонуванням",
-  "dlg.qwen_quant.opt_zonos3": "ZONOS3-Mini — менше відеопам’яті (~2.5 ГБ VRAM, рекомендовано для ігор)"
+  "dlg.qwen_quant.opt_zonos3": "ZONOS3-Mini — менше відеопам’яті (~2.5 ГБ VRAM, рекомендовано для ігор)",
+  "tts.size.soprano_1_1": "~139 МБ"
 }

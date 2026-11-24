@@ -229,7 +229,6 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "qwen3_tts_ref_text": "",
     "qwen3_tts_quant": "q8",
     "zonos3_mini_ref_path": "",
-    "pocket_tts_ref_path": "",
     "custom_clone_samples": {},
 
     # Онлайн-голоси (Edge за замовчуванням + список доданих користувачем API)

@@ -610,7 +610,7 @@ class VoiceSamplesDialog(QDialog):
     Для OpenVoice / Chatterbox / Qwen3-TTS додатково підтримує фільтр за мовами, статтю, гайд та кнопку вибору голосу.
     """
 
-    _CLONE_ENGINES = ("openvoice", "qwen3_tts", "zonos3_mini", "pocket_tts")
+    _CLONE_ENGINES = ("openvoice", "qwen3_tts", "zonos3_mini")
 
     _LANG_LABELS = {
         "uk": "🇺🇦 Українська",

@@ -18,23 +18,26 @@ class NewLocalTtsModelsTests(unittest.TestCase):
             en_ids = [item["id"] for item in tts_manager.get_visible_local_engines()]
         self.assertIn("supertonic3", en_ids)
         self.assertIn("kokoro_82m", en_ids)
-        self.assertIn("pocket_tts", en_ids)
+        self.assertIn("soprano_1_1", en_ids)
         self.assertIn("zonos3_mini", en_ids)
         self.assertIn("qwen3_tts", en_ids)
+        self.assertNotIn("pocket_tts", en_ids)
 
         with patch.object(tts_manager, "_current_lang", return_value="uk"):
             uk_ids = [item["id"] for item in tts_manager.get_visible_local_engines()]
         self.assertIn("supertonic3", uk_ids)
         self.assertIn("zonos3_mini", uk_ids)
         self.assertNotIn("kokoro_82m", uk_ids)
+        self.assertNotIn("soprano_1_1", uk_ids)
         self.assertNotIn("pocket_tts", uk_ids)
 
         with patch.object(tts_manager, "_current_lang", return_value="de"):
             de_ids = [item["id"] for item in tts_manager.get_visible_local_engines()]
         self.assertIn("supertonic3", de_ids)
-        self.assertIn("pocket_tts", de_ids)
         self.assertIn("zonos3_mini", de_ids)
         self.assertNotIn("kokoro_82m", de_ids)
+        self.assertNotIn("soprano_1_1", de_ids)
+        self.assertNotIn("pocket_tts", de_ids)
 
     def test_llama_engine_install_checks_and_downloads(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -43,9 +46,9 @@ class NewLocalTtsModelsTests(unittest.TestCase):
             rt.mkdir()
             z_dir = root / "zonos3_mini"
             k_dir = root / "kokoro_82m"
-            p_dir = root / "pocket_tts"
+            s_dir = root / "soprano_1_1"
             q_dir = root / "qwen3_tts"
-            for d in (z_dir, k_dir, p_dir, q_dir):
+            for d in (z_dir, k_dir, s_dir, q_dir):
                 d.mkdir()
 
             with (
@@ -54,7 +57,7 @@ class NewLocalTtsModelsTests(unittest.TestCase):
                 patch.object(llama_tts, "LLAMA_TTS_READY_MARKER", rt / "ready.marker"),
                 patch.object(llama_tts, "ZONOS3_DIR", z_dir),
                 patch.object(llama_tts, "KOKORO_DIR", k_dir),
-                patch.object(llama_tts, "POCKET_TTS_DIR", p_dir),
+                patch.object(llama_tts, "SOPRANO_DIR", s_dir),
                 patch.object(llama_tts, "QWEN3_TTS_DIR", q_dir),
             ):
                 (rt / "llama-tts.exe").write_bytes(b"exe")
@@ -72,25 +75,22 @@ class NewLocalTtsModelsTests(unittest.TestCase):
                 (k_dir / llama_tts.KOKORO_MMPROJ_FILE).write_bytes(b"km")
                 self.assertTrue(llama_tts.is_kokoro_installed())
 
-                self.assertFalse(llama_tts.is_pocket_tts_installed("en"))
-                (p_dir / "pocket-tts-en.gguf").write_bytes(b"p")
-                (p_dir / "mmproj-pocket-tts-en.gguf").write_bytes(b"pm")
-                self.assertTrue(llama_tts.is_pocket_tts_installed("en"))
-                self.assertFalse(llama_tts.is_pocket_tts_installed("de"))
+                self.assertFalse(llama_tts.is_soprano_installed())
+                (s_dir / llama_tts.SOPRANO_MODEL_FILE).write_bytes(b"s")
+                (s_dir / llama_tts.SOPRANO_MMPROJ_FILE).write_bytes(b"sm")
+                self.assertTrue(llama_tts.is_soprano_installed())
 
                 dl_z = llama_tts.get_llama_engine_downloads("zonos3_mini")
                 dl_k = llama_tts.get_llama_engine_downloads("kokoro_82m")
-                dl_p_de = llama_tts.get_llama_engine_downloads("pocket_tts", lang="de")
+                dl_s = llama_tts.get_llama_engine_downloads("soprano_1_1")
                 self.assertEqual(len(dl_z), 2)
                 self.assertEqual(len(dl_k), 2)
-                self.assertEqual(len(dl_p_de), 2)
-                self.assertIn("german/pocket-tts-german.gguf", dl_p_de[0][0])
+                self.assertEqual(len(dl_s), 2)
+                self.assertIn("Soprano-1.1-80M-Q8_0.gguf", dl_s[0][0])
 
-    def test_synthesize_llama_tts_for_kokoro_zonos3_and_pocket(self) -> None:
+    def test_synthesize_llama_tts_for_kokoro_zonos3_and_soprano(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            ref = root / "voice_ref.wav"
-            sf.write(str(ref), np.zeros(24000, dtype=np.float32), 24000)
 
             pcm_44k = np.linspace(-0.2, 0.2, 4410, dtype=np.float32)
             fake_resp_44k = MagicMock()
@@ -104,8 +104,14 @@ class NewLocalTtsModelsTests(unittest.TestCase):
             fake_resp_24k.headers = {"Content-Type": "audio/pcm;rate=24000;encoding=float;bits=32"}
             fake_resp_24k.content = pcm_24k.astype("<f4").tobytes()
 
+            pcm_32k = np.linspace(-0.2, 0.2, 3200, dtype=np.float32)
+            fake_resp_32k = MagicMock()
+            fake_resp_32k.status_code = 200
+            fake_resp_32k.headers = {"Content-Type": "audio/pcm;rate=32000;encoding=float;bits=32"}
+            fake_resp_32k.content = pcm_32k.astype("<f4").tobytes()
+
             # 1) ZONOS3 built-in voice (no ref)
-            cfg_no_ref = {"zonos3_mini_ref_path": "", "pocket_tts_ref_path": str(ref)}
+            cfg_no_ref = {"zonos3_mini_ref_path": ""}
             with (
                 patch.object(llama_tts, "_REF_WAV_CACHE_DIR", root / "ref_cache"),
                 patch.object(llama_tts, "has_hardware_gpu", return_value=True),
@@ -136,19 +142,19 @@ class NewLocalTtsModelsTests(unittest.TestCase):
             self.assertEqual(mock_post.call_args.kwargs["json"]["lang"], "en-gb")
             self.assertNotIn("n_predict", mock_post.call_args.kwargs["json"])
 
-            # 3) Pocket TTS Spanish strips leading inverted exclamation mark and sends speaker_ref
+            # 3) Soprano-1.1-80M -> 32kHz, no lang / no voice / no n_predict, works on CPU too
             with (
-                patch.object(llama_tts, "_REF_WAV_CACHE_DIR", root / "ref_cache"),
                 patch.object(llama_tts, "has_hardware_gpu", return_value=False),
                 patch.object(llama_tts._qwen3_server, "ensure_started", return_value=54332),
-                patch.object(llama_tts.config, "get", side_effect=lambda k, d=None: cfg_no_ref.get(k, d)),
-                patch.object(llama_tts._qwen3_server._session, "post", return_value=fake_resp_24k) as mock_post,
+                patch.object(llama_tts._qwen3_server._session, "post", return_value=fake_resp_32k) as mock_post,
             ):
-                audio_p, sr_p = llama_tts.synthesize_llama_tts("pocket_tts", "¡Hola mundo!", lang="es")
-            self.assertEqual(sr_p, 24000)
-            self.assertEqual(len(audio_p), len(pcm_24k))
-            self.assertEqual(mock_post.call_args.kwargs["data"]["input"], "Hola mundo!")
-            self.assertIn("speaker_ref", mock_post.call_args.kwargs["files"])
+                audio_s, sr_s = llama_tts.synthesize_llama_tts("soprano_1_1", "Hello world!", lang="en")
+            self.assertEqual(sr_s, 32000)
+            self.assertEqual(len(audio_s), len(pcm_32k))
+            self.assertEqual(mock_post.call_args.kwargs["json"]["input"], "Hello world!")
+            self.assertNotIn("lang", mock_post.call_args.kwargs["json"])
+            self.assertNotIn("voice", mock_post.call_args.kwargs["json"])
+            self.assertNotIn("n_predict", mock_post.call_args.kwargs["json"])
 
     def test_zonos3_stream_plan_resolves_speaker(self) -> None:
         with (
@@ -223,9 +229,10 @@ class NewLocalTtsModelsTests(unittest.TestCase):
                 eng.unload()
 
     def test_engine_specs_contain_all_four_new_models(self) -> None:
-        for eid in ("supertonic3", "kokoro_82m", "pocket_tts", "zonos3_mini"):
+        for eid in ("supertonic3", "kokoro_82m", "soprano_1_1", "zonos3_mini"):
             self.assertIn(eid, ENGINE_SPECS)
             self.assertGreater(len(ENGINE_SPECS[eid]["voices"]), 0)
+        self.assertNotIn("pocket_tts", ENGINE_SPECS)
 
 
 if __name__ == "__main__":

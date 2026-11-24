@@ -656,22 +656,19 @@ ENGINE_SPECS: Dict[str, Dict[str, Any]] = {
             {"id": "kokoro_bm_lewis", "name": "Lewis (UK)", "gender": "male", "lang": "en", "speaker": "bm_lewis"},
         ],
     },
+    "soprano_1_1": {
+        "id": "soprano_1_1",
+        "title": "Soprano-1.1-80M (GGUF)",
+        "size_label": "~139 МБ",
+        "voices": [
+            {"id": "soprano_en_default", "name": "Soprano (EN, 32kHz)", "gender": "female", "lang": "en"},
+        ],
+    },
     "openvoice": {
         "id": "openvoice",
         "title": "OpenVoice v2",
         "size_label": "~193 МБ",
         "voices": [],
-    },
-    "pocket_tts": {
-        "id": "pocket_tts",
-        "title": "Pocket TTS (GGUF)",
-        "size_label": "~209–641 МБ",
-        "voices": [
-            {"id": "pocket_en", "name": "Pocket TTS (EN / Clone)", "gender": None, "lang": "en"},
-            {"id": "pocket_de", "name": "Pocket TTS (DE / Clone)", "gender": None, "lang": "de"},
-            {"id": "pocket_es", "name": "Pocket TTS (ES / Clone)", "gender": None, "lang": "es"},
-            {"id": "pocket_fr", "name": "Pocket TTS (FR / Clone)", "gender": None, "lang": "fr"},
-        ],
     },
     "zonos3_mini": {
         "id": "zonos3_mini",
@@ -1301,7 +1298,7 @@ def _infer_sample_gender(wav_path: Path, raw_stem: str) -> str:
             return "female"
         if low_p in _SAMPLE_MALE_DIR_NAMES:
             return "male"
-        if low_p in ("samples", "openvoice", "qwen3_tts", "zonos3_mini", "pocket_tts"):
+        if low_p in ("samples", "openvoice", "qwen3_tts", "zonos3_mini"):
             break
     for text_cand in (wav_path.stem, raw_stem):
         if _SAMPLE_FEMALE_TOKEN_RE.search(text_cand):
@@ -1318,7 +1315,7 @@ def _normalize_sample_lang(lang: Optional[str]) -> str:
     return code if code in ("uk", "en", "ru", "pl", "de", "fr", "es") else "uk"
 
 
-CLONE_ENGINE_IDS = ("openvoice", "qwen3_tts", "zonos3_mini", "pocket_tts")
+CLONE_ENGINE_IDS = ("openvoice", "qwen3_tts", "zonos3_mini")
 SHARED_CLONE_SAMPLES_SUBDIR = "clone_voices"
 
 
@@ -1790,7 +1787,7 @@ class TTSEngineManager(QObject):
 
     def _resolve_local_target_for(self, engine_id: str, voice_id: str) -> Optional[Tuple[str, str, str]]:
         eng = str(engine_id or "").strip()
-        if eng not in ("piper", "silero", "holos", "teratts", "supertonic3", "kokoro_82m", "pocket_tts", "zonos3_mini", "qwen3_tts"):
+        if eng not in ("piper", "silero", "holos", "teratts", "supertonic3", "kokoro_82m", "soprano_1_1", "zonos3_mini", "qwen3_tts"):
             return None
         if not self.is_engine_installed(eng):
             return None
@@ -2041,7 +2038,7 @@ class TTSEngineManager(QObject):
 
         targets = self._resolve_local_warmup_targets()
         online_targets = self._resolve_online_warmup_targets()
-        _llama_eids = ("qwen3_tts", "zonos3_mini", "kokoro_82m", "pocket_tts")
+        _llama_eids = ("qwen3_tts", "zonos3_mini", "kokoro_82m", "soprano_1_1")
         if not any(item[0] in _llama_eids for item in targets):
             try:
                 from core.llama_tts import is_qwen3_server_running, shutdown_llama_tts
@@ -2159,7 +2156,7 @@ class TTSEngineManager(QObject):
                     if engine_id == "qwen3_tts":
                         from core.llama_tts import warmup_qwen3_tts
                         warmup_qwen3_tts()
-                    elif engine_id in ("zonos3_mini", "kokoro_82m", "pocket_tts"):
+                    elif engine_id in ("zonos3_mini", "kokoro_82m", "soprano_1_1"):
                         from core.llama_tts import warmup_llama_tts
                         voices = ENGINE_SPECS.get(engine_id, {}).get("voices", [])
                         v_entry = next((v for v in voices if str(v.get("id")) == voice_id), None)
@@ -2430,9 +2427,9 @@ class TTSEngineManager(QObject):
         if engine_id == "kokoro_82m":
             from core.llama_tts import is_kokoro_installed
             return is_kokoro_installed()
-        if engine_id == "pocket_tts":
-            from core.llama_tts import is_pocket_tts_installed
-            return is_pocket_tts_installed(lang=self._current_lang())
+        if engine_id == "soprano_1_1":
+            from core.llama_tts import is_soprano_installed
+            return is_soprano_installed()
         if engine_id == "supertonic3":
             from core.supertonic_tts import is_supertonic3_installed
             return is_supertonic3_installed()
@@ -2824,7 +2821,7 @@ class TTSEngineManager(QObject):
                         online_sig = json.dumps(safe_item, sort_keys=True, ensure_ascii=False, default=str)
                         break
         ov_sig = ""
-        if engine_id in ("qwen3_tts", "zonos3_mini", "pocket_tts"):
+        if engine_id in ("qwen3_tts", "zonos3_mini"):
             ref_path_val = str(config.get(f"{engine_id}_ref_path", "") or "").strip()
             ref_stat = ""
             if ref_path_val:
@@ -2855,8 +2852,8 @@ class TTSEngineManager(QObject):
     def _maybe_upgrade_openvoice(samples: np.ndarray, sr: int, engine_id: str = "") -> Tuple[np.ndarray, int]:
         if engine_id == "qwen3_tts":
             return samples, sr
-        if engine_id in ("zonos3_mini", "pocket_tts"):
-            own_ref = str(config.get(f"{engine_id}_ref_path", "") or "").strip()
+        if engine_id == "zonos3_mini":
+            own_ref = str(config.get("zonos3_mini_ref_path", "") or "").strip()
             if own_ref and Path(own_ref).is_file():
                 return samples, sr
         if not bool(config.get("openvoice_enabled", False)):
@@ -3603,7 +3600,7 @@ class TTSEngineManager(QObject):
                 lang=self._current_lang(),
                 speed=speed,
             )
-        if engine_id in ("zonos3_mini", "kokoro_82m", "pocket_tts"):
+        if engine_id in ("zonos3_mini", "kokoro_82m", "soprano_1_1"):
             from core.llama_tts import synthesize_llama_tts
 
             voices = ENGINE_SPECS.get(engine_id, {}).get("voices", [])
@@ -5334,7 +5331,7 @@ class TTSEngineManager(QObject):
                 elif engine_id == "supertonic3":
                     from core.supertonic_tts import supertonic3_engine
                     supertonic3_engine.unload()
-                elif engine_id in ("qwen3_tts", "zonos3_mini", "kokoro_82m", "pocket_tts"):
+                elif engine_id in ("qwen3_tts", "zonos3_mini", "kokoro_82m", "soprano_1_1"):
                     from core.llama_tts import shutdown_llama_tts
                     shutdown_llama_tts()
                 self._warmed_models = {item for item in self._warmed_models if item[0] != engine_id}
@@ -5355,7 +5352,7 @@ class TTSEngineManager(QObject):
                             time.sleep(0.1)
                 if eng_dir.exists():
                     shutil.rmtree(eng_dir, ignore_errors=True)
-            if engine_id in ("qwen3_tts", "zonos3_mini", "kokoro_82m", "pocket_tts"):
+            if engine_id in ("qwen3_tts", "zonos3_mini", "kokoro_82m", "soprano_1_1"):
                 from core.llama_tts import LLAMA_TTS_DIR, is_any_llama_tts_installed
                 if not is_any_llama_tts_installed() and LLAMA_TTS_DIR.exists():
                     shutil.rmtree(LLAMA_TTS_DIR, ignore_errors=True)
@@ -5638,7 +5635,7 @@ class TTSEngineManager(QObject):
                         )
                 if str(config.get("active_engine", "") or "").strip() == "qwen3_tts":
                     warmup_qwen3_tts()
-            elif engine_id in ("zonos3_mini", "kokoro_82m", "pocket_tts"):
+            elif engine_id in ("zonos3_mini", "kokoro_82m", "soprano_1_1"):
                 from core.llama_tts import (
                     get_llama_engine_downloads,
                     install_llama_tts_runtime,

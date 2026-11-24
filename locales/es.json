@@ -1349,9 +1349,8 @@
   "update.dlg.translate_btn": "🌐 Traducir",
   "tts.size.supertonic3": "~380 MB",
   "tts.size.kokoro_82m": "~258 MB",
-  "tts.size.pocket_tts": "~209–641 MB",
   "tts.size.zonos3_mini": "~1,9 GB",
   "tts.title.zonos3_mini": "ZONOS3-Mini (GGUF) - con clonación de voz",
-  "tts.title.pocket_tts": "Pocket TTS (GGUF) - con clonación de voz",
-  "dlg.qwen_quant.opt_zonos3": "ZONOS3-Mini — menos VRAM (~2.5 GB VRAM, recomendado para juegos)"
+  "dlg.qwen_quant.opt_zonos3": "ZONOS3-Mini — menos VRAM (~2.5 GB VRAM, recomendado para juegos)",
+  "tts.size.soprano_1_1": "~139 MB"
 }
