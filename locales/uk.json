@@ -1352,5 +1352,7 @@
   "tts.size.zonos3_mini": "~1.9 ГБ",
   "tts.title.zonos3_mini": "ZONOS3-Mini (GGUF) - з клонуванням",
   "dlg.qwen_quant.opt_zonos3": "ZONOS3-Mini — менше відеопам’яті (~2.5 ГБ VRAM, рекомендовано для ігор)",
-  "tts.size.soprano_1_1": "~139 МБ"
+  "tts.size.soprano_1_1": "~139 МБ",
+  "tts.dev.gpu": "🎮 GPU",
+  "tts.dev.tip": "Оберіть пристрій для генерації голосу (GPU або CPU)"
 }

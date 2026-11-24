@@ -149,10 +149,10 @@ class NewLocalTtsModelsTests(unittest.TestCase):
             _, sent_sr = sf.read(io.BytesIO(sent_ref_bytes), dtype="float32")
             self.assertEqual(sent_sr, 24000)
 
-            # 2) Kokoro British voice -> en-gb, no n_predict
+            # 2) Kokoro British voice -> en-gb, no n_predict, GPU-only
             with (
                 patch.object(llama_tts, "has_hardware_gpu", return_value=False),
-                patch.object(llama_tts._qwen3_server, "ensure_started", return_value=54331),
+                patch.object(llama_tts._qwen3_server, "ensure_started", return_value=54331) as mock_start_k,
                 patch.object(llama_tts._qwen3_server._session, "post", return_value=fake_resp_24k) as mock_post,
             ):
                 audio_k, sr_k = llama_tts.synthesize_llama_tts(
@@ -160,23 +160,43 @@ class NewLocalTtsModelsTests(unittest.TestCase):
                 )
             self.assertEqual(sr_k, 24000)
             self.assertEqual(len(audio_k), len(pcm_24k))
+            self.assertEqual(mock_start_k.call_args.args[0], "gpu")
             self.assertEqual(mock_post.call_args.kwargs["json"]["voice"], "bf_emma")
             self.assertEqual(mock_post.call_args.kwargs["json"]["lang"], "en-gb")
             self.assertNotIn("n_predict", mock_post.call_args.kwargs["json"])
 
-            # 3) Soprano-1.1-80M -> 32kHz, no lang / no voice / no n_predict, works on CPU too
+            # 3) Soprano-1.1-80M -> 32kHz, respects user GPU/CPU choice (and falls back to CPU without GPU)
+            cfg_s_cpu = {"soprano_1_1_device": "cpu"}
             with (
-                patch.object(llama_tts, "has_hardware_gpu", return_value=False),
-                patch.object(llama_tts._qwen3_server, "ensure_started", return_value=54332),
+                patch.object(llama_tts, "has_hardware_gpu", return_value=True),
+                patch.object(llama_tts.config, "get", side_effect=lambda k, d=None: cfg_s_cpu.get(k, d)),
+                patch.object(llama_tts._qwen3_server, "ensure_started", return_value=54332) as mock_start_s_cpu,
                 patch.object(llama_tts._qwen3_server._session, "post", return_value=fake_resp_32k) as mock_post,
             ):
                 audio_s, sr_s = llama_tts.synthesize_llama_tts("soprano_1_1", "Hello world!", lang="en")
             self.assertEqual(sr_s, 32000)
             self.assertEqual(len(audio_s), len(pcm_32k))
+            self.assertEqual(mock_start_s_cpu.call_args.args[0], "cpu")
             self.assertEqual(mock_post.call_args.kwargs["json"]["input"], "Hello world!")
             self.assertNotIn("lang", mock_post.call_args.kwargs["json"])
             self.assertNotIn("voice", mock_post.call_args.kwargs["json"])
             self.assertNotIn("n_predict", mock_post.call_args.kwargs["json"])
+
+            cfg_s_gpu = {"soprano_1_1_device": "gpu"}
+            with (
+                patch.object(llama_tts, "has_hardware_gpu", return_value=True),
+                patch.object(llama_tts.config, "get", side_effect=lambda k, d=None: cfg_s_gpu.get(k, d)),
+                patch.object(llama_tts._qwen3_server, "ensure_started", return_value=54333) as mock_start_s_gpu,
+                patch.object(llama_tts._qwen3_server._session, "post", return_value=fake_resp_32k),
+            ):
+                llama_tts.synthesize_llama_tts("soprano_1_1", "Hello GPU!", lang="en")
+            self.assertEqual(mock_start_s_gpu.call_args.args[0], "gpu")
+
+            with (
+                patch.object(llama_tts, "has_hardware_gpu", return_value=False),
+                patch.object(llama_tts.config, "get", side_effect=lambda k, d=None: cfg_s_gpu.get(k, d)),
+            ):
+                self.assertEqual(llama_tts.resolve_soprano_device(), "cpu")
 
     def test_zonos3_stream_plan_resolves_speaker(self) -> None:
         with (

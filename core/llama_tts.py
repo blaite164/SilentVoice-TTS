@@ -822,7 +822,7 @@ class _Qwen3ServerManager:
             with self._lock:
                 eng_id = str(engine_id or self._target_engine_id or "qwen3_tts").strip() or "qwen3_tts"
                 model_path, mmproj_path, _title = self._resolve_engine_files(eng_id, lang=lang)
-                eff_device = "cpu" if (device_mode == "cpu" or (eng_id in ("kokoro_82m", "soprano_1_1") and not has_hardware_gpu())) else "gpu"
+                eff_device = "cpu" if (device_mode == "cpu" or (eng_id == "soprano_1_1" and not has_hardware_gpu())) else "gpu"
 
                 if (
                     self._proc is not None
@@ -1342,6 +1342,14 @@ def _resolve_optional_ref_wav(
     return None
 
 
+def resolve_soprano_device() -> str:
+    """Повертає пристрій для Soprano-1.1-80M ('gpu' або 'cpu') з урахуванням вибору користувача й наявності GPU."""
+    pref = str(config.get("soprano_1_1_device", "gpu") or "gpu").strip().lower()
+    if pref == "cpu" or not has_hardware_gpu():
+        return "cpu"
+    return "gpu"
+
+
 def _resolve_llama_call_params(
     engine_id: str,
     text: str,
@@ -1361,15 +1369,13 @@ def _resolve_llama_call_params(
         return clean_text, lang_code, ref_wav, req_voice, "gpu", True, True, 15.0
 
     if eid == "kokoro_82m":
-        # У Kokoro 'b*' — British English (en-gb), 'a*' — American English (en-us)
+        # У Kokoro 'b*' — British English (en-gb), 'a*' — American English (en-us); працює на GPU
         req_voice = clean_voice or "af_heart"
         req_lang = "en-gb" if req_voice.startswith("b") else "en-us"
-        dev = "gpu" if has_hardware_gpu() else "cpu"
-        return clean_text, req_lang, None, req_voice, dev, True, False, 12.5
+        return clean_text, req_lang, None, req_voice, "gpu", True, False, 12.5
 
     if eid == "soprano_1_1":
-        dev = "gpu" if has_hardware_gpu() else "cpu"
-        return clean_text, "", None, "", dev, False, False, 12.5
+        return clean_text, "", None, "", resolve_soprano_device(), False, False, 12.5
 
     raise RuntimeError(f"Unsupported llama.cpp TTS engine: {eid}")
 

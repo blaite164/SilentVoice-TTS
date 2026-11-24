@@ -1352,5 +1352,7 @@
   "tts.size.zonos3_mini": "~1.9 GB",
   "tts.title.zonos3_mini": "ZONOS3-Mini (GGUF) - with voice cloning",
   "dlg.qwen_quant.opt_zonos3": "ZONOS3-Mini — less VRAM (~2.5 GB VRAM, recommended for gaming)",
-  "tts.size.soprano_1_1": "~139 MB"
+  "tts.size.soprano_1_1": "~139 MB",
+  "tts.dev.gpu": "🎮 GPU",
+  "tts.dev.tip": "Choose the device for speech generation (GPU or CPU)"
 }

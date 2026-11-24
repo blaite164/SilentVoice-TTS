@@ -2030,6 +2030,21 @@ class MainWindow(QMainWindow):
                         listen_btn.setVisible(False)
             top_r.addWidget(listen_btn)
 
+            soprano_dev_combo: Optional[QComboBox] = None
+            if eng_id == "soprano_1_1":
+                soprano_dev_combo = QComboBox()
+                soprano_dev_combo.setToolTip(tr("tts.dev.tip", "Оберіть пристрій для генерації голосу (GPU або CPU)"))
+                if has_hardware_gpu():
+                    soprano_dev_combo.addItem(tr("tts.dev.gpu", "🎮 GPU"), "gpu")
+                soprano_dev_combo.addItem(tr("ov.dev.cpu", "🧠 CPU"), "cpu")
+                cur_s_dev = str(config.get("soprano_1_1_device", "gpu") or "gpu").strip().lower()
+                s_idx = soprano_dev_combo.findData(cur_s_dev)
+                if s_idx >= 0:
+                    soprano_dev_combo.setCurrentIndex(s_idx)
+                soprano_dev_combo.currentIndexChanged.connect(self._on_soprano_device_changed)
+                soprano_dev_combo.setVisible(installed)
+                top_r.addWidget(soprano_dev_combo)
+
             action_btn = QPushButton()
             action_btn.setMinimumWidth(115)
             action_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -2069,6 +2084,8 @@ class MainWindow(QMainWindow):
                 "cancel_btn": cancel_btn,
                 "listen_btn": listen_btn,
             }
+            if soprano_dev_combo is not None:
+                card_entry["device_combo"] = soprano_dev_combo
             card_entry.update(clone_ui)
             self._engine_cards_ui[eng_id] = card_entry
             self._update_engine_card_state(eng_id, installed)
@@ -2309,6 +2326,25 @@ class MainWindow(QMainWindow):
                 pass
             if bool(config.get("openvoice_enabled", False)):
                 tts_manager.schedule_smart_warmup(0.2, "openvoice_device")
+
+    def _on_soprano_device_changed(self) -> None:
+        ui = self._engine_cards_ui.get("soprano_1_1")
+        if not ui:
+            return
+        combo = ui.get("device_combo")
+        if isinstance(combo, QComboBox):
+            dev = str(combo.currentData() or "cpu")
+            config.set("soprano_1_1_device", dev)
+            try:
+                from core.llama_tts import _qwen3_server, shutdown_llama_tts
+                if getattr(_qwen3_server, "_engine_id", "") == "soprano_1_1":
+                    shutdown_llama_tts()
+            except Exception:
+                pass
+            active = str(config.get("active_engine", "") or "").strip()
+            fallback = str(config.get("fallback_engine", "") or "").strip()
+            if "soprano_1_1" in (active, fallback):
+                tts_manager.schedule_smart_warmup(0.2, "soprano_device")
 
     def _refresh_clone_card_ui(self, engine_id: str) -> None:
         ui = self._engine_cards_ui.get(engine_id)
@@ -9739,7 +9775,7 @@ class MainWindow(QMainWindow):
             btn.setText(tr("ui_137", "Видалити"))
             btn.setProperty("class", "dangerBtn")
             btn.setToolTip(tr("ui_412", "Видалити цей TTS з комп'ютера"))
-        elif engine_id in ("qwen3_tts", "zonos3_mini") and not has_hardware_gpu():
+        elif engine_id in ("qwen3_tts", "zonos3_mini", "kokoro_82m") and not has_hardware_gpu():
             btn.setEnabled(False)
             btn.setText(tr("tts.no_gpu_btn", "Немає відеокарти"))
             btn.setProperty("class", "")
@@ -9751,6 +9787,10 @@ class MainWindow(QMainWindow):
             btn.setToolTip(tr("ui_413", "Завантажити та встановити цей TTS на комп'ютер"))
         btn.style().unpolish(btn)
         btn.style().polish(btn)
+        if engine_id == "soprano_1_1":
+            s_combo = ui.get("device_combo")
+            if isinstance(s_combo, QComboBox):
+                s_combo.setVisible(installed)
         if engine_id in ("openvoice", "qwen3_tts", "zonos3_mini"):
             self._refresh_clone_card_ui(engine_id)
 
