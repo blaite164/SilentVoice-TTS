@@ -3706,6 +3706,15 @@ class TTSEngineManager(QObject):
                         importer = torch.package.PackageImporter(key)
                         model = importer.load_pickle("tts_models", "model")
                     model.to(torch.device("cpu"))
+                    # Silero v5 під час load_pickle примусово скидає torch.set_num_threads(1),
+                    # через що інференс іде на 1 ядрі в ~2.5× повільніше — повертаємо фізичні ядра.
+                    try:
+                        phys_threads = max(2, min(8, (os.cpu_count() or 4) // 2))
+                        torch.set_num_threads(phys_threads)
+                        if hasattr(torch, "set_flush_denormal"):
+                            torch.set_flush_denormal(True)
+                    except Exception:
+                        pass
                     self._silero_importers[key] = importer
                     self._silero_cache[key] = model
             model = self._silero_cache[key]
@@ -3731,7 +3740,9 @@ class TTSEngineManager(QObject):
 
         sr = 48000
         try:
-            audio_tensor = model.apply_tts(text=synth_text, speaker=v_cfg["speaker"], sample_rate=sr)
+            inf_ctx = torch.inference_mode() if hasattr(torch, "inference_mode") else torch.no_grad()
+            with inf_ctx:
+                audio_tensor = model.apply_tts(text=synth_text, speaker=v_cfg["speaker"], sample_rate=sr)
         except ValueError as ve:
             if not str(ve).strip():
                 raise RuntimeError(

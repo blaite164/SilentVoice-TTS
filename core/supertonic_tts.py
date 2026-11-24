@@ -8,6 +8,7 @@ core/supertonic_tts.py — Локальний CPU ONNX рушій Supertonic 3 (
 from __future__ import annotations
 
 import json
+import os
 import re
 import threading
 from pathlib import Path
@@ -21,7 +22,7 @@ from core.i18n import tr
 
 SUPERTONIC3_DIR = ENGINES_DIR / "supertonic3"
 SUPERTONIC3_HF_BASE = "https://huggingface.co/Supertone/supertonic-3/resolve/main"
-SUPERTONIC3_DEFAULT_STEPS = 5
+SUPERTONIC3_DEFAULT_STEPS = 6
 
 SUPERTONIC3_AVAILABLE_LANGS = frozenset(
     (
@@ -266,6 +267,17 @@ class Supertonic3Engine:
         onnx_dir = SUPERTONIC3_DIR / "onnx"
         cfgs = json.loads((onnx_dir / "tts.json").read_text(encoding="utf-8"))
         opts = ort.SessionOptions()
+        try:
+            phys_threads = max(2, min(8, (os.cpu_count() or 4) // 2))
+            opts.intra_op_num_threads = phys_threads
+            opts.inter_op_num_threads = 1
+            if hasattr(ort, "GraphOptimizationLevel"):
+                opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+            if hasattr(opts, "add_session_config_entry"):
+                opts.add_session_config_entry("session.intra_op.allow_spinning", "0")
+                opts.add_session_config_entry("session.set_denormal_as_zero", "1")
+        except Exception:
+            pass
         providers = ["CPUExecutionProvider"]
 
         self._dp_ort = ort.InferenceSession(str(onnx_dir / "duration_predictor.onnx"), sess_options=opts, providers=providers)

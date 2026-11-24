@@ -178,6 +178,7 @@ class NewLocalTtsModelsTests(unittest.TestCase):
             self.assertEqual(len(audio_s), len(pcm_32k))
             self.assertEqual(mock_start_s_cpu.call_args.args[0], "cpu")
             self.assertEqual(mock_post.call_args.kwargs["json"]["input"], "Hello world!")
+            self.assertAlmostEqual(mock_post.call_args.kwargs["json"]["temperature"], 0.3, places=2)
             self.assertNotIn("lang", mock_post.call_args.kwargs["json"])
             self.assertNotIn("voice", mock_post.call_args.kwargs["json"])
             self.assertNotIn("n_predict", mock_post.call_args.kwargs["json"])
@@ -212,6 +213,7 @@ class NewLocalTtsModelsTests(unittest.TestCase):
         self.assertEqual(plan["speaker"], "Imogen_en-British_F_1")
 
     def test_supertonic3_install_check_preprocess_and_synthesize(self) -> None:
+        self.assertEqual(supertonic_tts.SUPERTONIC3_DEFAULT_STEPS, 6)
         self.assertEqual(
             supertonic_tts.preprocess_supertonic_text("Привіт світ", "uk"),
             "<uk>Привіт світ.</uk>",

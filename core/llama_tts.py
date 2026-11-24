@@ -838,6 +838,7 @@ class _Qwen3ServerManager:
                 port = _pick_free_port()
                 ngl = "0" if eff_device == "cpu" else "99"
                 threads = str(max(2, (os.cpu_count() or 8) // 2))
+                ctx_size = 512 if eng_id == "soprano_1_1" else QWEN3_CTX_SIZE
                 cmd = [
                     str(LLAMA_TTS_SERVER_EXE),
                     "--host", "127.0.0.1",
@@ -846,7 +847,7 @@ class _Qwen3ServerManager:
                     "-mm", str(mmproj_path),
                     "-ngl", ngl,
                     "-t", threads,
-                    "-c", str(QWEN3_CTX_SIZE),
+                    "-c", str(ctx_size),
                     "-np", "1",
                     "-fa", "on",
                 ]
@@ -913,6 +914,7 @@ class _Qwen3ServerManager:
         voice: str = "",
         use_lang: bool = True,
         speed: Optional[float] = None,
+        temperature: Optional[float] = None,
     ) -> Dict[str, Any]:
         clean_ref_text = str(ref_text or "").strip()
         clean_voice = str(voice or "").strip()
@@ -934,6 +936,8 @@ class _Qwen3ServerManager:
                 form_data["speaker_ref_text"] = clean_ref_text
             if eff_speed is not None:
                 form_data["speed"] = f"{max(0.5, min(2.0, eff_speed)):.3f}"
+            if temperature is not None:
+                form_data["temperature"] = f"{max(0.0, float(temperature)):.3f}"
             return {
                 "data": form_data,
                 "files": {"speaker_ref": ("ref.wav", wav_bytes, "audio/wav")},
@@ -951,6 +955,8 @@ class _Qwen3ServerManager:
             payload["n_predict"] = int(n_predict)
         if eff_speed is not None:
             payload["speed"] = round(max(0.5, min(2.0, eff_speed)), 3)
+        if temperature is not None:
+            payload["temperature"] = round(max(0.0, float(temperature)), 3)
         return {"json": payload}
 
     def _is_cancelled(self, my_cancel_gen: int) -> bool:
@@ -1028,6 +1034,7 @@ class _Qwen3ServerManager:
         include_n_predict: bool = True,
         n_predict_fps: float = 12.5,
         speed: Optional[float] = None,
+        temperature: Optional[float] = None,
     ) -> Tuple[np.ndarray, int]:
         self.cancel_active(only_warmup=True)
         with self._req_lock:
@@ -1059,6 +1066,7 @@ class _Qwen3ServerManager:
                 voice=voice,
                 use_lang=use_lang,
                 speed=speed,
+                temperature=temperature,
             )
             self._req_local.active = True
             self._req_local.is_warmup = False
@@ -1111,6 +1119,7 @@ class _Qwen3ServerManager:
         include_n_predict: bool = True,
         n_predict_fps: float = 12.5,
         speed: Optional[float] = None,
+        temperature: Optional[float] = None,
     ) -> Iterator[Tuple[np.ndarray, int]]:
         """Stream raw float32 PCM audio chunks from llama-server /tts as soon as frames decode."""
         self.cancel_active(only_warmup=True)
@@ -1143,6 +1152,7 @@ class _Qwen3ServerManager:
                 voice=voice,
                 use_lang=use_lang,
                 speed=speed,
+                temperature=temperature,
             )
             self._req_local.active = True
             self._req_local.is_warmup = False
@@ -1421,6 +1431,7 @@ def synthesize_llama_tts(
         eid, text, lang, voice
     )
     use_native_speed = eid == "zonos3_mini"
+    eff_temp = 0.3 if eid == "soprano_1_1" else None
     samples, sr = _qwen3_server.synthesize(
         clean_text,
         req_lang or lang,
@@ -1433,6 +1444,7 @@ def synthesize_llama_tts(
         include_n_predict=include_n_predict,
         n_predict_fps=fps,
         speed=speed if use_native_speed else None,
+        temperature=eff_temp,
     )
     if not use_native_speed and abs(speed - 1.0) > 0.04 and len(samples) > 100:
         from scipy.signal import resample
@@ -1454,6 +1466,7 @@ def synthesize_llama_tts_stream(
         yield from synthesize_qwen3_tts_stream(text, lang=lang, speed=speed)
         return
     use_native_speed = eid == "zonos3_mini"
+    eff_temp = 0.3 if eid == "soprano_1_1" else None
     if not use_native_speed and abs(speed - 1.0) > 0.04:
         samples, sr = synthesize_llama_tts(eid, text, lang=lang, voice=voice, speed=speed)
         if len(samples) > 0:
@@ -1474,4 +1487,5 @@ def synthesize_llama_tts_stream(
         include_n_predict=include_n_predict,
         n_predict_fps=fps,
         speed=speed if use_native_speed else None,
+        temperature=eff_temp,
     )
