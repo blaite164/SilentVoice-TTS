@@ -2055,5 +2055,37 @@ class WarmupAndDspOptimizationTests(unittest.TestCase):
                     pass
 
 
+class KeyboardHookKeyupSwallowTests(unittest.TestCase):
+    def test_swallowed_space_also_swallows_matching_keyup_without_blocking_preheld_keys(self) -> None:
+        import ctypes
+        import core.win_api as wa
+
+        mgr = wa.KeyboardHookManager()
+        mgr._input_mode = "hook"
+        mgr._is_typing = True
+        mgr._buffer = "hello"
+
+        def _send(wparam: int, vk: int, scan: int = 0) -> int:
+            kb = wa.KBDLLHOOKSTRUCT(vkCode=vk, scanCode=scan, flags=0, time=0, dwExtraInfo=0)
+            return int(mgr._low_level_keyboard_proc(0, wparam, ctypes.addressof(kb)))
+
+        with (
+            patch.object(wa.user32, "CallNextHookEx", return_value=0) as mock_next,
+            patch.object(wa.user32, "GetAsyncKeyState", return_value=0),
+            patch.object(mgr, "_get_pressed_modifiers", return_value=set()),
+            patch.object(mgr, "_vk_to_unicode", side_effect=lambda vk, scan: " " if vk == wa.VK_SPACE else ""),
+            patch.object(mgr, "get_current_lang_code", return_value="EN"),
+        ):
+            # 1. Space pressed while typing -> BOTH keydown AND keyup MUST be swallowed (return 1)
+            self.assertEqual(_send(wa.WM_KEYDOWN, wa.VK_SPACE), 1)
+            self.assertEqual(mgr._buffer, "hello ")
+            self.assertEqual(_send(wa.WM_KEYUP, wa.VK_SPACE), 1)
+            self.assertEqual(mock_next.call_count, 0)
+
+            # 2. Key held BEFORE typing mode (never swallowed on keydown) -> keyup MUST pass through
+            self.assertEqual(_send(wa.WM_KEYUP, ord("W")), 0)
+            self.assertEqual(mock_next.call_count, 1)
+
+
 if __name__ == "__main__":
     unittest.main()

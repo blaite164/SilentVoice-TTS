@@ -1060,6 +1060,7 @@ class KeyboardHookManager(QObject):
 
         # Стан натиснутих клавіш і подвійного натискання
         self._pressed_vks: Set[int] = set()
+        self._swallowed_vks: Set[int] = set()
         self._last_tap_vk: Optional[int] = None
         self._last_tap_ts: float = 0.0
         self._mod_combo_fired = False
@@ -1457,6 +1458,10 @@ class KeyboardHookManager(QObject):
                 mod_name = _vk_to_mod_name(vk)
                 is_modifier_vk = mod_name is not None
 
+                def _swallow_key() -> int:
+                    self._swallowed_vks.add(vk)
+                    return 1
+
                 mods = self._get_pressed_modifiers()
                 if mod_name:
                     mods.add(mod_name)
@@ -1469,7 +1474,7 @@ class KeyboardHookManager(QObject):
                             hk_str = format_hotkey(set(), cap_vk, is_double=True)
                             self.stop_recording_hotkey()
                             self.hotkey_recorded.emit(hk_str)
-                        return 1 if not is_modifier_vk else user32.CallNextHookEx(self._hook_handle, nCode, wParam, lParam)
+                        return _swallow_key() if not is_modifier_vk else user32.CallNextHookEx(self._hook_handle, nCode, wParam, lParam)
 
                     if is_modifier_vk:
                         self._rec_mod_peak |= mods
@@ -1479,7 +1484,7 @@ class KeyboardHookManager(QObject):
                     hk_str = format_hotkey(mods, vk)
                     self.stop_recording_hotkey()
                     self.hotkey_recorded.emit(hk_str)
-                    return 1
+                    return _swallow_key()
 
                 # Визначаємо подвійне натискання (2x, напр. 2x Shift або 2x Space) без проміжних інших клавіш
                 double_hit_vk: Optional[int] = None
@@ -1499,34 +1504,34 @@ class KeyboardHookManager(QObject):
                 # 2. Глобальні хоткеї (зупинка озвучки, повтор останньої фрази)
                 if self._matches_hotkey(self._hk_stop, mods, vk, is_modifier_vk, is_repeat, double_hit_vk):
                     self.stop_tts_triggered.emit()
-                    return user32.CallNextHookEx(self._hook_handle, nCode, wParam, lParam) if is_modifier_vk else 1
+                    return user32.CallNextHookEx(self._hook_handle, nCode, wParam, lParam) if is_modifier_vk else _swallow_key()
 
                 if self._matches_hotkey(self._hk_repeat, mods, vk, is_modifier_vk, is_repeat, double_hit_vk):
                     self.repeat_last_triggered.emit()
-                    return user32.CallNextHookEx(self._hook_handle, nCode, wParam, lParam) if is_modifier_vk else 1
+                    return user32.CallNextHookEx(self._hook_handle, nCode, wParam, lParam) if is_modifier_vk else _swallow_key()
 
                 if self._matches_hotkey(self._hk_toggle_game_mode, mods, vk, is_modifier_vk, is_repeat, double_hit_vk):
                     self.toggle_game_mode_triggered.emit()
-                    return user32.CallNextHookEx(self._hook_handle, nCode, wParam, lParam) if is_modifier_vk else 1
+                    return user32.CallNextHookEx(self._hook_handle, nCode, wParam, lParam) if is_modifier_vk else _swallow_key()
 
                 if self._chat_tts_enabled:
                     if self._matches_hotkey(self._hk_stop_chat, mods, vk, is_modifier_vk, is_repeat, double_hit_vk):
                         self.stop_chat_tts_triggered.emit()
-                        return user32.CallNextHookEx(self._hook_handle, nCode, wParam, lParam) if is_modifier_vk else 1
+                        return user32.CallNextHookEx(self._hook_handle, nCode, wParam, lParam) if is_modifier_vk else _swallow_key()
 
                     if self._matches_hotkey(self._hk_toggle_chat, mods, vk, is_modifier_vk, is_repeat, double_hit_vk):
                         self.toggle_chat_tts_triggered.emit()
-                        return user32.CallNextHookEx(self._hook_handle, nCode, wParam, lParam) if is_modifier_vk else 1
+                        return user32.CallNextHookEx(self._hook_handle, nCode, wParam, lParam) if is_modifier_vk else _swallow_key()
 
                 # 3a. Режим постійного спілкування (діалогу)
                 if self._matches_hotkey(self._hk_conversation, mods, vk, is_modifier_vk, is_repeat, double_hit_vk):
                     self.set_typing_mode(not self._is_typing, continuous=True)
-                    return user32.CallNextHookEx(self._hook_handle, nCode, wParam, lParam) if is_modifier_vk else 1
+                    return user32.CallNextHookEx(self._hook_handle, nCode, wParam, lParam) if is_modifier_vk else _swallow_key()
 
                 # 3b. Старт / перемикання режиму набору
                 if self._matches_hotkey(self._hk_toggle, mods, vk, is_modifier_vk, is_repeat, double_hit_vk):
                     self.set_typing_mode(not self._is_typing, continuous=self._config_continuous)
-                    return user32.CallNextHookEx(self._hook_handle, nCode, wParam, lParam) if is_modifier_vk else 1
+                    return user32.CallNextHookEx(self._hook_handle, nCode, wParam, lParam) if is_modifier_vk else _swallow_key()
 
                 # 4. Швидкі фрази за хоткеями
                 if not self._is_typing or mods or double_hit_vk is not None:
@@ -1554,7 +1559,7 @@ class KeyboardHookManager(QObject):
                                 self._defer_quick_single(tap_vk, q_text)
                             else:
                                 self.quick_phrase_triggered.emit(q_text)
-                            return user32.CallNextHookEx(self._hook_handle, nCode, wParam, lParam) if is_modifier_vk else 1
+                            return user32.CallNextHookEx(self._hook_handle, nCode, wParam, lParam) if is_modifier_vk else _swallow_key()
 
                 # 5. Обробка клавіш у режимі сліпого набору без втрати фокусу (hook mode)
                 if self._is_typing and not self.uses_popup_window:
@@ -1575,12 +1580,12 @@ class KeyboardHookManager(QObject):
                             self.typing_mode_changed.emit(False, lang)
                             if final_text:
                                 self.send_triggered.emit(final_text)
-                        return user32.CallNextHookEx(self._hook_handle, nCode, wParam, lParam) if is_modifier_vk else 1
+                        return user32.CallNextHookEx(self._hook_handle, nCode, wParam, lParam) if is_modifier_vk else _swallow_key()
 
                     # Скасування набору (за замовчуванням Esc)
                     if self._matches_hotkey(self._hk_cancel, mods, vk, is_modifier_vk, is_repeat, double_hit_vk):
                         self.set_typing_mode(False)
-                        return user32.CallNextHookEx(self._hook_handle, nCode, wParam, lParam) if is_modifier_vk else 1
+                        return user32.CallNextHookEx(self._hook_handle, nCode, wParam, lParam) if is_modifier_vk else _swallow_key()
 
                 if not is_modifier_vk:
                     # 6. Подальша обробка символів і редагування у режимі сліпого набору
@@ -1595,13 +1600,13 @@ class KeyboardHookManager(QObject):
                             else:
                                 self._buffer = self._buffer[:-1]
                             self.typing_text_changed.emit(self._buffer, self.get_current_lang_code())
-                            return 1
+                            return _swallow_key()
 
                         # Delete або Ctrl+U — очистити весь рядок
                         if vk == VK_DELETE or (vk == ord("U") and "ctrl" in mods):
                             self._buffer = ""
                             self.typing_text_changed.emit(self._buffer, self.get_current_lang_code())
-                            return 1
+                            return _swallow_key()
 
                         # Ctrl+V — вставка з буфера обміну
                         if vk == ord("V") and "ctrl" in mods and not ("alt" in mods):
@@ -1613,7 +1618,7 @@ class KeyboardHookManager(QObject):
                                     self.typing_text_changed.emit(self._buffer, self.get_current_lang_code())
                             except Exception:
                                 pass
-                            return 1
+                            return _swallow_key()
 
                         # Системні комбінації Windows (перемикання робочих столів Ctrl+Win+Left/Right, Win+Tab, Alt+Tab, Alt+Esc, Ctrl+Shift+Esc, Alt+F4 тощо)
                         # завжди пропускаємо в систему, не блокуючи їх під час набору
@@ -1628,18 +1633,18 @@ class KeyboardHookManager(QObject):
                         ralt_down = bool(user32.GetAsyncKeyState(VK_RMENU) & 0x8000)
                         is_altgr = ralt_down and ("ctrl" in mods) and ("alt" in mods)
                         if ("ctrl" in mods or "alt" in mods) and not is_altgr:
-                            return 1
+                            return _swallow_key()
 
                         # Перетворення клавіші у символ (UA / RU / EN)
                         ch = self._vk_to_unicode(vk, scan)
                         if ch:
                             self._buffer += ch
                             self.typing_text_changed.emit(self._buffer, self.get_current_lang_code())
-                            return 1
+                            return _swallow_key()
 
                         # Блокуємо навігаційні клавіші під час набору, щоб не рухати персонажа в грі
                         if vk in (VK_SPACE, VK_TAB, VK_LEFT, VK_RIGHT, VK_UP, VK_DOWN, VK_HOME, VK_END, VK_PRIOR, VK_NEXT):
-                            return 1
+                            return _swallow_key()
 
             except Exception as exc:
                 print(f"[KeyboardHook] Error in hook proc: {exc}")
@@ -1648,6 +1653,9 @@ class KeyboardHookManager(QObject):
                 kb = ctypes.cast(lParam, ctypes.POINTER(KBDLLHOOKSTRUCT)).contents
                 vk = int(kb.vkCode)
                 self._pressed_vks.discard(vk)
+                was_swallowed = vk in self._swallowed_vks
+                if was_swallowed:
+                    self._swallowed_vks.discard(vk)
 
                 # Завершення запису однієї або кількох клавіш-модифікаторів при відпусканні.
                 if self._recording_hotkey and not self._recording_double and not self._rec_saw_non_mod:
@@ -1672,6 +1680,12 @@ class KeyboardHookManager(QObject):
                         VK_SPACE,
                     ):
                         self._layout_refresh_requested.emit()
+
+                # Перехоплюємо парний WM_KEYUP для клавіш, чий WM_KEYDOWN ми вже заблокували
+                # (наприклад, Space на YouTube спрацьовує саме по keyup). Клавіші, затиснуті ДО
+                # входу в режим набору, не блокуються, щоб у іграх не «залипав» рух.
+                if was_swallowed:
+                    return 1
             except Exception:
                 pass
 
