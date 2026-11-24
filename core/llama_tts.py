@@ -50,7 +50,6 @@ ZONOS3_MMPROJ_FILE = "mmproj-ZONOS3-Mini-F32.gguf"
 ZONOS3_MODEL_URL = "https://huggingface.co/ggml-org/ZONOS3-Mini-GGUF/resolve/main/ZONOS3-Mini-Q8_0.gguf"
 ZONOS3_MMPROJ_URL = "https://huggingface.co/ggml-org/ZONOS3-Mini-GGUF/resolve/main/mmproj-ZONOS3-Mini-F32.gguf"
 ZONOS3_NORM_LANGS = frozenset(("en", "fr", "de", "es", "it", "pt", "ja", "zh", "cmn"))
-ZONOS3_REF_SR = 16000
 
 # Kokoro-82M (ggml-org/Kokoro-82M-GGUF, 24 kHz, English US/UK built-in voices, CPU/GPU)
 KOKORO_DIR = ENGINES_DIR / "kokoro_82m"
@@ -1356,10 +1355,7 @@ def _resolve_llama_call_params(
     clean_voice = str(voice or "").strip()
 
     if eid == "zonos3_mini":
-        # MECT-B2 speaker encoder у ZONOS3 нативно працює на 16 кГц (без подвійного ресемплінгу 44.1k->24k->16k).
-        ref_wav = _resolve_optional_ref_wav(
-            "zonos3_mini", lang_code, fallback_to_default_sample=False, target_sr=ZONOS3_REF_SR
-        )
+        ref_wav = _resolve_optional_ref_wav("zonos3_mini", lang_code, fallback_to_default_sample=False)
         req_voice = "" if ref_wav is not None else clean_voice
         # Завжди передаємо код мови (вкл. uk/ru/pl), інакше при порожньому lang шаблон ZONOS3 вмикає англійську нормалізацію чисел!
         return clean_text, lang_code, ref_wav, req_voice, "gpu", True, True, 15.0

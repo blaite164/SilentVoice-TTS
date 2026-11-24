@@ -128,7 +128,7 @@ class NewLocalTtsModelsTests(unittest.TestCase):
             self.assertEqual(mock_post.call_args.kwargs["json"]["lang"], "en")
             self.assertAlmostEqual(mock_post.call_args.kwargs["json"]["speed"], 1.15, places=2)
 
-            # 1b) ZONOS3 cloning: sends direct 16kHz ref WAV and preserves lang="uk" (no EN number normalization)
+            # 1b) ZONOS3 cloning: keeps 24kHz ref WAV and preserves lang="uk" (no EN number normalization)
             ref_44k = root / "ref_44k.wav"
             sf.write(str(ref_44k), np.zeros(44100, dtype=np.float32), 44100)
             cfg_with_ref = {"zonos3_mini_ref_path": str(ref_44k)}
@@ -147,7 +147,7 @@ class NewLocalTtsModelsTests(unittest.TestCase):
             sent_ref_bytes = mock_post.call_args.kwargs["files"]["speaker_ref"][1]
             import io
             _, sent_sr = sf.read(io.BytesIO(sent_ref_bytes), dtype="float32")
-            self.assertEqual(sent_sr, 16000)
+            self.assertEqual(sent_sr, 24000)
 
             # 2) Kokoro British voice -> en-gb, no n_predict
             with (
