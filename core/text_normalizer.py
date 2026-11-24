@@ -7,7 +7,7 @@ core/text_normalizer.py — Перетворення чисел та симво�
 from __future__ import annotations
 
 import re
-from typing import Dict, List, Tuple
+from typing import Callable, Dict, List, Tuple
 
 SUPPORTED_NORM_LANGS = ("uk", "en", "pl", "de", "fr", "es", "ru")
 
@@ -686,7 +686,9 @@ _CYR_TO_LATIN_TABLE = str.maketrans({
 
 def _uk_cyr_to_ru_cyr(text: str) -> str:
     return (
-        text.replace("і", "и")
+        text.replace("+ї", "й+и")
+        .replace("+Ї", "Й+и")
+        .replace("і", "и")
         .replace("І", "И")
         .replace("ї", "йи")
         .replace("Ї", "Йи")
@@ -859,3 +861,125 @@ def adapt_text_for_local_tts(text: str, target_lang: str, uk_to_ru: bool = False
     elif lang_code in ("en", "de", "fr", "es", "pl"):
         out = transliterate_cyrillic_for_latin_tts(out)
     return out
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Єдина позначка наголосу («+» перед голосною) та точкові фікси вимови
+# ──────────────────────────────────────────────────────────────────────
+
+_CYR_VOWELS = "АаЕеЁёЄєИиІіЇїОоУуЫыЭэЮюЯя"
+_CYR_VOWELS_SET = set(_CYR_VOWELS)
+_CYR_LETTERS = "А-Яа-яЁёІіЇїЄєҐґ"
+_IPA_VOWELS_SET = set("aeiouyɑɒæɐəɛɜɪɔøœʊʌɨʉɯɤ")
+
+# '+' безпосередньо перед кириличною голосною (не '+5', не '2+2', не 'C++', не 'a+б')
+_PLUS_STRESS_RE = re.compile(rf"(?<![A-Za-z0-9+])\+([{_CYR_VOWELS}])")
+# Юнікод-наголос U+0301 після кириличної голосної
+_COMBINING_STRESS_RE = re.compile(rf"([{_CYR_VOWELS}])\u0301")
+
+# Точкові правила наголосу за замовчуванням (застосовуються, лише якщо слово ще не має явного наголосу)
+_AUTO_STRESS_PATTERNS: Tuple[Tuple[re.Pattern[str], Callable[[re.Match[str]], str]], ...] = (
+    (
+        re.compile(rf"(?<![{_CYR_LETTERS}+\u0301])(о)(рганов)(?![{_CYR_LETTERS}\u0301])", re.IGNORECASE),
+        lambda m: f"+{m.group(1)}{m.group(2)}",
+    ),
+)
+
+# Слово, що містить явний наголос ('+' перед голосною або U+0301 після голосної),
+# разом із прилеглими лапками/дужками та розділовими знаками пауз, щоб eSpeak-NG не читав їх словами («кома», «лапки»)
+_STRESSED_CYR_WORD_RE = re.compile(
+    rf"(?<![A-Za-z0-9+])(?P<lead>[\"«“„(\[]*)(?P<word>(?:[{_CYR_LETTERS}'’\u0301]|\+(?=[{_CYR_VOWELS}]))+)(?P<trail_wrap>[\"»”)\]]*)(?P<trail_punct>[,.;:!?]*)"
+)
+
+
+def apply_default_stress_fixes(text: str) -> str:
+    """Додає вбудовані точкові наголоси (наразі: «органов» → «+органов»), не чіпаючи явні наголоси користувача."""
+    if not text:
+        return ""
+    out = text
+    for pat, repl in _AUTO_STRESS_PATTERNS:
+        out = pat.sub(repl, out)
+    return out
+
+
+def strip_plus_stress_marks(text: str) -> str:
+    """Прибирає службові позначки наголосу '+' перед кириличними голосними (для OBS, чату та рушіїв без підтримки '+')."""
+    if not text or "+" not in text:
+        return text
+    return _PLUS_STRESS_RE.sub(r"\1", text)
+
+
+def format_stress_marks(text: str, style: str = "strip") -> str:
+    """
+    Конвертує єдину позначку наголосу («+» перед кириличною голосною або U+0301 після неї)
+    у формат конкретного TTS-движка:
+    - 'plus': '+' перед голосною (Silero, Silero Bot, TeraTTS);
+    - 'combining': U+0301 після голосної (Piper RU, HolosTTS);
+    - 'strip': прибирає '+' перед голосною (онлайн-TTS, Qwen3-TTS, некириличні моделі).
+    """
+    if not text:
+        return ""
+    mode = (style or "strip").strip().lower()
+    if mode == "plus":
+        return _COMBINING_STRESS_RE.sub(r"+\1", text)
+    if mode == "combining":
+        return _PLUS_STRESS_RE.sub(lambda m: f"{m.group(1)}\u0301", text)
+    return strip_plus_stress_marks(text)
+
+
+def apply_piper_uk_stress_phonemes(
+    text: str,
+    phonemize_word: Callable[[str], List[str]],
+) -> str:
+    """
+    Для українського Piper (де eSpeak-NG ігнорує U+0301) переводить слова з явним наголосом
+    ('+' або U+0301) у Piper-блок [[...]] із маркером наголосу 'ˈ' перед потрібною голосною фонемою.
+    """
+    if not text or ("+" not in text and "\u0301" not in text):
+        return text
+
+    def _replace_word(m: re.Match[str]) -> str:
+        full_tok = m.group(0)
+        token = m.group("word")
+        if "+" not in token and "\u0301" not in token:
+            return full_tok
+
+        trail_punct = m.group("trail_punct") or ""
+        norm_tok = _PLUS_STRESS_RE.sub(lambda mm: f"{mm.group(1)}\u0301", token)
+        target_vowel_idx = -1
+        vowel_count = 0
+        clean_chars: List[str] = []
+        i = 0
+        n = len(norm_tok)
+        while i < n:
+            ch = norm_tok[i]
+            if ch == "\u0301":
+                i += 1
+                continue
+            clean_chars.append(ch)
+            if ch in _CYR_VOWELS_SET:
+                if i + 1 < n and norm_tok[i + 1] == "\u0301" and target_vowel_idx < 0:
+                    target_vowel_idx = vowel_count
+                vowel_count += 1
+            i += 1
+
+        clean_word = "".join(clean_chars)
+        fallback_plain = f"{m.group('lead') or ''}{clean_word}{m.group('trail_wrap') or ''}{trail_punct}"
+        if target_vowel_idx < 0 or not clean_word:
+            return fallback_plain or full_tok
+
+        try:
+            raw_phonemes = phonemize_word(clean_word)
+        except Exception:
+            return fallback_plain
+        if not raw_phonemes:
+            return fallback_plain
+
+        cleaned_ph = [p for p in raw_phonemes if p not in ("ˈ", "ˌ")]
+        vowel_positions = [idx for idx, ph in enumerate(cleaned_ph) if ph in _IPA_VOWELS_SET]
+        if 0 <= target_vowel_idx < len(vowel_positions):
+            cleaned_ph.insert(vowel_positions[target_vowel_idx], "ˈ")
+            return f"[[{''.join(cleaned_ph)}{trail_punct}]]"
+        return fallback_plain
+
+    return _STRESSED_CYR_WORD_RE.sub(_replace_word, text)

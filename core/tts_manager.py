@@ -52,7 +52,14 @@ from core.proxy_helper import (
     get_edge_tts_connector,
     get_edge_tts_proxy_config,
 )
-from core.text_normalizer import adapt_text_for_local_tts, normalize_tts_text
+from core.text_normalizer import (
+    adapt_text_for_local_tts,
+    apply_default_stress_fixes,
+    apply_piper_uk_stress_phonemes,
+    format_stress_marks,
+    normalize_tts_text,
+    strip_plus_stress_marks,
+)
 from core.tts_cache import TTSAudioCache
 
 # ──────────────────────────────────────────────────────────────────────
@@ -2783,6 +2790,7 @@ class TTSEngineManager(QObject):
             if bool(config.get("normalize_numbers_enabled", True))
             else text
         )
+        synth_text = apply_default_stress_fixes(synth_text)
 
         cache_key = self._build_audio_cache_key(synth_text, primary_id, primary_voice)
         cached = self._cache_lookup(cache_key)
@@ -3020,15 +3028,16 @@ class TTSEngineManager(QObject):
     ) -> None:
         """Queue audio first, then broadcast OBS subtitles offset by real PortAudio buffer latency."""
         def _on_queued(lat_ms: float) -> None:
-            if not subtitle_text:
+            clean_sub = strip_plus_stress_marks(subtitle_text)
+            if not clean_sub:
                 return
             delays = compute_speech_char_delays(
-                subtitle_text,
+                clean_sub,
                 samples,
                 int(sr),
                 start_offset_ms=max(85.0, float(lat_ms)),
             )
-            obs_server.broadcast_speech(subtitle_text, duration, char_delays=delays)
+            obs_server.broadcast_speech(clean_sub, duration, char_delays=delays)
 
         audio_router.play_samples(
             samples,
@@ -3066,6 +3075,7 @@ class TTSEngineManager(QObject):
             if bool(config.get("normalize_numbers_enabled", True))
             else text
         )
+        synth_text = format_stress_marks(apply_default_stress_fixes(synth_text), "strip")
         cache_key = self._build_audio_cache_key(synth_text, primary_id, primary_voice)
         if self._cache_lookup(cache_key) is not None:
             return None
@@ -3140,15 +3150,16 @@ class TTSEngineManager(QObject):
             first_ms = int((time.perf_counter() - t0) * 1000)
             self.status_changed.emit(tr("tts.status.speaking_ms", "Озвучення ({ms} мс)...", ms=first_ms))
             if emit_phrase_spoken:
-                self.phrase_spoken.emit(full_phrase_text)
-            est_dur = max(len(first_samples) / float(max(1, sr)), len(chunk_text) / 13.0)
-            self.speech_started.emit(chunk_text, est_dur)
-            if chunk_text:
-                n_chars = len(chunk_text)
+                self.phrase_spoken.emit(strip_plus_stress_marks(full_phrase_text))
+            clean_chunk_text = strip_plus_stress_marks(chunk_text)
+            est_dur = max(len(first_samples) / float(max(1, sr)), len(clean_chunk_text) / 13.0)
+            self.speech_started.emit(clean_chunk_text, est_dur)
+            if clean_chunk_text:
+                n_chars = len(clean_chunk_text)
                 base_ms = max(85.0, float(lat_ms))
                 step_ms = (est_dur * 1000.0) / float(max(1, n_chars))
                 delays = [int(round(base_ms + i * step_ms)) for i in range(n_chars)]
-                obs_server.broadcast_speech(chunk_text, est_dur, char_delays=delays)
+                obs_server.broadcast_speech(clean_chunk_text, est_dur, char_delays=delays)
 
         def _on_generation_done(full_samples: np.ndarray, sr: int) -> None:
             if not self._cancel_batch and self._running and full_samples is not None and len(full_samples) > 0:
@@ -3344,19 +3355,20 @@ class TTSEngineManager(QObject):
                                 if not phrase_emitted:
                                     phrase_emitted = True
                                     if mirror_twitch:
-                                        self.phrase_spoken.emit(text)
-                                self.speech_started.emit(chunks[idx], duration)
+                                        self.phrase_spoken.emit(strip_plus_stress_marks(text))
+                                clean_chunk = strip_plus_stress_marks(chunks[idx])
+                                self.speech_started.emit(clean_chunk, duration)
                                 self._play_with_synced_obs(
                                     samples,
                                     sr,
-                                    subtitle_text=chunks[idx],
+                                    subtitle_text=clean_chunk,
                                     duration=duration,
                                     monitor_only=monitor_only,
                                     send_primary=send_primary,
                                     vban_stream_override=vban_stream_override,
                                     extra_gain_pct=extra_gain_pct,
                                 )
-                                self.speech_finished.emit(chunks[idx])
+                                self.speech_finished.emit(clean_chunk)
                                 if not self._cancel_batch:
                                     self.status_changed.emit(tr("tts.status.done_ms", "Готово ({ms} мс)", ms=synth_ms))
                             else:
@@ -3393,19 +3405,20 @@ class TTSEngineManager(QObject):
                             duration = len(samples) / float(sr)
                             self.status_changed.emit(tr("tts.status.speaking_ms", "Озвучення ({ms} мс)...", ms=synth_ms))
                             if mirror_twitch:
-                                self.phrase_spoken.emit(text)
-                            self.speech_started.emit(chunk, duration)
+                                self.phrase_spoken.emit(strip_plus_stress_marks(text))
+                            clean_chunk = strip_plus_stress_marks(chunk)
+                            self.speech_started.emit(clean_chunk, duration)
                             self._play_with_synced_obs(
                                 samples,
                                 sr,
-                                subtitle_text=chunk,
+                                subtitle_text=clean_chunk,
                                 duration=duration,
                                 monitor_only=monitor_only,
                                 send_primary=send_primary,
                                 vban_stream_override=vban_stream_override,
                                 extra_gain_pct=extra_gain_pct,
                             )
-                            self.speech_finished.emit(chunk)
+                            self.speech_finished.emit(clean_chunk)
                             if not self._cancel_batch:
                                 self.status_changed.emit(tr("tts.status.done_ms", "Готово ({ms} мс)", ms=synth_ms))
                         else:
@@ -3458,7 +3471,7 @@ class TTSEngineManager(QObject):
             voices = ENGINE_SPECS.get(engine_id, {}).get("voices", [])
             voice_entry = next((v for v in voices if str(v.get("id")) == voice_id), None)
             lang = str((voice_entry or {}).get("lang") or (voice_id.rsplit("_", 1)[-1] if "_" in voice_id else "en") or "en")
-            return synthesize_qwen3_tts(text, lang=lang, speed=speed)
+            return synthesize_qwen3_tts(format_stress_marks(text, "strip"), lang=lang, speed=speed)
         if engine_id.startswith("online:"):
             return self._synth_online_item(engine_id, voice_id, text, speed)
         raise RuntimeError(tr("tts.err.select_active_voice", "Оберіть активний голос у розділі «Голос та Озвучка»."))
@@ -3488,13 +3501,25 @@ class TTSEngineManager(QObject):
             voice = self._piper_cache[key]
 
         v_lang = str(v_cfg.get("lang") or cur_lang).strip().lower()
-        synth_text = adapt_text_for_local_tts(text, v_lang) if v_lang not in ("uk", "ru") else text
+
+        def _prepare_piper_text(raw: str) -> str:
+            if v_lang == "ru":
+                return format_stress_marks(raw, "combining")
+            if v_lang == "uk":
+                def _phonemize_uk_word(word: str) -> List[str]:
+                    return [ph for sent in voice.phonemize(word) for ph in sent]
+
+                return apply_piper_uk_stress_phonemes(raw, _phonemize_uk_word)
+            return adapt_text_for_local_tts(format_stress_marks(raw, "strip"), v_lang)
+
+        synth_text = _prepare_piper_text(text)
 
         length_scale = 1.0 / max(0.5, min(2.0, speed))
         syn_cfg = SynthesisConfig(speaker_id=v_cfg.get("speaker"), length_scale=length_scale)
         chunks = list(voice.synthesize(synth_text, syn_config=syn_cfg))
         if not chunks and v_lang in ("uk", "ru"):
-            fallback_text = adapt_text_for_local_tts(text, v_lang)
+            fallback_raw = adapt_text_for_local_tts(text, v_lang)
+            fallback_text = _prepare_piper_text(fallback_raw)
             if fallback_text and fallback_text != synth_text:
                 chunks = list(voice.synthesize(fallback_text, syn_config=syn_cfg))
         if not chunks:
@@ -3541,6 +3566,7 @@ class TTSEngineManager(QObject):
             v_lang,
             uk_to_ru=(v_cfg.get("model") == "v5_6_ru.pt"),
         )
+        synth_text = format_stress_marks(synth_text, "plus" if v_lang in ("uk", "ru") else "strip")
         symbols = getattr(model, "symbols", None)
         if symbols:
             speakable = [ch for ch in synth_text if ch.isalnum() and ch.lower() in symbols]
@@ -3622,11 +3648,13 @@ class TTSEngineManager(QObject):
 
         trie = marisa_trie.BytesTrie()
         trie.load(str(dict_path))
-        word_re = re.compile(r"[А-Яа-яІіЇїЄєҐґ'’]+")
+        word_re = re.compile(r"[А-Яа-яІіЇїЄєҐґ'’\u0301]+")
 
         def _fast_stress(s: str) -> str:
             def _rep(m: re.Match) -> str:
                 w = m.group(0)
+                if "\u0301" in w:
+                    return w
                 for cand in (w, w.lower(), w.title()):
                     if cand in trie:
                         val = trie[cand][0]
@@ -3659,6 +3687,24 @@ class TTSEngineManager(QObject):
                 print(f"[Holos] Фонове завантаження stanza пропущено: {exc}", flush=True)
 
         threading.Thread(target=_bg, daemon=True, name="HolosStanzaBg").start()
+
+    @staticmethod
+    def _apply_holos_stress_preserving_manual(text: str, stress_fn: Callable[[str], str]) -> str:
+        word_pat = re.compile(r"[А-Яа-яІіЇїЄєҐґ'’\u0301]+")
+        parts: List[str] = []
+        last = 0
+        for m in word_pat.finditer(text):
+            w = m.group(0)
+            if "\u0301" in w:
+                prefix = text[last : m.start()]
+                if prefix:
+                    parts.append(stress_fn(prefix))
+                parts.append(w)
+                last = m.end()
+        tail = text[last:]
+        if tail:
+            parts.append(stress_fn(tail))
+        return "".join(parts)
 
     def _synth_holos(self, voice_id: str, text: str, speed: float) -> Tuple[np.ndarray, int]:
         import_started = time.perf_counter()
@@ -3698,7 +3744,7 @@ class TTSEngineManager(QObject):
                 print(f"[Holos] ONNX FP32 ініціалізація: імпорт {import_ms} мс, модель і словник {init_ms} мс", flush=True)
                 self._start_holos_stanza_async()
 
-        synth_text = adapt_text_for_local_tts(text, "uk")
+        synth_text = format_stress_marks(adapt_text_for_local_tts(text, "uk"), "combining")
         if not re.search(r"[А-Яа-яІіЇїЄєҐґ0-9]", synth_text):
             raise RuntimeError(
                 tr(
@@ -3709,7 +3755,11 @@ class TTSEngineManager(QObject):
                 )
             )
         stress_fn = self._holos_stanza_stress or self._holos_stress
-        phonemes = ipa(stress_fn(synth_text))
+        if "\u0301" in synth_text:
+            stressed_text = self._apply_holos_stress_preserving_manual(synth_text, stress_fn)
+        else:
+            stressed_text = stress_fn(synth_text)
+        phonemes = ipa(stressed_text)
         inference_started = time.perf_counter()
         audio = self._holos_model.generate(phonemes, voice=v_cfg["speaker"], speed=float(speed))
         if not self._holos_first_inference_logged:
@@ -4047,7 +4097,7 @@ class TTSEngineManager(QObject):
             if self._teratts_model is None:
                 self._teratts_accent, self._teratts_model = self._load_teratts_fast(local_dir)
 
-        synth_text = adapt_text_for_local_tts(text, "ru", uk_to_ru=True)
+        synth_text = format_stress_marks(adapt_text_for_local_tts(text, "ru", uk_to_ru=True), "plus")
         if not re.search(r"[А-Яа-яЁё0-9]", synth_text):
             raise RuntimeError(
                 tr(
@@ -4057,7 +4107,13 @@ class TTSEngineManager(QObject):
                     lang="ru",
                 )
             )
-        accented = self._teratts_accent.process_all(synth_text)
+        if "+" in synth_text:
+            accented = self._teratts_accent.process_all(
+                synth_text,
+                skip_regex=r"[А-Яа-яЁё]*\+[А-Яа-яЁё]+",
+            )
+        else:
+            accented = self._teratts_accent.process_all(synth_text)
         len_scale = 1.1 / max(0.5, min(2.0, speed))
         audio = self._teratts_model(accented, lenght_scale=len_scale)
         samples = np.asarray(audio, dtype=np.float32).squeeze()
@@ -4067,7 +4123,7 @@ class TTSEngineManager(QObject):
     def _synth_online_item(self, engine_id: str, voice_id: str, text: str, speed: float) -> Tuple[np.ndarray, int]:
         tag = engine_id.split(":", 1)[1] if ":" in engine_id else "edge"
         if tag == "edge":
-            return self._synth_edge_tts(text, voice_id, speed)
+            return self._synth_edge_tts(format_stress_marks(text, "strip"), voice_id, speed)
 
         online_items: List[Dict[str, Any]] = config.get("online_items", [])
         item = next((x for x in online_items if str(x.get("id")) == tag), None)
@@ -4077,22 +4133,24 @@ class TTSEngineManager(QObject):
         provider = str(item.get("provider", "")).strip()
         api_key = str(item.get("api_key", "")).strip()
 
+        if provider == "silero_bot":
+            return self._synth_silero_bot(format_stress_marks(text, "plus"), voice_id, speed, item)
+
+        clean_text = format_stress_marks(text, "strip")
         if provider == "edge":
             if not bool(item.get("installed", False)):
                 raise RuntimeError(tr("tts.err.edge_not_installed_tab", "Бібліотека Edge-TTS ще не встановлена. Натисніть «Встановити» у вкладці «Онлайн-голоси»."))
-            return self._synth_edge_tts(text, voice_id, speed)
+            return self._synth_edge_tts(clean_text, voice_id, speed)
         if provider == "google":
-            return self._synth_google_cloud(text, voice_id, api_key, speed, item)
+            return self._synth_google_cloud(clean_text, voice_id, api_key, speed, item)
         if provider == "elevenlabs":
-            return self._synth_elevenlabs(text, voice_id, api_key, item)
+            return self._synth_elevenlabs(clean_text, voice_id, api_key, item)
         if provider == "openai":
-            return self._synth_openai(text, voice_id, api_key, speed, item)
+            return self._synth_openai(clean_text, voice_id, api_key, speed, item)
         if provider == "fish_audio":
-            return self._synth_fish_audio(text, voice_id, api_key, speed, item)
+            return self._synth_fish_audio(clean_text, voice_id, api_key, speed, item)
         if provider == "gemini_tts":
-            return self._synth_gemini_tts(text, voice_id, api_key, item)
-        if provider == "silero_bot":
-            return self._synth_silero_bot(text, voice_id, speed, item)
+            return self._synth_gemini_tts(clean_text, voice_id, api_key, item)
         raise RuntimeError(tr("tts.err.unknown_online_provider", "Невідомий онлайн-провайдер: {provider}", provider=provider))
 
     def _synth_silero_bot(

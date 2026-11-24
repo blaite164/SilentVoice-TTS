@@ -279,6 +279,67 @@ class TextNormalizerAndUiRegressionTests(unittest.TestCase):
         norm_uk = normalize_tts_text("Знижка 50%", "uk")
         self.assertNotIn("50%", norm_uk)
 
+    def test_unified_stress_marks_and_organov_default_fix(self) -> None:
+        from core.text_normalizer import (
+            adapt_text_for_local_tts,
+            apply_default_stress_fixes,
+            apply_piper_uk_stress_phonemes,
+            format_stress_marks,
+            strip_plus_stress_marks,
+        )
+
+        # Точковий дефолтний наголос для «органов» зі збереженням регістру
+        self.assertEqual(apply_default_stress_fixes("внутренних органов."), "внутренних +органов.")
+        self.assertEqual(apply_default_stress_fixes("Органов дыхания"), "+Органов дыхания")
+        self.assertEqual(apply_default_stress_fixes("ОРГАНОВ"), "+ОРГАНОВ")
+        # Не перезаписує явний наголос користувача і не чіпає інші слова
+        self.assertEqual(apply_default_stress_fixes("+органов"), "+органов")
+        self.assertEqual(apply_default_stress_fixes("орг+анов"), "орг+анов")
+        self.assertEqual(apply_default_stress_fixes("орга\u0301нов"), "орга\u0301нов")
+        self.assertEqual(apply_default_stress_fixes("о\u0301рганов"), "о\u0301рганов")
+        self.assertEqual(apply_default_stress_fixes("органовый зал"), "органовый зал")
+
+        # Конвертація єдиної позначки наголосу для різних движків
+        self.assertEqual(format_stress_marks("з+амок и +органов", "plus"), "з+амок и +органов")
+        self.assertEqual(format_stress_marks("за\u0301мок и о\u0301рганов", "plus"), "з+амок и +органов")
+        self.assertEqual(format_stress_marks("з+амок и +органов", "combining"), "за\u0301мок и о\u0301рганов")
+        self.assertEqual(format_stress_marks("з+амок и +органов", "strip"), "замок и органов")
+
+        # Не ламає математику, цифри та C++
+        self.assertEqual(strip_plus_stress_marks("2+2, +5, C++, a+b, без +органов"), "2+2, +5, C++, a+b, без органов")
+        self.assertEqual(format_stress_marks("C++ и +5 и з+амок", "combining"), "C++ и +5 и за\u0301мок")
+        self.assertEqual(normalize_tts_text("без +органов 50%", "ru"), "без +органов пятьдесят процентов")
+
+        # Українська літера +ї при адаптації під RU-моделі (Silero v5_6_ru)
+        self.assertEqual(adapt_text_for_local_tts("+їжак", "ru", uk_to_ru=True), "й+ижак")
+
+        # Український Piper: перенесення маркера 'ˈ' у [[...]] перед цільовою голосною фонемою
+        fake_uk_phonemes = {
+            "органов": ["o", "r", "h", "ˈ", "a", "n", "o", "β"],
+            "замок": ["z", "a", "m", "ˈ", "o", "k"],
+        }
+        res_uk = apply_piper_uk_stress_phonemes(
+            "Без «+органов», це з+амок і зам+ок.",
+            lambda w: list(fake_uk_phonemes[w]),
+        )
+        self.assertEqual(res_uk, "Без [[ˈorhanoβ,]] це [[zˈamok]] і [[zamˈok.]]")
+
+    def test_holos_preserves_manual_stress_marks(self) -> None:
+        from core.tts_manager import TTSEngineManager
+
+        called: list[str] = []
+
+        def _fake_stress(chunk: str) -> str:
+            called.append(chunk)
+            return chunk.replace("це", "це\u0301")
+
+        out = TTSEngineManager._apply_holos_stress_preserving_manual(
+            "це за\u0301мок і о\u0301рганов тут",
+            _fake_stress,
+        )
+        self.assertEqual(out, "це\u0301 за\u0301мок і о\u0301рганов тут")
+        self.assertEqual(called, ["це ", " і ", " тут"])
+
     def test_first_run_language_dialog_saves_chosen_ui_language(self) -> None:
         from PySide6.QtWidgets import QApplication
         from ui.dialogs import FirstRunLanguageDialog
