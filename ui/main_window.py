@@ -2771,7 +2771,13 @@ class MainWindow(QMainWindow):
                 if prov_key == "elevenlabs":
                     default_models = ["eleven_flash_v2_5", "eleven_turbo_v2_5", "eleven_multilingual_v2"]
                 elif prov_key == "gemini_tts":
-                    default_models = ["gemini-2.5-flash-preview-tts", "gemini-2.5-pro-preview-tts"]
+                    default_models = [
+                        "gemini-3.8-flash-lite-tts",
+                        "gemini-3.8-flash-tts",
+                        "gemini-3.1-flash-tts-preview",
+                        "gemini-2.5-pro-preview-tts",
+                        "gemini-2.5-flash-preview-tts",
+                    ]
                 else:
                     default_models = ["tts-1", "tts-1-hd", "gpt-4o-mini-tts"]
                 disc_models = list(item.get("available_models") or [])
@@ -2780,8 +2786,6 @@ class MainWindow(QMainWindow):
                     m_combo.addItem(m_val, m_val)
                 if prov_key == "elevenlabs" and "eleven_flash_v2_5" in all_models:
                     default_pick = "eleven_flash_v2_5"
-                elif prov_key == "gemini_tts" and "gemini-2.5-flash-preview-tts" in all_models:
-                    default_pick = "gemini-2.5-flash-preview-tts"
                 else:
                     default_pick = all_models[0]
                 cur_m = str(item.get("model", "")).strip() or default_pick
@@ -3762,6 +3766,8 @@ class MainWindow(QMainWindow):
                 x["custom_voices"] = voice_list
                 if models_list:
                     x["available_models"] = models_list
+                    if str(x.get("provider", "")) == "gemini_tts" and not str(x.get("model", "")).strip():
+                        x["model"] = models_list[0]
                 prov = str(x.get("provider", ""))
                 if prov == "fish_audio":
                     x["voices_lang"] = cur_lang

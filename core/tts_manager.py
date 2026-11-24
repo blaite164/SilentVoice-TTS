@@ -728,7 +728,7 @@ ONLINE_PROVIDERS: Dict[str, Dict[str, Any]] = {
     "gemini_tts": {
         "provider": "gemini_tts",
         "title": "Google AI Studio (Gemini TTS)",
-        "subtitle": "Gemini 2.5 Flash TTS",
+        "subtitle": "Gemini Flash TTS",
         "voices": [
             {"id": "Kore", "name": "Kore (Gemini)", "gender": "female", "lang": "multi"},
             {"id": "Aoede", "name": "Aoede (Gemini)", "gender": "female", "lang": "multi"},
@@ -4414,7 +4414,9 @@ class TTSEngineManager(QObject):
             raise RuntimeError(tr("tts.err.enter_key_online", "Введіть API ключ у блоці {provider} (вкладка «Онлайн-голоси»).", provider="Google AI Studio (Gemini TTS)"))
         if not voice_name:
             voice_name = "Kore"
-        model_id = str((item or {}).get("model", "")).strip() or "gemini-2.5-flash-preview-tts"
+        avail = list((item or {}).get("available_models") or [])
+        fallback_model = str(avail[0]).strip() if avail else "gemini-3.8-flash-lite-tts"
+        model_id = str((item or {}).get("model", "")).strip() or fallback_model
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent"
         headers = {
             "x-goog-api-key": clean_key,
@@ -4874,10 +4876,15 @@ class TTSEngineManager(QObject):
             if mid and "tts" in mid.lower() and mid not in models:
                 models.append(mid)
         if not models:
-            models = ["gemini-2.5-flash-preview-tts", "gemini-2.5-pro-preview-tts"]
-        elif "gemini-2.5-flash-preview-tts" in models:
-            models.remove("gemini-2.5-flash-preview-tts")
-            models.insert(0, "gemini-2.5-flash-preview-tts")
+            models = [
+                "gemini-3.8-flash-lite-tts",
+                "gemini-3.8-flash-tts",
+                "gemini-3.1-flash-tts-preview",
+                "gemini-2.5-pro-preview-tts",
+                "gemini-2.5-flash-preview-tts",
+            ]
+        else:
+            models.reverse()
         return list(ONLINE_PROVIDERS["gemini_tts"]["voices"]), models
 
     @classmethod

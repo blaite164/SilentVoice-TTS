@@ -340,6 +340,37 @@ class TextNormalizerAndUiRegressionTests(unittest.TestCase):
         self.assertEqual(out, "це\u0301 за\u0301мок і о\u0301рганов тут")
         self.assertEqual(called, ["це ", " і ", " тут"])
 
+    def test_gemini_tts_models_list_is_reversed_newest_first(self) -> None:
+        from core.tts_manager import TTSEngineManager
+
+        fake_resp = MagicMock()
+        fake_resp.status_code = 200
+        fake_resp.json.return_value = {
+            "models": [
+                {"name": "models/gemini-2.5-flash-preview-tts"},
+                {"name": "models/gemini-2.5-pro-preview-tts"},
+                {"name": "models/gemini-3.1-flash-tts-preview"},
+                {"name": "models/gemini-3.8-flash-tts"},
+                {"name": "models/gemini-3.8-flash-lite-tts"},
+                {"name": "models/gemini-3.8-flash"},
+            ]
+        }
+        with (
+            patch("core.tts_manager.requests.get", return_value=fake_resp),
+            patch("core.tts_manager.get_active_api_proxies", return_value=None),
+        ):
+            _voices, models = TTSEngineManager.fetch_gemini_tts_voices("AIza-fake-key")
+        self.assertEqual(
+            models,
+            [
+                "gemini-3.8-flash-lite-tts",
+                "gemini-3.8-flash-tts",
+                "gemini-3.1-flash-tts-preview",
+                "gemini-2.5-pro-preview-tts",
+                "gemini-2.5-flash-preview-tts",
+            ],
+        )
+
     def test_first_run_language_dialog_saves_chosen_ui_language(self) -> None:
         from PySide6.QtWidgets import QApplication
         from ui.dialogs import FirstRunLanguageDialog
