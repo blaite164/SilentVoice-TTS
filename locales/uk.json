@@ -1347,5 +1347,11 @@
   "update.completed_status": "✅ Оновлено до версії v{version}",
   "update.completed_toast": "Оновлення успішно завершено! Встановлено версію v{version}.",
   "update.dlg.show_original_btn": "🌐 Показати оригінал",
-  "update.dlg.translate_btn": "🌐 Перекласти"
+  "update.dlg.translate_btn": "🌐 Перекласти",
+  "tts.size.supertonic3": "~380 МБ",
+  "tts.size.kokoro_82m": "~258 МБ",
+  "tts.size.pocket_tts": "~209–641 МБ",
+  "tts.size.zonos3_mini": "~1.9 ГБ",
+  "tts.title.zonos3_mini": "ZONOS3-Mini (GGUF) - з клонуванням",
+  "tts.title.pocket_tts": "Pocket TTS (GGUF) - з клонуванням"
 }

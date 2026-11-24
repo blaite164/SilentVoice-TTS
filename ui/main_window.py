@@ -1969,13 +1969,14 @@ class MainWindow(QMainWindow):
             self.local_models_layout.addWidget(empty_lbl)
 
         openvoice_built = False
+        clone_gguf_ids = ("qwen3_tts", "zonos3_mini", "pocket_tts")
         for spec in visible_engines:
             eng_id = spec["id"]
-            if eng_id == "qwen3_tts" and not openvoice_built:
+            if eng_id in clone_gguf_ids and not openvoice_built:
                 self._build_openvoice_card()
                 openvoice_built = True
             installed = tts_manager.is_engine_installed(eng_id)
-            is_clone_gguf = eng_id == "qwen3_tts"
+            is_clone_gguf = eng_id in clone_gguf_ids
 
             card = (
                 _OpenVoiceDropCard(lambda p, eid=eng_id: self._set_clone_ref_file(eid, p))
@@ -2023,6 +2024,10 @@ class MainWindow(QMainWindow):
                 listen_btn.clicked.connect(
                     lambda checked=False, eid=eng_id, title=spec["title"]: VoiceSamplesDialog(eid, title, self).exec()
                 )
+                if eng_id in ("supertonic3", "kokoro_82m"):
+                    from core.tts_manager import get_sample_files_for_engine
+                    if not get_sample_files_for_engine(eng_id):
+                        listen_btn.setVisible(False)
             top_r.addWidget(listen_btn)
 
             action_btn = QPushButton()
@@ -9728,7 +9733,7 @@ class MainWindow(QMainWindow):
             btn.setText(tr("ui_137", "Видалити"))
             btn.setProperty("class", "dangerBtn")
             btn.setToolTip(tr("ui_412", "Видалити цей TTS з комп'ютера"))
-        elif engine_id == "qwen3_tts" and not has_hardware_gpu():
+        elif engine_id in ("qwen3_tts", "zonos3_mini") and not has_hardware_gpu():
             btn.setEnabled(False)
             btn.setText(tr("tts.no_gpu_btn", "Немає відеокарти"))
             btn.setProperty("class", "")
@@ -9740,7 +9745,7 @@ class MainWindow(QMainWindow):
             btn.setToolTip(tr("ui_413", "Завантажити та встановити цей TTS на комп'ютер"))
         btn.style().unpolish(btn)
         btn.style().polish(btn)
-        if engine_id in ("openvoice", "qwen3_tts"):
+        if engine_id in ("openvoice", "qwen3_tts", "zonos3_mini", "pocket_tts"):
             self._refresh_clone_card_ui(engine_id)
 
     def _populate_audio_devices(self, refresh_backend: bool = False) -> None:

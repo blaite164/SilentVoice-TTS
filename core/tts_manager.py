@@ -616,11 +616,90 @@ ENGINE_SPECS: Dict[str, Dict[str, Any]] = {
         ],
         "hf_repo": "TeraTTS/natasha-g2p-vits",
     },
+    "supertonic3": {
+        "id": "supertonic3",
+        "title": "Supertonic 3 (ONNX)",
+        "size_label": "~380 МБ",
+        "voices": [
+            {"id": "supertonic3_f1", "name": "F1 (Female)", "gender": "female", "lang": "multi", "speaker": "F1"},
+            {"id": "supertonic3_f2", "name": "F2 (Female)", "gender": "female", "lang": "multi", "speaker": "F2"},
+            {"id": "supertonic3_f3", "name": "F3 (Female)", "gender": "female", "lang": "multi", "speaker": "F3"},
+            {"id": "supertonic3_f4", "name": "F4 (Female)", "gender": "female", "lang": "multi", "speaker": "F4"},
+            {"id": "supertonic3_f5", "name": "F5 (Female)", "gender": "female", "lang": "multi", "speaker": "F5"},
+            {"id": "supertonic3_m1", "name": "M1 (Male)", "gender": "male", "lang": "multi", "speaker": "M1"},
+            {"id": "supertonic3_m2", "name": "M2 (Male)", "gender": "male", "lang": "multi", "speaker": "M2"},
+            {"id": "supertonic3_m3", "name": "M3 (Male)", "gender": "male", "lang": "multi", "speaker": "M3"},
+            {"id": "supertonic3_m4", "name": "M4 (Male)", "gender": "male", "lang": "multi", "speaker": "M4"},
+            {"id": "supertonic3_m5", "name": "M5 (Male)", "gender": "male", "lang": "multi", "speaker": "M5"},
+        ],
+    },
+    "kokoro_82m": {
+        "id": "kokoro_82m",
+        "title": "Kokoro-82M (GGUF)",
+        "size_label": "~258 МБ",
+        "voices": [
+            {"id": "kokoro_af_heart", "name": "Heart (US)", "gender": "female", "lang": "en", "speaker": "af_heart"},
+            {"id": "kokoro_af_bella", "name": "Bella (US)", "gender": "female", "lang": "en", "speaker": "af_bella"},
+            {"id": "kokoro_af_sarah", "name": "Sarah (US)", "gender": "female", "lang": "en", "speaker": "af_sarah"},
+            {"id": "kokoro_af_nova", "name": "Nova (US)", "gender": "female", "lang": "en", "speaker": "af_nova"},
+            {"id": "kokoro_af_sky", "name": "Sky (US)", "gender": "female", "lang": "en", "speaker": "af_sky"},
+            {"id": "kokoro_af_jessica", "name": "Jessica (US)", "gender": "female", "lang": "en", "speaker": "af_jessica"},
+            {"id": "kokoro_af_nicole", "name": "Nicole (US)", "gender": "female", "lang": "en", "speaker": "af_nicole"},
+            {"id": "kokoro_af_aoede", "name": "Aoede (US)", "gender": "female", "lang": "en", "speaker": "af_aoede"},
+            {"id": "kokoro_am_michael", "name": "Michael (US)", "gender": "male", "lang": "en", "speaker": "am_michael"},
+            {"id": "kokoro_am_adam", "name": "Adam (US)", "gender": "male", "lang": "en", "speaker": "am_adam"},
+            {"id": "kokoro_am_fenrir", "name": "Fenrir (US)", "gender": "male", "lang": "en", "speaker": "am_fenrir"},
+            {"id": "kokoro_am_liam", "name": "Liam (US)", "gender": "male", "lang": "en", "speaker": "am_liam"},
+            {"id": "kokoro_bf_emma", "name": "Emma (UK)", "gender": "female", "lang": "en", "speaker": "bf_emma"},
+            {"id": "kokoro_bf_isabella", "name": "Isabella (UK)", "gender": "female", "lang": "en", "speaker": "bf_isabella"},
+            {"id": "kokoro_bm_george", "name": "George (UK)", "gender": "male", "lang": "en", "speaker": "bm_george"},
+            {"id": "kokoro_bm_lewis", "name": "Lewis (UK)", "gender": "male", "lang": "en", "speaker": "bm_lewis"},
+        ],
+    },
     "openvoice": {
         "id": "openvoice",
         "title": "OpenVoice v2",
         "size_label": "~193 МБ",
         "voices": [],
+    },
+    "pocket_tts": {
+        "id": "pocket_tts",
+        "title": "Pocket TTS (GGUF)",
+        "size_label": "~209–641 МБ",
+        "voices": [
+            {"id": "pocket_en", "name": "Pocket TTS (EN / Clone)", "gender": None, "lang": "en"},
+            {"id": "pocket_de", "name": "Pocket TTS (DE / Clone)", "gender": None, "lang": "de"},
+            {"id": "pocket_es", "name": "Pocket TTS (ES / Clone)", "gender": None, "lang": "es"},
+            {"id": "pocket_fr", "name": "Pocket TTS (FR / Clone)", "gender": None, "lang": "fr"},
+        ],
+    },
+    "zonos3_mini": {
+        "id": "zonos3_mini",
+        "title": "ZONOS3-Mini (GGUF)",
+        "size_label": "~1.9 ГБ",
+        "voices": [
+            # English built-in voices
+            {"id": "zonos3_en_savannah", "name": "Savannah (US)", "gender": "female", "lang": "en", "speaker": "Savannah_en-American_F_1"},
+            {"id": "zonos3_en_imogen", "name": "Imogen (UK)", "gender": "female", "lang": "en", "speaker": "Imogen_en-British_F_1"},
+            {"id": "zonos3_en_sakura", "name": "Sakura (Anime)", "gender": "female", "lang": "en", "speaker": "Sakura_en-anime_F_1"},
+            {"id": "zonos3_en_willow", "name": "Willow (Soft)", "gender": "female", "lang": "en", "speaker": "Willow_en-asrm_F_1"},
+            {"id": "zonos3_en_morgana", "name": "Morgana", "gender": "female", "lang": "en", "speaker": "Morgana_en-witch_F_1"},
+            {"id": "zonos3_en_wyatt", "name": "Wyatt (US)", "gender": "male", "lang": "en", "speaker": "Wyatt_en-American_M_1"},
+            {"id": "zonos3_en_rupert", "name": "Rupert (UK)", "gender": "male", "lang": "en", "speaker": "Rupert_en-British_M_1"},
+            {"id": "zonos3_en_cillian", "name": "Cillian (Irish)", "gender": "male", "lang": "en", "speaker": "Cillian_en-Irish_M_1"},
+            {"id": "zonos3_en_jett", "name": "Jett (Energetic)", "gender": "male", "lang": "en", "speaker": "Jett_en-energetic_M_1"},
+            {"id": "zonos3_en_thaddeus", "name": "Thaddeus (Announcer)", "gender": "male", "lang": "en", "speaker": "Thaddeus_en-announcervoice_M_1"},
+            # German / French / Spanish built-in voices
+            {"id": "zonos3_de_liesel", "name": "Liesel (DE)", "gender": "female", "lang": "de", "speaker": "Liesel_de_F_1"},
+            {"id": "zonos3_de_wolfgang", "name": "Wolfgang (DE)", "gender": "male", "lang": "de", "speaker": "Wolfgang_de_M_1"},
+            {"id": "zonos3_fr_gaspard", "name": "Gaspard (FR)", "gender": "male", "lang": "fr", "speaker": "Gaspard_fr_M_1"},
+            {"id": "zonos3_es_ximena", "name": "Ximena (ES)", "gender": "female", "lang": "es", "speaker": "Ximena_es_F_1"},
+            {"id": "zonos3_es_rodrigo", "name": "Rodrigo (ES)", "gender": "male", "lang": "es", "speaker": "Rodrigo_es_M_1"},
+            # Ukrainian / Russian / Polish (built-in or cloned via ref audio)
+            {"id": "zonos3_uk_default", "name": "ZONOS3 (UK / Clone)", "gender": None, "lang": "uk", "speaker": "Savannah_en-American_F_1"},
+            {"id": "zonos3_ru_default", "name": "ZONOS3 (RU / Clone)", "gender": None, "lang": "ru", "speaker": "Savannah_en-American_F_1"},
+            {"id": "zonos3_pl_default", "name": "ZONOS3 (PL / Clone)", "gender": None, "lang": "pl", "speaker": "Savannah_en-American_F_1"},
+        ],
     },
     "qwen3_tts": {
         "id": "qwen3_tts",
@@ -1222,7 +1301,7 @@ def _infer_sample_gender(wav_path: Path, raw_stem: str) -> str:
             return "female"
         if low_p in _SAMPLE_MALE_DIR_NAMES:
             return "male"
-        if low_p in ("samples", "openvoice", "qwen3_tts"):
+        if low_p in ("samples", "openvoice", "qwen3_tts", "zonos3_mini", "pocket_tts"):
             break
     for text_cand in (wav_path.stem, raw_stem):
         if _SAMPLE_FEMALE_TOKEN_RE.search(text_cand):
@@ -1239,7 +1318,7 @@ def _normalize_sample_lang(lang: Optional[str]) -> str:
     return code if code in ("uk", "en", "ru", "pl", "de", "fr", "es") else "uk"
 
 
-CLONE_ENGINE_IDS = ("openvoice", "qwen3_tts")
+CLONE_ENGINE_IDS = ("openvoice", "qwen3_tts", "zonos3_mini", "pocket_tts")
 SHARED_CLONE_SAMPLES_SUBDIR = "clone_voices"
 
 
@@ -1711,7 +1790,7 @@ class TTSEngineManager(QObject):
 
     def _resolve_local_target_for(self, engine_id: str, voice_id: str) -> Optional[Tuple[str, str, str]]:
         eng = str(engine_id or "").strip()
-        if eng not in ("piper", "silero", "holos", "teratts", "qwen3_tts"):
+        if eng not in ("piper", "silero", "holos", "teratts", "supertonic3", "kokoro_82m", "pocket_tts", "zonos3_mini", "qwen3_tts"):
             return None
         if not self.is_engine_installed(eng):
             return None
@@ -1962,14 +2041,15 @@ class TTSEngineManager(QObject):
 
         targets = self._resolve_local_warmup_targets()
         online_targets = self._resolve_online_warmup_targets()
-        if not any(item[0] == "qwen3_tts" for item in targets):
+        _llama_eids = ("qwen3_tts", "zonos3_mini", "kokoro_82m", "pocket_tts")
+        if not any(item[0] in _llama_eids for item in targets):
             try:
                 from core.llama_tts import is_qwen3_server_running, shutdown_llama_tts
 
                 if is_qwen3_server_running():
                     shutdown_llama_tts()
                 self._warmed_models = {
-                    item for item in self._warmed_models if item[0] != "qwen3_tts"
+                    item for item in self._warmed_models if item[0] not in _llama_eids
                 }
             except Exception:
                 pass
@@ -2060,8 +2140,8 @@ class TTSEngineManager(QObject):
                         self.schedule_smart_warmup(delay_sec=5.0, reason=f"{reason}:busy", _retry=retry + 1)
                     return
 
-                is_heavy = engine_id in ("silero", "holos", "teratts", "qwen3_tts")
-                min_ram_mb = 2048 if engine_id == "qwen3_tts" else (1024 if is_heavy else 350)
+                is_heavy = engine_id in ("silero", "holos", "teratts", "qwen3_tts", "zonos3_mini")
+                min_ram_mb = 2048 if engine_id in ("qwen3_tts", "zonos3_mini") else (1024 if is_heavy else 350)
                 req_ram = min_ram_mb if role == "primary" else (min_ram_mb + 1024)
                 if role != "primary" and low_power:
                     continue
@@ -2079,6 +2159,12 @@ class TTSEngineManager(QObject):
                     if engine_id == "qwen3_tts":
                         from core.llama_tts import warmup_qwen3_tts
                         warmup_qwen3_tts()
+                    elif engine_id in ("zonos3_mini", "kokoro_82m", "pocket_tts"):
+                        from core.llama_tts import warmup_llama_tts
+                        voices = ENGINE_SPECS.get(engine_id, {}).get("voices", [])
+                        v_entry = next((v for v in voices if str(v.get("id")) == voice_id), None)
+                        spk = str((v_entry or {}).get("speaker") or "")
+                        warmup_llama_tts(engine_id, lang=self._current_lang(), voice=spk)
                     else:
                         cur_lang = self._current_lang()
                         probe_text = "а." if cur_lang in ("uk", "ru") else "a."
@@ -2338,6 +2424,18 @@ class TTSEngineManager(QObject):
         if engine_id == "qwen3_tts":
             from core.llama_tts import is_qwen3_tts_installed
             return is_qwen3_tts_installed()
+        if engine_id == "zonos3_mini":
+            from core.llama_tts import is_zonos3_installed
+            return is_zonos3_installed()
+        if engine_id == "kokoro_82m":
+            from core.llama_tts import is_kokoro_installed
+            return is_kokoro_installed()
+        if engine_id == "pocket_tts":
+            from core.llama_tts import is_pocket_tts_installed
+            return is_pocket_tts_installed(lang=self._current_lang())
+        if engine_id == "supertonic3":
+            from core.supertonic_tts import is_supertonic3_installed
+            return is_supertonic3_installed()
         if engine_id == "openvoice":
             from core.voice_cloner import voice_cloner
             return voice_cloner.is_installed()
@@ -2349,8 +2447,8 @@ class TTSEngineManager(QObject):
         lang_voices = self._filter_voices_by_lang(spec.get("voices", []), cur_lang)
         if eng_id == "piper" and not lang_voices:
             lang_voices, _ = self._get_dynamic_piper_for_lang(cur_lang)
-        elif eng_id == "qwen3_tts" and not lang_voices:
-            # Multilingual neural cloner remains available even when UI language is Ukrainian.
+        elif eng_id in ("qwen3_tts", "zonos3_mini") and not lang_voices:
+            # Multilingual neural cloners remain available even when UI language is not in built-in presets.
             lang_voices = list(spec.get("voices", []))
         return lang_voices
 
@@ -2682,6 +2780,11 @@ class TTSEngineManager(QObject):
         except Exception:
             pass
         try:
+            from core.supertonic_tts import supertonic3_engine
+            supertonic3_engine.unload()
+        except Exception:
+            pass
+        try:
             from core.voice_cloner import voice_cloner
             voice_cloner.shutdown()
         except Exception:
@@ -2721,8 +2824,8 @@ class TTSEngineManager(QObject):
                         online_sig = json.dumps(safe_item, sort_keys=True, ensure_ascii=False, default=str)
                         break
         ov_sig = ""
-        if engine_id == "qwen3_tts":
-            ref_path_val = str(config.get("qwen3_tts_ref_path", "") or "").strip()
+        if engine_id in ("qwen3_tts", "zonos3_mini", "pocket_tts"):
+            ref_path_val = str(config.get(f"{engine_id}_ref_path", "") or "").strip()
             ref_stat = ""
             if ref_path_val:
                 try:
@@ -2730,8 +2833,15 @@ class TTSEngineManager(QObject):
                     ref_stat = f"{ref_path_val}|{st.st_size}|{st.st_mtime_ns}"
                 except OSError:
                     ref_stat = ref_path_val
-            ref_txt = str(config.get("qwen3_tts_ref_text", "") or "").strip()
-            ov_sig = f"qwen3_tts:{ref_stat}:{ref_txt}"
+            ref_txt = str(config.get("qwen3_tts_ref_text", "") or "").strip() if engine_id == "qwen3_tts" else ""
+            ov_sig = f"{engine_id}:{ref_stat}:{ref_txt}"
+            if engine_id != "qwen3_tts" and not ref_path_val and bool(config.get("openvoice_enabled", False)):
+                from core.voice_cloner import voice_cloner
+                if voice_cloner.models_present():
+                    ref_sig = voice_cloner.get_ref_cache_signature(str(config.get("openvoice_ref_path", "") or ""))
+                    if ref_sig:
+                        ov_dev = str(config.get("openvoice_device", "gpu") or "gpu").strip().lower()
+                        ov_sig += f"|ov:{ov_dev}:{ref_sig}"
         elif bool(config.get("openvoice_enabled", False)):
             from core.voice_cloner import voice_cloner
             if voice_cloner.models_present():
@@ -2745,6 +2855,10 @@ class TTSEngineManager(QObject):
     def _maybe_upgrade_openvoice(samples: np.ndarray, sr: int, engine_id: str = "") -> Tuple[np.ndarray, int]:
         if engine_id == "qwen3_tts":
             return samples, sr
+        if engine_id in ("zonos3_mini", "pocket_tts"):
+            own_ref = str(config.get(f"{engine_id}_ref_path", "") or "").strip()
+            if own_ref and Path(own_ref).is_file():
+                return samples, sr
         if not bool(config.get("openvoice_enabled", False)):
             return samples, sr
         from core.voice_cloner import voice_cloner
@@ -3063,8 +3177,12 @@ class TTSEngineManager(QObject):
             return None
         eng_entry = next((a for a in available if a["id"] == engine_id), available[0])
         primary_id = eng_entry["id"]
-        if primary_id != "qwen3_tts":
+        if primary_id not in ("qwen3_tts", "zonos3_mini"):
             return None
+        if primary_id == "zonos3_mini" and bool(config.get("openvoice_enabled", False)):
+            own_ref = str(config.get("zonos3_mini_ref_path", "") or "").strip()
+            if not (own_ref and Path(own_ref).is_file()):
+                return None
         voices = eng_entry.get("voices", [])
         valid_voice_ids = [v["id"] for v in voices]
         primary_voice = voice_id if voice_id in valid_voice_ids else (valid_voice_ids[0] if valid_voice_ids else "")
@@ -3093,6 +3211,7 @@ class TTSEngineManager(QObject):
 
         voice_entry = next((v for v in voices if str(v.get("id")) == primary_voice), None)
         lang = str((voice_entry or {}).get("lang") or (primary_voice.rsplit("_", 1)[-1] if "_" in primary_voice else "en") or "en")
+        speaker = str((voice_entry or {}).get("speaker") or "")
         return {
             "primary_id": primary_id,
             "primary_voice": primary_voice,
@@ -3100,6 +3219,7 @@ class TTSEngineManager(QObject):
             "synth_text": synth_text,
             "cache_key": cache_key,
             "lang": lang,
+            "speaker": speaker,
         }
 
     def _speak_qwen3_streaming_chunk(
@@ -3116,10 +3236,10 @@ class TTSEngineManager(QObject):
         on_ready_for_next: Optional[Callable[[], None]] = None,
     ) -> bool:
         """
-        Стримить Qwen3-TTS по мірі декодування аудіо-блоків і починає відтворення одразу з 1-го чанка.
+        Стримить Qwen3-TTS / ZONOS3-Mini по мірі декодування аудіо-блоків і починає відтворення одразу з 1-го чанка.
         Повертає False, якщо сталася помилка ДО першого звуку (щоб викликач міг відпрацювати fallback/retry).
         """
-        from core.llama_tts import Qwen3SynthesisCancelledError, synthesize_qwen3_tts_stream
+        from core.llama_tts import Qwen3SynthesisCancelledError, synthesize_llama_tts_stream, synthesize_qwen3_tts_stream
         from core.telegram_silero import SynthesisCancelledError
 
         primary_id = plan["primary_id"]
@@ -3128,6 +3248,7 @@ class TTSEngineManager(QObject):
         synth_text = plan["synth_text"]
         cache_key = plan["cache_key"]
         lang = plan["lang"]
+        speaker = str(plan.get("speaker") or "")
 
         self.status_changed.emit(tr("tts.status.synth", "Синтез ({title})...", title=primary_title))
         t0 = time.perf_counter()
@@ -3135,7 +3256,12 @@ class TTSEngineManager(QObject):
         first_ms = 0
 
         def _dsp_chunks():
-            for raw_chunk, sr in synthesize_qwen3_tts_stream(synth_text, lang=lang, speed=1.0):
+            stream_iter = (
+                synthesize_qwen3_tts_stream(synth_text, lang=lang, speed=1.0)
+                if primary_id == "qwen3_tts"
+                else synthesize_llama_tts_stream(primary_id, synth_text, lang=lang, voice=speaker, speed=1.0)
+            )
+            for raw_chunk, sr in stream_iter:
                 if self._cancel_batch or not self._running:
                     raise Qwen3SynthesisCancelledError("Qwen3-TTS synthesis cancelled")
                 if raw_chunk is None or len(raw_chunk) == 0:
@@ -3465,6 +3591,32 @@ class TTSEngineManager(QObject):
             return self._synth_holos(voice_id, text, speed)
         if engine_id == "teratts":
             return self._synth_teratts(voice_id, text, speed)
+        if engine_id == "supertonic3":
+            from core.supertonic_tts import supertonic3_engine
+
+            voices = ENGINE_SPECS.get(engine_id, {}).get("voices", [])
+            voice_entry = next((v for v in voices if str(v.get("id")) == voice_id), None)
+            speaker = str((voice_entry or {}).get("speaker") or "F1")
+            return supertonic3_engine.synthesize(
+                format_stress_marks(text, "strip"),
+                voice_name=speaker,
+                lang=self._current_lang(),
+                speed=speed,
+            )
+        if engine_id in ("zonos3_mini", "kokoro_82m", "pocket_tts"):
+            from core.llama_tts import synthesize_llama_tts
+
+            voices = ENGINE_SPECS.get(engine_id, {}).get("voices", [])
+            voice_entry = next((v for v in voices if str(v.get("id")) == voice_id), None)
+            lang = str((voice_entry or {}).get("lang") or self._current_lang() or "en")
+            speaker = str((voice_entry or {}).get("speaker") or "")
+            return synthesize_llama_tts(
+                engine_id,
+                format_stress_marks(text, "strip"),
+                lang=lang,
+                voice=speaker,
+                speed=speed,
+            )
         if engine_id == "qwen3_tts":
             from core.llama_tts import synthesize_qwen3_tts
 
@@ -5179,7 +5331,10 @@ class TTSEngineManager(QObject):
                     from core.voice_cloner import voice_cloner
                     voice_cloner.shutdown()
                     config.set("openvoice_enabled", False)
-                elif engine_id == "qwen3_tts":
+                elif engine_id == "supertonic3":
+                    from core.supertonic_tts import supertonic3_engine
+                    supertonic3_engine.unload()
+                elif engine_id in ("qwen3_tts", "zonos3_mini", "kokoro_82m", "pocket_tts"):
                     from core.llama_tts import shutdown_llama_tts
                     shutdown_llama_tts()
                 self._warmed_models = {item for item in self._warmed_models if item[0] != engine_id}
@@ -5200,9 +5355,9 @@ class TTSEngineManager(QObject):
                             time.sleep(0.1)
                 if eng_dir.exists():
                     shutil.rmtree(eng_dir, ignore_errors=True)
-            if engine_id == "qwen3_tts":
-                from core.llama_tts import LLAMA_TTS_DIR, is_qwen3_tts_installed
-                if not is_qwen3_tts_installed() and LLAMA_TTS_DIR.exists():
+            if engine_id in ("qwen3_tts", "zonos3_mini", "kokoro_82m", "pocket_tts"):
+                from core.llama_tts import LLAMA_TTS_DIR, is_any_llama_tts_installed
+                if not is_any_llama_tts_installed() and LLAMA_TTS_DIR.exists():
                     shutil.rmtree(LLAMA_TTS_DIR, ignore_errors=True)
 
             if self.is_engine_installed(engine_id):
@@ -5483,6 +5638,68 @@ class TTSEngineManager(QObject):
                         )
                 if str(config.get("active_engine", "") or "").strip() == "qwen3_tts":
                     warmup_qwen3_tts()
+            elif engine_id in ("zonos3_mini", "kokoro_82m", "pocket_tts"):
+                from core.llama_tts import (
+                    get_llama_engine_downloads,
+                    install_llama_tts_runtime,
+                    warmup_llama_tts,
+                )
+
+                px_dict = self._resolve_active_proxies_dict()
+                install_llama_tts_runtime(
+                    engine_id=engine_id,
+                    progress_cb=_emit_progress,
+                    download_fn=_dl_simple,
+                    cancel_check=_check_cancel,
+                    proxies=px_dict,
+                )
+                downloads = get_llama_engine_downloads(engine_id, lang=self._current_lang())
+                for idx, (url, dest_f, fname, bpct, spct) in enumerate(downloads, start=1):
+                    _check_cancel()
+                    dest_f.parent.mkdir(parents=True, exist_ok=True)
+                    if not dest_f.exists() or dest_f.stat().st_size == 0:
+                        _dl_simple(
+                            url,
+                            dest_f,
+                            engine_id,
+                            bpct,
+                            spct,
+                            tr(
+                                "tts.dl.file_progress",
+                                "Завантаження {fname} ({idx}/{total})...",
+                                fname=fname,
+                                idx=idx,
+                                total=len(downloads),
+                            ),
+                        )
+                if str(config.get("active_engine", "") or "").strip() == engine_id:
+                    warmup_llama_tts(engine_id, lang=self._current_lang())
+            elif engine_id == "supertonic3":
+                from core.supertonic_tts import SUPERTONIC3_DOWNLOAD_FILES
+
+                total_files = len(SUPERTONIC3_DOWNLOAD_FILES)
+                for idx, (rel_path, url) in enumerate(SUPERTONIC3_DOWNLOAD_FILES):
+                    _check_cancel()
+                    dest_f = eng_dir / rel_path
+                    dest_f.parent.mkdir(parents=True, exist_ok=True)
+                    if dest_f.exists() and dest_f.stat().st_size > 0:
+                        continue
+                    base_pct = int((idx / max(1, total_files)) * 96) + 2
+                    span_pct = max(1, int(96 / max(1, total_files)))
+                    _dl_simple(
+                        url,
+                        dest_f,
+                        engine_id,
+                        base_pct,
+                        span_pct,
+                        tr(
+                            "tts.dl.file_progress",
+                            "Завантаження {fname} ({idx}/{total})...",
+                            fname=Path(rel_path).name,
+                            idx=idx + 1,
+                            total=total_files,
+                        ),
+                    )
 
             _emit_progress(100, tr("tts.dl.installed", "Встановлено!"))
             self.model_status_changed.emit(engine_id, True)

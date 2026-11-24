@@ -1,0 +1,232 @@
+import json
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import numpy as np
+import soundfile as sf
+
+import core.llama_tts as llama_tts
+import core.supertonic_tts as supertonic_tts
+from core.tts_manager import ENGINE_SPECS, tts_manager
+
+
+class NewLocalTtsModelsTests(unittest.TestCase):
+    def test_visible_local_engines_include_new_models_for_supported_languages(self) -> None:
+        with patch.object(tts_manager, "_current_lang", return_value="en"):
+            en_ids = [item["id"] for item in tts_manager.get_visible_local_engines()]
+        self.assertIn("supertonic3", en_ids)
+        self.assertIn("kokoro_82m", en_ids)
+        self.assertIn("pocket_tts", en_ids)
+        self.assertIn("zonos3_mini", en_ids)
+        self.assertIn("qwen3_tts", en_ids)
+
+        with patch.object(tts_manager, "_current_lang", return_value="uk"):
+            uk_ids = [item["id"] for item in tts_manager.get_visible_local_engines()]
+        self.assertIn("supertonic3", uk_ids)
+        self.assertIn("zonos3_mini", uk_ids)
+        self.assertNotIn("kokoro_82m", uk_ids)
+        self.assertNotIn("pocket_tts", uk_ids)
+
+        with patch.object(tts_manager, "_current_lang", return_value="de"):
+            de_ids = [item["id"] for item in tts_manager.get_visible_local_engines()]
+        self.assertIn("supertonic3", de_ids)
+        self.assertIn("pocket_tts", de_ids)
+        self.assertIn("zonos3_mini", de_ids)
+        self.assertNotIn("kokoro_82m", de_ids)
+
+    def test_llama_engine_install_checks_and_downloads(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            rt = root / "llama_tts"
+            rt.mkdir()
+            z_dir = root / "zonos3_mini"
+            k_dir = root / "kokoro_82m"
+            p_dir = root / "pocket_tts"
+            q_dir = root / "qwen3_tts"
+            for d in (z_dir, k_dir, p_dir, q_dir):
+                d.mkdir()
+
+            with (
+                patch.object(llama_tts, "LLAMA_TTS_EXE", rt / "llama-tts.exe"),
+                patch.object(llama_tts, "LLAMA_TTS_SERVER_EXE", rt / "llama-server.exe"),
+                patch.object(llama_tts, "LLAMA_TTS_READY_MARKER", rt / "ready.marker"),
+                patch.object(llama_tts, "ZONOS3_DIR", z_dir),
+                patch.object(llama_tts, "KOKORO_DIR", k_dir),
+                patch.object(llama_tts, "POCKET_TTS_DIR", p_dir),
+                patch.object(llama_tts, "QWEN3_TTS_DIR", q_dir),
+            ):
+                (rt / "llama-tts.exe").write_bytes(b"exe")
+                (rt / "llama-server.exe").write_bytes(b"srv")
+                (rt / "ready.marker").write_text("vulkan-ok", encoding="utf-8")
+
+                self.assertFalse(llama_tts.is_any_llama_tts_installed())
+
+                (z_dir / llama_tts.ZONOS3_MODEL_FILE).write_bytes(b"z")
+                (z_dir / llama_tts.ZONOS3_MMPROJ_FILE).write_bytes(b"zm")
+                self.assertTrue(llama_tts.is_zonos3_installed())
+                self.assertTrue(llama_tts.is_any_llama_tts_installed())
+
+                (k_dir / llama_tts.KOKORO_MODEL_FILE).write_bytes(b"k")
+                (k_dir / llama_tts.KOKORO_MMPROJ_FILE).write_bytes(b"km")
+                self.assertTrue(llama_tts.is_kokoro_installed())
+
+                self.assertFalse(llama_tts.is_pocket_tts_installed("en"))
+                (p_dir / "pocket-tts-en.gguf").write_bytes(b"p")
+                (p_dir / "mmproj-pocket-tts-en.gguf").write_bytes(b"pm")
+                self.assertTrue(llama_tts.is_pocket_tts_installed("en"))
+                self.assertFalse(llama_tts.is_pocket_tts_installed("de"))
+
+                dl_z = llama_tts.get_llama_engine_downloads("zonos3_mini")
+                dl_k = llama_tts.get_llama_engine_downloads("kokoro_82m")
+                dl_p_de = llama_tts.get_llama_engine_downloads("pocket_tts", lang="de")
+                self.assertEqual(len(dl_z), 2)
+                self.assertEqual(len(dl_k), 2)
+                self.assertEqual(len(dl_p_de), 2)
+                self.assertIn("german/pocket-tts-german.gguf", dl_p_de[0][0])
+
+    def test_synthesize_llama_tts_for_kokoro_zonos3_and_pocket(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ref = root / "voice_ref.wav"
+            sf.write(str(ref), np.zeros(24000, dtype=np.float32), 24000)
+
+            pcm_44k = np.linspace(-0.2, 0.2, 4410, dtype=np.float32)
+            fake_resp_44k = MagicMock()
+            fake_resp_44k.status_code = 200
+            fake_resp_44k.headers = {"Content-Type": "audio/pcm;rate=44100;encoding=float;bits=32"}
+            fake_resp_44k.content = pcm_44k.astype("<f4").tobytes()
+
+            pcm_24k = np.linspace(-0.2, 0.2, 2400, dtype=np.float32)
+            fake_resp_24k = MagicMock()
+            fake_resp_24k.status_code = 200
+            fake_resp_24k.headers = {"Content-Type": "audio/pcm;rate=24000;encoding=float;bits=32"}
+            fake_resp_24k.content = pcm_24k.astype("<f4").tobytes()
+
+            # 1) ZONOS3 built-in voice (no ref)
+            cfg_no_ref = {"zonos3_mini_ref_path": "", "pocket_tts_ref_path": str(ref)}
+            with (
+                patch.object(llama_tts, "_REF_WAV_CACHE_DIR", root / "ref_cache"),
+                patch.object(llama_tts, "has_hardware_gpu", return_value=True),
+                patch.object(llama_tts._qwen3_server, "ensure_started", return_value=54330),
+                patch.object(llama_tts.config, "get", side_effect=lambda k, d=None: cfg_no_ref.get(k, d)),
+                patch.object(llama_tts._qwen3_server._session, "post", return_value=fake_resp_44k) as mock_post,
+            ):
+                audio, sr = llama_tts.synthesize_llama_tts(
+                    "zonos3_mini", "Hello world", lang="en", voice="Savannah_en-American_F_1"
+                )
+            self.assertEqual(sr, 44100)
+            self.assertEqual(len(audio), len(pcm_44k))
+            self.assertEqual(mock_post.call_args.kwargs["json"]["voice"], "Savannah_en-American_F_1")
+            self.assertEqual(mock_post.call_args.kwargs["json"]["lang"], "en")
+
+            # 2) Kokoro British voice -> en-gb, no n_predict
+            with (
+                patch.object(llama_tts, "has_hardware_gpu", return_value=False),
+                patch.object(llama_tts._qwen3_server, "ensure_started", return_value=54331),
+                patch.object(llama_tts._qwen3_server._session, "post", return_value=fake_resp_24k) as mock_post,
+            ):
+                audio_k, sr_k = llama_tts.synthesize_llama_tts(
+                    "kokoro_82m", "Hello there", lang="en", voice="bf_emma"
+                )
+            self.assertEqual(sr_k, 24000)
+            self.assertEqual(len(audio_k), len(pcm_24k))
+            self.assertEqual(mock_post.call_args.kwargs["json"]["voice"], "bf_emma")
+            self.assertEqual(mock_post.call_args.kwargs["json"]["lang"], "en-gb")
+            self.assertNotIn("n_predict", mock_post.call_args.kwargs["json"])
+
+            # 3) Pocket TTS Spanish strips leading inverted exclamation mark and sends speaker_ref
+            with (
+                patch.object(llama_tts, "_REF_WAV_CACHE_DIR", root / "ref_cache"),
+                patch.object(llama_tts, "has_hardware_gpu", return_value=False),
+                patch.object(llama_tts._qwen3_server, "ensure_started", return_value=54332),
+                patch.object(llama_tts.config, "get", side_effect=lambda k, d=None: cfg_no_ref.get(k, d)),
+                patch.object(llama_tts._qwen3_server._session, "post", return_value=fake_resp_24k) as mock_post,
+            ):
+                audio_p, sr_p = llama_tts.synthesize_llama_tts("pocket_tts", "¡Hola mundo!", lang="es")
+            self.assertEqual(sr_p, 24000)
+            self.assertEqual(len(audio_p), len(pcm_24k))
+            self.assertEqual(mock_post.call_args.kwargs["data"]["input"], "Hola mundo!")
+            self.assertIn("speaker_ref", mock_post.call_args.kwargs["files"])
+
+    def test_zonos3_stream_plan_resolves_speaker(self) -> None:
+        with (
+            patch.object(tts_manager, "is_engine_installed", side_effect=lambda eid: eid == "zonos3_mini"),
+            patch.object(tts_manager, "_current_lang", return_value="en"),
+        ):
+            plan = tts_manager._resolve_qwen3_stream_plan(
+                "Hello world", engine_override="zonos3_mini", voice_override="zonos3_en_imogen"
+            )
+        self.assertIsNotNone(plan)
+        assert plan is not None
+        self.assertEqual(plan["primary_id"], "zonos3_mini")
+        self.assertEqual(plan["speaker"], "Imogen_en-British_F_1")
+
+    def test_supertonic3_install_check_preprocess_and_synthesize(self) -> None:
+        self.assertEqual(
+            supertonic_tts.preprocess_supertonic_text("Привіт світ", "uk"),
+            "<uk>Привіт світ.</uk>",
+        )
+        self.assertEqual(
+            supertonic_tts.preprocess_supertonic_text("Hello world!", "xx"),
+            "<na>Hello world!</na>",
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            st_dir = Path(tmp) / "supertonic3"
+            onnx_dir = st_dir / "onnx"
+            styles_dir = st_dir / "voice_styles"
+            onnx_dir.mkdir(parents=True)
+            styles_dir.mkdir(parents=True)
+
+            with patch.object(supertonic_tts, "SUPERTONIC3_DIR", st_dir):
+                self.assertFalse(supertonic_tts.is_supertonic3_installed())
+
+                for fname in ("duration_predictor.onnx", "text_encoder.onnx", "vector_estimator.onnx", "vocoder.onnx"):
+                    (onnx_dir / fname).write_bytes(b"onnx")
+                (onnx_dir / "tts.json").write_text(
+                    json.dumps({"ae": {"sample_rate": 44100, "base_chunk_size": 512}, "ttl": {"latent_dim": 24, "chunk_compress_factor": 6}}),
+                    encoding="utf-8",
+                )
+                indexer = [i % 64 for i in range(256)]
+                (onnx_dir / "unicode_indexer.json").write_text(json.dumps(indexer), encoding="utf-8")
+                (styles_dir / "F1.json").write_text(
+                    json.dumps({
+                        "style_ttl": {"dims": [1, 2, 4], "data": [0.1] * 8},
+                        "style_dp": {"dims": [1, 2, 4], "data": [0.2] * 8},
+                    }),
+                    encoding="utf-8",
+                )
+                self.assertTrue(supertonic_tts.is_supertonic3_installed())
+
+                dp_sess = MagicMock()
+                dp_sess.run.return_value = [np.array([0.2], dtype=np.float32)]
+                enc_sess = MagicMock()
+                enc_sess.run.return_value = [np.zeros((1, 4, 8), dtype=np.float32)]
+                vec_sess = MagicMock()
+                vec_sess.run.side_effect = lambda _out, feeds: [feeds["noisy_latent"]]
+                voc_sess = MagicMock()
+                voc_sess.run.return_value = [np.ones((1, 10000), dtype=np.float32) * 0.25]
+
+                fake_ort = MagicMock()
+                fake_ort.SessionOptions.return_value = MagicMock()
+                fake_ort.InferenceSession.side_effect = [dp_sess, enc_sess, vec_sess, voc_sess]
+
+                eng = supertonic_tts.Supertonic3Engine()
+                with patch.dict("sys.modules", {"onnxruntime": fake_ort}):
+                    audio, sr = eng.synthesize("Hello test ☃", voice_name="F1", lang="en", total_step=2)
+
+                self.assertEqual(sr, 44100)
+                self.assertGreater(len(audio), 0)
+                self.assertEqual(vec_sess.run.call_count, 2)
+                eng.unload()
+
+    def test_engine_specs_contain_all_four_new_models(self) -> None:
+        for eid in ("supertonic3", "kokoro_82m", "pocket_tts", "zonos3_mini"):
+            self.assertIn(eid, ENGINE_SPECS)
+            self.assertGreater(len(ENGINE_SPECS[eid]["voices"]), 0)
+
+
+if __name__ == "__main__":
+    unittest.main()

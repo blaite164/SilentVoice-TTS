@@ -1347,5 +1347,11 @@
   "update.completed_status": "✅ Mis à jour vers v{version}",
   "update.completed_toast": "Mise à jour terminée avec succès ! Version v{version} installée.",
   "update.dlg.show_original_btn": "🌐 Afficher l'original",
-  "update.dlg.translate_btn": "🌐 Traduire"
+  "update.dlg.translate_btn": "🌐 Traduire",
+  "tts.size.supertonic3": "~380 Mo",
+  "tts.size.kokoro_82m": "~258 Mo",
+  "tts.size.pocket_tts": "~209–641 Mo",
+  "tts.size.zonos3_mini": "~1,9 Go",
+  "tts.title.zonos3_mini": "ZONOS3-Mini (GGUF) - avec clonage vocal",
+  "tts.title.pocket_tts": "Pocket TTS (GGUF) - avec clonage vocal"
 }

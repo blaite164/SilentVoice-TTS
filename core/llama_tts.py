@@ -31,14 +31,62 @@ from urllib3.connection import HTTPConnection
 
 from core.config import DATA_DIR, ENGINES_DIR, SAMPLES_DIR, config
 from core.i18n import tr
-from core.win_api import assign_process_to_kill_on_close_job, has_nvidia_gpu
+from core.win_api import assign_process_to_kill_on_close_job, has_hardware_gpu, has_nvidia_gpu
 
 LLAMA_TTS_DIR = ENGINES_DIR / "llama_tts"
 LLAMA_TTS_EXE = LLAMA_TTS_DIR / "llama-tts.exe"
 LLAMA_TTS_SERVER_EXE = LLAMA_TTS_DIR / "llama-server.exe"
 LLAMA_TTS_READY_MARKER = LLAMA_TTS_DIR / "ready.marker"
 
+LLAMA_TTS_ENGINE_IDS: Tuple[str, ...] = ("qwen3_tts", "zonos3_mini", "kokoro_82m", "pocket_tts")
+LLAMA_STREAMING_ENGINE_IDS: Tuple[str, ...] = ("qwen3_tts", "zonos3_mini")
+
 QWEN3_TTS_DIR = ENGINES_DIR / "qwen3_tts"
+
+# ZONOS3-Mini (ggml-org/ZONOS3-Mini-GGUF, 44.1 kHz, 43 languages, built-in voices + zero-shot cloning)
+ZONOS3_DIR = ENGINES_DIR / "zonos3_mini"
+ZONOS3_MODEL_FILE = "ZONOS3-Mini-Q8_0.gguf"
+ZONOS3_MMPROJ_FILE = "mmproj-ZONOS3-Mini-F32.gguf"
+ZONOS3_MODEL_URL = "https://huggingface.co/ggml-org/ZONOS3-Mini-GGUF/resolve/main/ZONOS3-Mini-Q8_0.gguf"
+ZONOS3_MMPROJ_URL = "https://huggingface.co/ggml-org/ZONOS3-Mini-GGUF/resolve/main/mmproj-ZONOS3-Mini-F32.gguf"
+ZONOS3_NORM_LANGS = frozenset(("en", "fr", "de", "es", "it", "pt", "ja", "zh", "cmn"))
+
+# Kokoro-82M (ggml-org/Kokoro-82M-GGUF, 24 kHz, English US/UK built-in voices, CPU/GPU)
+KOKORO_DIR = ENGINES_DIR / "kokoro_82m"
+KOKORO_MODEL_FILE = "Kokoro-82M-F32.gguf"
+KOKORO_MMPROJ_FILE = "mmproj-Kokoro-82M-F16.gguf"
+KOKORO_MODEL_URL = "https://huggingface.co/ggml-org/Kokoro-82M-GGUF/resolve/main/Kokoro-82M-F32.gguf"
+KOKORO_MMPROJ_URL = "https://huggingface.co/ggml-org/Kokoro-82M-GGUF/resolve/main/mmproj-Kokoro-82M-F16.gguf"
+
+# Pocket TTS (EryriLabs/pocket-tts-GGUF, 24 kHz, per-language EN/DE/ES/FR, CPU/GPU + zero-shot cloning)
+POCKET_TTS_DIR = ENGINES_DIR / "pocket_tts"
+POCKET_TTS_HF_BASE = "https://huggingface.co/EryriLabs/pocket-tts-GGUF/resolve/main"
+POCKET_TTS_LANG_FILES: Dict[str, Tuple[str, str, str, str]] = {
+    "en": (
+        "pocket-tts-en.gguf",
+        f"{POCKET_TTS_HF_BASE}/pocket-tts-en.gguf",
+        "mmproj-pocket-tts-en.gguf",
+        f"{POCKET_TTS_HF_BASE}/mmproj-pocket-tts-en.gguf",
+    ),
+    "de": (
+        "pocket-tts-german.gguf",
+        f"{POCKET_TTS_HF_BASE}/german/pocket-tts-german.gguf",
+        "mmproj-pocket-tts-german.gguf",
+        f"{POCKET_TTS_HF_BASE}/german/mmproj-pocket-tts-german.gguf",
+    ),
+    "es": (
+        "pocket-tts-spanish.gguf",
+        f"{POCKET_TTS_HF_BASE}/spanish/pocket-tts-spanish.gguf",
+        "mmproj-pocket-tts-spanish.gguf",
+        f"{POCKET_TTS_HF_BASE}/spanish/mmproj-pocket-tts-spanish.gguf",
+    ),
+    "fr": (
+        "pocket-tts-french.gguf",
+        f"{POCKET_TTS_HF_BASE}/french/pocket-tts-french.gguf",
+        "mmproj-pocket-tts-french.gguf",
+        f"{POCKET_TTS_HF_BASE}/french/mmproj-pocket-tts-french.gguf",
+    ),
+}
 QWEN3_QUANT_SPECS: Dict[str, Dict[str, str]] = {
     "q8": {
         "id": "q8",
@@ -167,6 +215,84 @@ def is_qwen3_tts_installed() -> bool:
         and find_installed_qwen3_model_file() is not None
         and (QWEN3_TTS_DIR / QWEN3_MMPROJ_FILE).is_file()
     )
+
+
+def is_zonos3_installed() -> bool:
+    return (
+        is_runtime_installed()
+        and (ZONOS3_DIR / ZONOS3_MODEL_FILE).is_file()
+        and (ZONOS3_DIR / ZONOS3_MMPROJ_FILE).is_file()
+    )
+
+
+def is_kokoro_installed() -> bool:
+    return (
+        is_runtime_installed()
+        and (KOKORO_DIR / KOKORO_MODEL_FILE).is_file()
+        and (KOKORO_DIR / KOKORO_MMPROJ_FILE).is_file()
+    )
+
+
+def _normalize_pocket_lang(lang: Optional[str] = None) -> str:
+    raw = str(lang if lang is not None else config.get("app_language", "en") or "en").strip().lower()
+    return raw if raw in POCKET_TTS_LANG_FILES else "en"
+
+
+def is_pocket_tts_installed(lang: Optional[str] = None) -> bool:
+    if not is_runtime_installed():
+        return False
+    code = _normalize_pocket_lang(lang)
+    m_file, _, mm_file, _ = POCKET_TTS_LANG_FILES[code]
+    return (POCKET_TTS_DIR / m_file).is_file() and (POCKET_TTS_DIR / mm_file).is_file()
+
+
+def is_llama_engine_installed(engine_id: str, lang: Optional[str] = None) -> bool:
+    eid = str(engine_id or "").strip()
+    if eid == "qwen3_tts":
+        return is_qwen3_tts_installed()
+    if eid == "zonos3_mini":
+        return is_zonos3_installed()
+    if eid == "kokoro_82m":
+        return is_kokoro_installed()
+    if eid == "pocket_tts":
+        return is_pocket_tts_installed(lang=lang)
+    return False
+
+
+def is_any_llama_tts_installed() -> bool:
+    if is_qwen3_tts_installed() or is_zonos3_installed() or is_kokoro_installed():
+        return True
+    for code in POCKET_TTS_LANG_FILES:
+        if is_pocket_tts_installed(code):
+            return True
+    return False
+
+
+def get_llama_engine_downloads(engine_id: str, lang: Optional[str] = None) -> list[Tuple[str, Path, str, int, int]]:
+    """Повертає список файлів (url, dest_path, fname, base_pct, span_pct) для завантаження GGUF-рушія."""
+    eid = str(engine_id or "").strip()
+    if eid == "zonos3_mini":
+        return [
+            (ZONOS3_MODEL_URL, ZONOS3_DIR / ZONOS3_MODEL_FILE, ZONOS3_MODEL_FILE, 25, 35),
+            (ZONOS3_MMPROJ_URL, ZONOS3_DIR / ZONOS3_MMPROJ_FILE, ZONOS3_MMPROJ_FILE, 60, 39),
+        ]
+    if eid == "kokoro_82m":
+        return [
+            (KOKORO_MODEL_URL, KOKORO_DIR / KOKORO_MODEL_FILE, KOKORO_MODEL_FILE, 25, 25),
+            (KOKORO_MMPROJ_URL, KOKORO_DIR / KOKORO_MMPROJ_FILE, KOKORO_MMPROJ_FILE, 50, 49),
+        ]
+    if eid == "pocket_tts":
+        code = _normalize_pocket_lang(lang)
+        m_file, m_url, mm_file, mm_url = POCKET_TTS_LANG_FILES[code]
+        return [
+            (m_url, POCKET_TTS_DIR / m_file, m_file, 25, 50),
+            (mm_url, POCKET_TTS_DIR / mm_file, mm_file, 75, 24),
+        ]
+    q_spec = get_qwen3_model_spec()
+    return [
+        (q_spec["url"], QWEN3_TTS_DIR / q_spec["file"], q_spec["file"], 25, 45),
+        (QWEN3_MMPROJ_URL, QWEN3_TTS_DIR / QWEN3_MMPROJ_FILE, QWEN3_MMPROJ_FILE, 70, 29),
+    ]
 
 
 def resolve_llama_cpp_cuda_asset_urls(
@@ -610,7 +736,8 @@ class _Qwen3ServerManager:
     def _is_qwen3_selected_in_config(self) -> bool:
         active = str(config.get("active_engine", "") or "").strip()
         fallback = str(config.get("fallback_engine", "") or "").strip()
-        return active == "qwen3_tts" or fallback == "qwen3_tts"
+        cur_eng = self._engine_id or "qwen3_tts"
+        return active == cur_eng or fallback == cur_eng
 
     def _on_idle_timeout(self) -> None:
         if self._is_qwen3_selected_in_config():
@@ -699,19 +826,46 @@ class _Qwen3ServerManager:
             time.sleep(0.15)
         raise RuntimeError("Timed out waiting for Qwen3-TTS server startup")
 
-    def ensure_started(self, device_mode: str, engine_id: Optional[str] = None) -> int:
+    @staticmethod
+    def _resolve_engine_files(eng_id: str, lang: str = "") -> Tuple[Path, Path, str]:
+        if eng_id == "zonos3_mini":
+            if not is_zonos3_installed():
+                raise RuntimeError(
+                    tr("tts.err.model_not_installed", "Модель {name} не встановлена. Натисніть «Встановити» у списку локальних TTS.", name="ZONOS3-Mini")
+                )
+            return ZONOS3_DIR / ZONOS3_MODEL_FILE, ZONOS3_DIR / ZONOS3_MMPROJ_FILE, "ZONOS3-Mini"
+        if eng_id == "kokoro_82m":
+            if not is_kokoro_installed():
+                raise RuntimeError(
+                    tr("tts.err.model_not_installed", "Модель {name} не встановлена. Натисніть «Встановити» у списку локальних TTS.", name="Kokoro-82M")
+                )
+            return KOKORO_DIR / KOKORO_MODEL_FILE, KOKORO_DIR / KOKORO_MMPROJ_FILE, "Kokoro-82M"
+        if eng_id == "pocket_tts":
+            code = _normalize_pocket_lang(lang)
+            if not is_pocket_tts_installed(code):
+                raise RuntimeError(
+                    tr("tts.err.model_not_installed", "Модель {name} не встановлена. Натисніть «Встановити» у списку локальних TTS.", name="Pocket TTS")
+                )
+            m_file, _, mm_file, _ = POCKET_TTS_LANG_FILES[code]
+            return POCKET_TTS_DIR / m_file, POCKET_TTS_DIR / mm_file, "Pocket TTS"
+        if not is_qwen3_tts_installed():
+            raise RuntimeError(
+                tr("tts.err.model_not_installed", "Модель {name} не встановлена. Натисніть «Встановити» у списку локальних TTS.", name="Qwen3-TTS")
+            )
+        model_path = find_installed_qwen3_model_file() or (QWEN3_TTS_DIR / QWEN3_MODEL_FILE)
+        return model_path, QWEN3_TTS_DIR / QWEN3_MMPROJ_FILE, "Qwen3-TTS"
+
+    def ensure_started(self, device_mode: str, engine_id: Optional[str] = None, lang: str = "") -> int:
         with self._startup_lock:
             with self._lock:
-                eng_id = "qwen3_tts"
-                if not is_qwen3_tts_installed():
-                    raise RuntimeError(tr("tts.err.model_not_installed", "Модель {name} не встановлена. Натисніть «Встановити» у списку локальних TTS.", name="Qwen3-TTS"))
-                model_path = find_installed_qwen3_model_file() or (QWEN3_TTS_DIR / QWEN3_MODEL_FILE)
-                mmproj_path = QWEN3_TTS_DIR / QWEN3_MMPROJ_FILE
+                eng_id = str(engine_id or self._target_engine_id or "qwen3_tts").strip() or "qwen3_tts"
+                model_path, mmproj_path, _title = self._resolve_engine_files(eng_id, lang=lang)
+                eff_device = "cpu" if (device_mode == "cpu" or (eng_id in ("kokoro_82m", "pocket_tts") and not has_hardware_gpu())) else "gpu"
 
                 if (
                     self._proc is not None
                     and self._proc.poll() is None
-                    and self._device_mode == device_mode
+                    and self._device_mode == eff_device
                     and self._engine_id == eng_id
                     and self._model_path == str(model_path)
                     and self._port > 0
@@ -720,7 +874,7 @@ class _Qwen3ServerManager:
                 self.stop(_bump_cancel=False)
                 self._stderr_tail.clear()
                 port = _pick_free_port()
-                ngl = "99"
+                ngl = "0" if eff_device == "cpu" else "99"
                 threads = str(max(2, (os.cpu_count() or 8) // 2))
                 cmd = [
                     str(LLAMA_TTS_SERVER_EXE),
@@ -744,11 +898,11 @@ class _Qwen3ServerManager:
                 assign_process_to_kill_on_close_job(proc)
                 self._proc = proc
                 self._port = 0
-                self._device_mode = device_mode
+                self._device_mode = eff_device
                 self._engine_id = eng_id
                 self._model_path = str(model_path)
                 my_gen = self._start_gen
-                threading.Thread(target=self._drain_stderr, args=(proc,), daemon=True, name="Qwen3StderrDrain").start()
+                threading.Thread(target=self._drain_stderr, args=(proc,), daemon=True, name="LlamaTTSStderrDrain").start()
 
             try:
                 self._wait_ready(proc, port, timeout=90.0, start_gen=my_gen)
@@ -771,7 +925,7 @@ class _Qwen3ServerManager:
                         proc.kill()
                     except Exception:
                         pass
-                    raise RuntimeError("Qwen3-TTS server stopped during startup")
+                    raise RuntimeError("Llama-TTS server stopped during startup")
                 self._port = port
                 self._warmed_port = 0
                 self._reset_idle_timer()
@@ -792,19 +946,26 @@ class _Qwen3ServerManager:
         ref_wav: Optional[Path],
         ref_text: str,
         *,
-        n_predict: int,
+        n_predict: Optional[int],
         stream: bool,
+        voice: str = "",
+        use_lang: bool = True,
     ) -> Dict[str, Any]:
         clean_ref_text = str(ref_text or "").strip()
+        clean_voice = str(voice or "").strip()
         if ref_wav is not None and ref_wav.is_file():
             wav_bytes = self._get_ref_wav_bytes(ref_wav)
             form_data: Dict[str, str] = {
                 "input": text,
-                "lang": lang,
                 "response_format": "pcm",
-                "n_predict": str(int(n_predict)),
                 "stream": "true" if stream else "false",
             }
+            if use_lang and lang:
+                form_data["lang"] = lang
+            if clean_voice:
+                form_data["voice"] = clean_voice
+            if n_predict is not None:
+                form_data["n_predict"] = str(int(n_predict))
             if clean_ref_text:
                 form_data["speaker_ref_text"] = clean_ref_text
             return {
@@ -813,11 +974,15 @@ class _Qwen3ServerManager:
             }
         payload: Dict[str, Any] = {
             "input": text,
-            "lang": lang,
             "response_format": "pcm",
-            "n_predict": int(n_predict),
             "stream": bool(stream),
         }
+        if use_lang and lang:
+            payload["lang"] = lang
+        if clean_voice:
+            payload["voice"] = clean_voice
+        if n_predict is not None:
+            payload["n_predict"] = int(n_predict)
         return {"json": payload}
 
     def _is_cancelled(self, my_cancel_gen: int) -> bool:
@@ -831,8 +996,11 @@ class _Qwen3ServerManager:
         ref_wav: Optional[Path],
         lang: str,
         ref_text: str = "",
+        voice: str = "",
+        use_lang: bool = True,
+        n_predict: Optional[int] = 2,
     ) -> bool:
-        """Run a tiny 2-frame silent /tts request to compile GPU shaders/graphs before first phrase."""
+        """Run a tiny warmup /tts request to compile GPU shaders/graphs before first phrase."""
         if port <= 0:
             return False
         with self._req_lock:
@@ -848,8 +1016,10 @@ class _Qwen3ServerManager:
                 lang,
                 ref_wav,
                 ref_text,
-                n_predict=2,
+                n_predict=n_predict,
                 stream=False,
+                voice=voice,
+                use_lang=use_lang,
             )
             resp = self._session.post(
                 f"http://127.0.0.1:{port}/tts",
@@ -884,6 +1054,11 @@ class _Qwen3ServerManager:
         ref_text: str,
         device_mode: str,
         engine_id: str = "qwen3_tts",
+        *,
+        voice: str = "",
+        use_lang: bool = True,
+        include_n_predict: bool = True,
+        n_predict_fps: float = 12.5,
     ) -> Tuple[np.ndarray, int]:
         self.cancel_active(only_warmup=True)
         with self._req_lock:
@@ -894,13 +1069,17 @@ class _Qwen3ServerManager:
         try:
             self._target_engine_id = engine_id
             try:
-                port = self.ensure_started(device_mode)
+                port = self.ensure_started(device_mode) if engine_id == "qwen3_tts" else self.ensure_started(device_mode, engine_id=engine_id, lang=lang)
             finally:
                 self._target_engine_id = "qwen3_tts"
             if self._is_cancelled(my_cancel_gen):
-                raise Qwen3SynthesisCancelledError("Qwen3-TTS synthesis cancelled")
+                raise Qwen3SynthesisCancelledError("Llama-TTS synthesis cancelled")
 
-            n_predict = estimate_qwen3_n_predict(text, ref_text=ref_text, ctx_size=QWEN3_CTX_SIZE)
+            n_predict: Optional[int] = None
+            if include_n_predict:
+                scale = max(1.0, float(n_predict_fps) / 12.5)
+                base_n = estimate_qwen3_n_predict(text, ref_text=ref_text, ctx_size=QWEN3_CTX_SIZE)
+                n_predict = base_n if abs(scale - 1.0) < 0.01 else min(1400, int(math.ceil(base_n * scale)))
             req_kwargs = self._build_tts_request_kwargs(
                 text,
                 lang,
@@ -908,6 +1087,8 @@ class _Qwen3ServerManager:
                 ref_text,
                 n_predict=n_predict,
                 stream=False,
+                voice=voice,
+                use_lang=use_lang,
             )
             self._req_local.active = True
             self._req_local.is_warmup = False
@@ -919,15 +1100,15 @@ class _Qwen3ServerManager:
                 )
             except Exception as exc:
                 if self._is_cancelled(my_cancel_gen):
-                    raise Qwen3SynthesisCancelledError("Qwen3-TTS synthesis cancelled") from exc
+                    raise Qwen3SynthesisCancelledError("Llama-TTS synthesis cancelled") from exc
                 raise
 
             with self._req_lock:
                 self._active_responses[tid] = (resp, False)
             if self._is_cancelled(my_cancel_gen):
-                raise Qwen3SynthesisCancelledError("Qwen3-TTS synthesis cancelled")
+                raise Qwen3SynthesisCancelledError("Llama-TTS synthesis cancelled")
             if resp.status_code != 200:
-                raise RuntimeError(f"Qwen3-TTS server error ({resp.status_code}): {resp.text[:300]}")
+                raise RuntimeError(f"Llama-TTS server error ({resp.status_code}): {resp.text[:300]}")
             with self._req_lock:
                 self._warmed_port = port
             headers = getattr(resp, "headers", None)
@@ -954,6 +1135,11 @@ class _Qwen3ServerManager:
         ref_text: str,
         device_mode: str,
         engine_id: str = "qwen3_tts",
+        *,
+        voice: str = "",
+        use_lang: bool = True,
+        include_n_predict: bool = True,
+        n_predict_fps: float = 12.5,
     ) -> Iterator[Tuple[np.ndarray, int]]:
         """Stream raw float32 PCM audio chunks from llama-server /tts as soon as frames decode."""
         self.cancel_active(only_warmup=True)
@@ -965,13 +1151,17 @@ class _Qwen3ServerManager:
         try:
             self._target_engine_id = engine_id
             try:
-                port = self.ensure_started(device_mode)
+                port = self.ensure_started(device_mode) if engine_id == "qwen3_tts" else self.ensure_started(device_mode, engine_id=engine_id, lang=lang)
             finally:
                 self._target_engine_id = "qwen3_tts"
             if self._is_cancelled(my_cancel_gen):
-                raise Qwen3SynthesisCancelledError("Qwen3-TTS synthesis cancelled")
+                raise Qwen3SynthesisCancelledError("Llama-TTS synthesis cancelled")
 
-            n_predict = estimate_qwen3_n_predict(text, ref_text=ref_text, ctx_size=QWEN3_CTX_SIZE)
+            n_predict: Optional[int] = None
+            if include_n_predict:
+                scale = max(1.0, float(n_predict_fps) / 12.5)
+                base_n = estimate_qwen3_n_predict(text, ref_text=ref_text, ctx_size=QWEN3_CTX_SIZE)
+                n_predict = base_n if abs(scale - 1.0) < 0.01 else min(1400, int(math.ceil(base_n * scale)))
             req_kwargs = self._build_tts_request_kwargs(
                 text,
                 lang,
@@ -979,6 +1169,8 @@ class _Qwen3ServerManager:
                 ref_text,
                 n_predict=n_predict,
                 stream=True,
+                voice=voice,
+                use_lang=use_lang,
             )
             self._req_local.active = True
             self._req_local.is_warmup = False
@@ -1155,3 +1347,148 @@ def synthesize_qwen3_tts_stream(
     ref_wav, ref_text = _resolve_qwen3_reference(lang)
     lang_code = str(lang or "en").strip().lower()
     yield from _qwen3_server.synthesize_stream(text, lang_code, ref_wav, ref_text, "gpu")
+
+
+def is_llama_server_running() -> bool:
+    return _qwen3_server.is_running()
+
+
+def _resolve_optional_ref_wav(engine_id: str, lang: str, fallback_to_default_sample: bool = False) -> Optional[Path]:
+    ref_raw = str(config.get(f"{engine_id}_ref_path", "") or "").strip()
+    if ref_raw and Path(ref_raw).is_file():
+        return prepare_reference_wav(Path(ref_raw))
+    if fallback_to_default_sample:
+        sample = _resolve_default_sample_for_lang(lang)
+        if sample is not None:
+            return prepare_reference_wav(sample)
+    return None
+
+
+def _resolve_llama_call_params(
+    engine_id: str,
+    text: str,
+    lang: str,
+    voice: str,
+) -> Tuple[str, str, Optional[Path], str, str, bool, bool, float]:
+    """Повертає (clean_text, req_lang, ref_wav, req_voice, device_mode, use_lang, include_n_predict, fps)."""
+    eid = str(engine_id or "").strip()
+    clean_text = str(text or "").strip()
+    lang_code = str(lang or "en").strip().lower() or "en"
+    clean_voice = str(voice or "").strip()
+
+    if eid == "zonos3_mini":
+        ref_wav = _resolve_optional_ref_wav("zonos3_mini", lang_code, fallback_to_default_sample=False)
+        req_voice = "" if ref_wav is not None else clean_voice
+        req_lang = lang_code if lang_code in ZONOS3_NORM_LANGS else ""
+        return clean_text, req_lang, ref_wav, req_voice, "gpu", bool(req_lang), True, 15.0
+
+    if eid == "kokoro_82m":
+        # У Kokoro 'b*' — British English (en-gb), 'a*' — American English (en-us)
+        req_voice = clean_voice or "af_heart"
+        req_lang = "en-gb" if req_voice.startswith("b") else "en-us"
+        dev = "gpu" if has_hardware_gpu() else "cpu"
+        return clean_text, req_lang, None, req_voice, dev, True, False, 12.5
+
+    if eid == "pocket_tts":
+        pocket_lang = _normalize_pocket_lang(lang_code)
+        # Як зазначено у EryriLabs/pocket-tts-GGUF README: для іспанської початковий '¡' може обривати генерацію
+        if pocket_lang == "es":
+            clean_text = clean_text.lstrip("¡").strip() or clean_text
+        ref_wav = _resolve_optional_ref_wav("pocket_tts", pocket_lang, fallback_to_default_sample=True)
+        dev = "gpu" if has_hardware_gpu() else "cpu"
+        return clean_text, pocket_lang, ref_wav, "", dev, False, True, 12.5
+
+    raise RuntimeError(f"Unsupported llama.cpp TTS engine: {eid}")
+
+
+def warmup_llama_tts(engine_id: str, lang: str = "", voice: str = "") -> None:
+    eid = str(engine_id or "").strip()
+    if eid == "qwen3_tts":
+        warmup_qwen3_tts()
+        return
+    eff_lang = str(lang or config.get("app_language", "en") or "en").strip().lower() or "en"
+    if not is_llama_engine_installed(eid, lang=eff_lang):
+        return
+    try:
+        _, req_lang, ref_wav, req_voice, dev, use_lang, include_n_predict, _ = _resolve_llama_call_params(
+            eid, "a.", eff_lang, voice
+        )
+        port = _qwen3_server.ensure_started(dev, engine_id=eid, lang=eff_lang)
+        _qwen3_server.warmup_inference(
+            port=port,
+            ref_wav=ref_wav,
+            lang=req_lang,
+            ref_text="",
+            voice=req_voice,
+            use_lang=use_lang,
+            n_predict=2 if include_n_predict else None,
+        )
+    except Exception:
+        pass
+
+
+def synthesize_llama_tts(
+    engine_id: str,
+    text: str,
+    lang: str = "en",
+    voice: str = "",
+    speed: float = 1.0,
+) -> Tuple[np.ndarray, int]:
+    eid = str(engine_id or "").strip()
+    if eid == "qwen3_tts":
+        return synthesize_qwen3_tts(text, lang=lang, speed=speed)
+
+    clean_text, req_lang, ref_wav, req_voice, dev, use_lang, include_n_predict, fps = _resolve_llama_call_params(
+        eid, text, lang, voice
+    )
+    samples, sr = _qwen3_server.synthesize(
+        clean_text,
+        req_lang or lang,
+        ref_wav,
+        "",
+        dev,
+        engine_id=eid,
+        voice=req_voice,
+        use_lang=use_lang,
+        include_n_predict=include_n_predict,
+        n_predict_fps=fps,
+    )
+    if abs(speed - 1.0) > 0.04 and len(samples) > 100:
+        from scipy.signal import resample
+
+        new_len = max(1, int(len(samples) / speed))
+        samples = resample(samples, new_len).astype(np.float32)
+    return samples, sr
+
+
+def synthesize_llama_tts_stream(
+    engine_id: str,
+    text: str,
+    lang: str = "en",
+    voice: str = "",
+    speed: float = 1.0,
+) -> Iterator[Tuple[np.ndarray, int]]:
+    eid = str(engine_id or "").strip()
+    if eid == "qwen3_tts":
+        yield from synthesize_qwen3_tts_stream(text, lang=lang, speed=speed)
+        return
+    if abs(speed - 1.0) > 0.04:
+        samples, sr = synthesize_llama_tts(eid, text, lang=lang, voice=voice, speed=speed)
+        if len(samples) > 0:
+            yield samples, sr
+        return
+    clean_text, req_lang, ref_wav, req_voice, dev, use_lang, include_n_predict, fps = _resolve_llama_call_params(
+        eid, text, lang, voice
+    )
+    yield from _qwen3_server.synthesize_stream(
+        clean_text,
+        req_lang or lang,
+        ref_wav,
+        "",
+        dev,
+        engine_id=eid,
+        voice=req_voice,
+        use_lang=use_lang,
+        include_n_predict=include_n_predict,
+        n_predict_fps=fps,
+    )
