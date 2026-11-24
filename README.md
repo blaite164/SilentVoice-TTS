@@ -5,7 +5,7 @@
 **Type to speak — naturally, instantly, and without touching a microphone.**
 
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010%2F11-0078D6?style=for-the-badge&logo=windows&logoColor=white)](#system-requirements)
-[![TTS](https://img.shields.io/badge/TTS-Local%20%26%20Cloud%20AI-8A2BE2?style=for-the-badge)](#voice--tts-engine)
+[![TTS](https://img.shields.io/badge/TTS-Local%20%26%20Cloud%20AI-8A2BE2?style=for-the-badge)](#%EF%B8%8F-voice--tts-engine)
 [![OBS Ready](https://img.shields.io/badge/OBS-Lip--Sync%20Subtitles-302E31?style=for-the-badge&logo=obsstudio&logoColor=white)](#obs-subtitles--lip-sync)
 [![Audio](https://img.shields.io/badge/Audio-Virtual%20Cable%20%26%20VBAN-2EA44F?style=for-the-badge)](#audio-routing--system)
 
