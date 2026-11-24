@@ -4,10 +4,10 @@
 
 **Печатай, чтобы говорить — естественно, мгновенно и без микрофона.**
 
-[![Платформа](https://img.shields.io/badge/Платформа-Windows%2010%2F11-0078D6?style=for-the-badge&logo=windows&logoColor=white)](#системные-требования)
-[![TTS](https://img.shields.io/badge/TTS-Локальные%20и%20Облачные%20AI-8A2BE2?style=for-the-badge)](#голос-и-озвучка)
-[![OBS](https://img.shields.io/badge/OBS-Субтитры%20с%20липсингом-302E31?style=for-the-badge&logo=obsstudio&logoColor=white)](#субтитры-obs-с-липсингом)
-[![Звук](https://img.shields.io/badge/Звук-Virtual%20Cable%20%26%20VBAN-2EA44F?style=for-the-badge)](#звук-и-система)
+[![Платформа](https://img.shields.io/badge/Платформа-Windows%2010%2F11-0078D6?style=for-the-badge&logo=windows&logoColor=white)](#-системные-требования)
+[![TTS](https://img.shields.io/badge/TTS-Локальные%20и%20Облачные%20AI-8A2BE2?style=for-the-badge)](#%EF%B8%8F-голос-и-озвучка)
+[![OBS](https://img.shields.io/badge/OBS-Субтитры%20с%20липсингом-302E31?style=for-the-badge&logo=obsstudio&logoColor=white)](#-субтитры-obs-с-липсингом)
+[![Звук](https://img.shields.io/badge/Звук-Virtual%20Cable%20%26%20VBAN-2EA44F?style=for-the-badge)](#-звук-и-система)
 
 🌐 **Язык:** [English](README.md) | [Українська](README.uk.md) | **Русский**
 
