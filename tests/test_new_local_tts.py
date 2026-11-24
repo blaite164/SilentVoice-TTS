@@ -110,7 +110,7 @@ class NewLocalTtsModelsTests(unittest.TestCase):
             fake_resp_32k.headers = {"Content-Type": "audio/pcm;rate=32000;encoding=float;bits=32"}
             fake_resp_32k.content = pcm_32k.astype("<f4").tobytes()
 
-            # 1) ZONOS3 built-in voice (no ref)
+            # 1) ZONOS3 built-in voice (no ref) + native speed
             cfg_no_ref = {"zonos3_mini_ref_path": ""}
             with (
                 patch.object(llama_tts, "_REF_WAV_CACHE_DIR", root / "ref_cache"),
@@ -120,12 +120,34 @@ class NewLocalTtsModelsTests(unittest.TestCase):
                 patch.object(llama_tts._qwen3_server._session, "post", return_value=fake_resp_44k) as mock_post,
             ):
                 audio, sr = llama_tts.synthesize_llama_tts(
-                    "zonos3_mini", "Hello world", lang="en", voice="Savannah_en-American_F_1"
+                    "zonos3_mini", "Hello world", lang="en", voice="Savannah_en-American_F_1", speed=1.15
                 )
             self.assertEqual(sr, 44100)
             self.assertEqual(len(audio), len(pcm_44k))
             self.assertEqual(mock_post.call_args.kwargs["json"]["voice"], "Savannah_en-American_F_1")
             self.assertEqual(mock_post.call_args.kwargs["json"]["lang"], "en")
+            self.assertAlmostEqual(mock_post.call_args.kwargs["json"]["speed"], 1.15, places=2)
+
+            # 1b) ZONOS3 cloning: sends direct 16kHz ref WAV and preserves lang="uk" (no EN number normalization)
+            ref_44k = root / "ref_44k.wav"
+            sf.write(str(ref_44k), np.zeros(44100, dtype=np.float32), 44100)
+            cfg_with_ref = {"zonos3_mini_ref_path": str(ref_44k)}
+            with (
+                patch.object(llama_tts, "_REF_WAV_CACHE_DIR", root / "ref_cache"),
+                patch.object(llama_tts, "has_hardware_gpu", return_value=True),
+                patch.object(llama_tts._qwen3_server, "ensure_started", return_value=54330),
+                patch.object(llama_tts.config, "get", side_effect=lambda k, d=None: cfg_with_ref.get(k, d)),
+                patch.object(llama_tts._qwen3_server._session, "post", return_value=fake_resp_44k) as mock_post,
+            ):
+                audio_u, sr_u = llama_tts.synthesize_llama_tts("zonos3_mini", "У 2026 році", lang="uk")
+            self.assertEqual(sr_u, 44100)
+            self.assertEqual(len(audio_u), len(pcm_44k))
+            self.assertEqual(mock_post.call_args.kwargs["data"]["lang"], "uk")
+            self.assertNotIn("speed", mock_post.call_args.kwargs["data"])
+            sent_ref_bytes = mock_post.call_args.kwargs["files"]["speaker_ref"][1]
+            import io
+            _, sent_sr = sf.read(io.BytesIO(sent_ref_bytes), dtype="float32")
+            self.assertEqual(sent_sr, 16000)
 
             # 2) Kokoro British voice -> en-gb, no n_predict
             with (

@@ -50,6 +50,7 @@ ZONOS3_MMPROJ_FILE = "mmproj-ZONOS3-Mini-F32.gguf"
 ZONOS3_MODEL_URL = "https://huggingface.co/ggml-org/ZONOS3-Mini-GGUF/resolve/main/ZONOS3-Mini-Q8_0.gguf"
 ZONOS3_MMPROJ_URL = "https://huggingface.co/ggml-org/ZONOS3-Mini-GGUF/resolve/main/mmproj-ZONOS3-Mini-F32.gguf"
 ZONOS3_NORM_LANGS = frozenset(("en", "fr", "de", "es", "it", "pt", "ja", "zh", "cmn"))
+ZONOS3_REF_SR = 16000
 
 # Kokoro-82M (ggml-org/Kokoro-82M-GGUF, 24 kHz, English US/UK built-in voices, CPU/GPU)
 KOKORO_DIR = ENGINES_DIR / "kokoro_82m"
@@ -421,13 +422,15 @@ def install_llama_tts_runtime(
     LLAMA_TTS_READY_MARKER.write_text(marker_value, encoding="utf-8")
 
 
-def prepare_reference_wav(audio_path: Path) -> Path:
-    """Ensure any reference audio (.wav/.mp3/.ogg/.flac) is stored as mono 24 kHz 16-bit WAV <= 20s."""
+def prepare_reference_wav(audio_path: Path, *, target_sr: int = QWEN3_NATIVE_SR) -> Path:
+    """Ensure any reference audio (.wav/.mp3/.ogg/.flac) is stored as mono 16-bit WAV <= 20s at target_sr."""
     if not audio_path.is_file():
         raise FileNotFoundError(f"Reference audio not found: {audio_path}")
+    dst_sr = max(8000, int(target_sr))
+    sr_tag = f"{dst_sr // 1000}k" if dst_sr % 1000 == 0 else str(dst_sr)
     st = audio_path.stat()
     digest = hashlib.sha256(
-        f"{audio_path.resolve()}|{st.st_mtime_ns}|{st.st_size}|20s|24k".encode("utf-8")
+        f"{audio_path.resolve()}|{st.st_mtime_ns}|{st.st_size}|20s|{sr_tag}".encode("utf-8")
     ).hexdigest()[:16]
     _REF_WAV_CACHE_DIR.mkdir(parents=True, exist_ok=True)
     cached_wav = _REF_WAV_CACHE_DIR / f"ref_{digest}.wav"
@@ -443,12 +446,12 @@ def prepare_reference_wav(audio_path: Path) -> Path:
     if len(arr) > max_samples:
         arr = arr[:max_samples]
     out_sr = src_sr
-    if src_sr != QWEN3_NATIVE_SR and len(arr) > 0:
+    if src_sr != dst_sr and len(arr) > 0:
         from scipy.signal import resample_poly
 
-        g = math.gcd(src_sr, QWEN3_NATIVE_SR)
-        arr = resample_poly(arr, QWEN3_NATIVE_SR // g, src_sr // g).astype(np.float32, copy=False)
-        out_sr = QWEN3_NATIVE_SR
+        g = math.gcd(src_sr, dst_sr)
+        arr = resample_poly(arr, dst_sr // g, src_sr // g).astype(np.float32, copy=False)
+        out_sr = dst_sr
     peak = float(np.max(np.abs(arr))) if len(arr) else 0.0
     if peak > 0.98:
         arr = arr * (0.95 / peak)
@@ -910,9 +913,11 @@ class _Qwen3ServerManager:
         stream: bool,
         voice: str = "",
         use_lang: bool = True,
+        speed: Optional[float] = None,
     ) -> Dict[str, Any]:
         clean_ref_text = str(ref_text or "").strip()
         clean_voice = str(voice or "").strip()
+        eff_speed = float(speed) if (speed is not None and abs(float(speed) - 1.0) > 0.04) else None
         if ref_wav is not None and ref_wav.is_file():
             wav_bytes = self._get_ref_wav_bytes(ref_wav)
             form_data: Dict[str, str] = {
@@ -928,6 +933,8 @@ class _Qwen3ServerManager:
                 form_data["n_predict"] = str(int(n_predict))
             if clean_ref_text:
                 form_data["speaker_ref_text"] = clean_ref_text
+            if eff_speed is not None:
+                form_data["speed"] = f"{max(0.5, min(2.0, eff_speed)):.3f}"
             return {
                 "data": form_data,
                 "files": {"speaker_ref": ("ref.wav", wav_bytes, "audio/wav")},
@@ -943,6 +950,8 @@ class _Qwen3ServerManager:
             payload["voice"] = clean_voice
         if n_predict is not None:
             payload["n_predict"] = int(n_predict)
+        if eff_speed is not None:
+            payload["speed"] = round(max(0.5, min(2.0, eff_speed)), 3)
         return {"json": payload}
 
     def _is_cancelled(self, my_cancel_gen: int) -> bool:
@@ -1019,6 +1028,7 @@ class _Qwen3ServerManager:
         use_lang: bool = True,
         include_n_predict: bool = True,
         n_predict_fps: float = 12.5,
+        speed: Optional[float] = None,
     ) -> Tuple[np.ndarray, int]:
         self.cancel_active(only_warmup=True)
         with self._req_lock:
@@ -1049,6 +1059,7 @@ class _Qwen3ServerManager:
                 stream=False,
                 voice=voice,
                 use_lang=use_lang,
+                speed=speed,
             )
             self._req_local.active = True
             self._req_local.is_warmup = False
@@ -1100,6 +1111,7 @@ class _Qwen3ServerManager:
         use_lang: bool = True,
         include_n_predict: bool = True,
         n_predict_fps: float = 12.5,
+        speed: Optional[float] = None,
     ) -> Iterator[Tuple[np.ndarray, int]]:
         """Stream raw float32 PCM audio chunks from llama-server /tts as soon as frames decode."""
         self.cancel_active(only_warmup=True)
@@ -1131,6 +1143,7 @@ class _Qwen3ServerManager:
                 stream=True,
                 voice=voice,
                 use_lang=use_lang,
+                speed=speed,
             )
             self._req_local.active = True
             self._req_local.is_warmup = False
@@ -1313,14 +1326,20 @@ def is_llama_server_running() -> bool:
     return _qwen3_server.is_running()
 
 
-def _resolve_optional_ref_wav(engine_id: str, lang: str, fallback_to_default_sample: bool = False) -> Optional[Path]:
+def _resolve_optional_ref_wav(
+    engine_id: str,
+    lang: str,
+    fallback_to_default_sample: bool = False,
+    *,
+    target_sr: int = QWEN3_NATIVE_SR,
+) -> Optional[Path]:
     ref_raw = str(config.get(f"{engine_id}_ref_path", "") or "").strip()
     if ref_raw and Path(ref_raw).is_file():
-        return prepare_reference_wav(Path(ref_raw))
+        return prepare_reference_wav(Path(ref_raw), target_sr=target_sr)
     if fallback_to_default_sample:
         sample = _resolve_default_sample_for_lang(lang)
         if sample is not None:
-            return prepare_reference_wav(sample)
+            return prepare_reference_wav(sample, target_sr=target_sr)
     return None
 
 
@@ -1337,10 +1356,13 @@ def _resolve_llama_call_params(
     clean_voice = str(voice or "").strip()
 
     if eid == "zonos3_mini":
-        ref_wav = _resolve_optional_ref_wav("zonos3_mini", lang_code, fallback_to_default_sample=False)
+        # MECT-B2 speaker encoder у ZONOS3 нативно працює на 16 кГц (без подвійного ресемплінгу 44.1k->24k->16k).
+        ref_wav = _resolve_optional_ref_wav(
+            "zonos3_mini", lang_code, fallback_to_default_sample=False, target_sr=ZONOS3_REF_SR
+        )
         req_voice = "" if ref_wav is not None else clean_voice
-        req_lang = lang_code if lang_code in ZONOS3_NORM_LANGS else ""
-        return clean_text, req_lang, ref_wav, req_voice, "gpu", bool(req_lang), True, 15.0
+        # Завжди передаємо код мови (вкл. uk/ru/pl), інакше при порожньому lang шаблон ZONOS3 вмикає англійську нормалізацію чисел!
+        return clean_text, lang_code, ref_wav, req_voice, "gpu", True, True, 15.0
 
     if eid == "kokoro_82m":
         # У Kokoro 'b*' — British English (en-gb), 'a*' — American English (en-us)
@@ -1396,6 +1418,7 @@ def synthesize_llama_tts(
     clean_text, req_lang, ref_wav, req_voice, dev, use_lang, include_n_predict, fps = _resolve_llama_call_params(
         eid, text, lang, voice
     )
+    use_native_speed = eid == "zonos3_mini"
     samples, sr = _qwen3_server.synthesize(
         clean_text,
         req_lang or lang,
@@ -1407,8 +1430,9 @@ def synthesize_llama_tts(
         use_lang=use_lang,
         include_n_predict=include_n_predict,
         n_predict_fps=fps,
+        speed=speed if use_native_speed else None,
     )
-    if abs(speed - 1.0) > 0.04 and len(samples) > 100:
+    if not use_native_speed and abs(speed - 1.0) > 0.04 and len(samples) > 100:
         from scipy.signal import resample
 
         new_len = max(1, int(len(samples) / speed))
@@ -1427,7 +1451,8 @@ def synthesize_llama_tts_stream(
     if eid == "qwen3_tts":
         yield from synthesize_qwen3_tts_stream(text, lang=lang, speed=speed)
         return
-    if abs(speed - 1.0) > 0.04:
+    use_native_speed = eid == "zonos3_mini"
+    if not use_native_speed and abs(speed - 1.0) > 0.04:
         samples, sr = synthesize_llama_tts(eid, text, lang=lang, voice=voice, speed=speed)
         if len(samples) > 0:
             yield samples, sr
@@ -1446,4 +1471,5 @@ def synthesize_llama_tts_stream(
         use_lang=use_lang,
         include_n_predict=include_n_predict,
         n_predict_fps=fps,
+        speed=speed if use_native_speed else None,
     )
