@@ -1119,15 +1119,15 @@ class WarmupAndDspOptimizationTests(unittest.TestCase):
             self.assertEqual(cfg_state["game_draft_ttl_sec"], 45)
             page.deleteLater()
 
-        # 5. General accidental-close draft retention (default True, 5s) outside games & overlay UI
+        # 5. General accidental-close draft retention (default True, 10s) outside games & overlay UI
         self.assertTrue(DEFAULT_CONFIG["save_draft_on_close"])
-        self.assertEqual(DEFAULT_CONFIG["draft_keep_ttl_sec"], 5)
+        self.assertEqual(DEFAULT_CONFIG["draft_keep_ttl_sec"], 10)
         self.assertFalse(DEFAULT_CONFIG["overlay_draggable"])
 
         mgr.update_from_config({
             "game_mode_enabled": False,
             "save_draft_on_close": True,
-            "draft_keep_ttl_sec": 5,
+            "draft_keep_ttl_sec": 10,
         })
         mgr.set_typing_mode(True)
         mgr._buffer = "недописане речення"
@@ -1163,7 +1163,7 @@ class WarmupAndDspOptimizationTests(unittest.TestCase):
             self.assertEqual(el_row, grid_layout.rowCount() - 1)
             self.assertGreater(el_row, mw_row)
             self.assertTrue(win.chk_save_draft_on_close.isChecked())
-            self.assertEqual(win.spin_draft_keep_ttl.value(), 5)
+            self.assertEqual(win.spin_draft_keep_ttl.value(), 10)
             self.assertTrue(win.spin_draft_keep_ttl.isEnabled())
             win.spin_draft_keep_ttl.setValue(12)
             self.assertEqual(cfg_state["draft_keep_ttl_sec"], 12)

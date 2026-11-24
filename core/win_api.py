@@ -1042,7 +1042,7 @@ class KeyboardHookManager(QObject):
         self._game_save_draft: bool = True
         self._game_draft_ttl_sec: int = 20
         self._save_draft_on_close: bool = True
-        self._draft_keep_ttl_sec: int = 5
+        self._draft_keep_ttl_sec: int = 10
         self._saved_draft_text: str = ""
         self._saved_draft_expires_at: float = 0.0
         self._game_guard = _GameMouseGuard()
@@ -1122,9 +1122,9 @@ class KeyboardHookManager(QObject):
             self._game_draft_ttl_sec = 20
         self._save_draft_on_close = bool(cfg_data.get("save_draft_on_close", True))
         try:
-            self._draft_keep_ttl_sec = max(1, min(300, int(cfg_data.get("draft_keep_ttl_sec", 5))))
+            self._draft_keep_ttl_sec = max(1, min(300, int(cfg_data.get("draft_keep_ttl_sec", 10))))
         except Exception:
-            self._draft_keep_ttl_sec = 5
+            self._draft_keep_ttl_sec = 10
         if not self._save_draft_on_close and not (self._game_mode_enabled and self._game_save_draft):
             self._clear_saved_draft()
         self._sync_game_guard()

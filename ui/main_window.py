@@ -7375,7 +7375,7 @@ class MainWindow(QMainWindow):
         self.spin_draft_keep_ttl.setToolTip(
             tr("overlay.draft_keep_ttl_tip", "Скільки секунд зберігати недописаний текст після закриття")
         )
-        self.spin_draft_keep_ttl.setValue(max(1, min(300, int(config.get("draft_keep_ttl_sec", 5) or 5))))
+        self.spin_draft_keep_ttl.setValue(max(1, min(300, int(config.get("draft_keep_ttl_sec", 10) or 10))))
         draft_row.addWidget(self.spin_draft_keep_ttl)
         draft_row.addStretch(1)
         ex_col.addLayout(draft_row)

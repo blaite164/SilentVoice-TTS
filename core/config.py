@@ -332,7 +332,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "cancel_sound_enabled": True,
     "sound_feedback_volume": 100,
     "save_draft_on_close": True,
-    "draft_keep_ttl_sec": 5,
+    "draft_keep_ttl_sec": 10,
     "game_mode_enabled": True,
     "game_emergency_cancel": True,
     "game_mouse_sensitivity": "low",

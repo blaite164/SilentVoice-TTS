@@ -1064,7 +1064,7 @@ class FallbackInputWindow(QWidget):
         self._persist_window_size()
         cur_txt = self.input_edit.text()
         if save_draft and bool(config.get("save_draft_on_close", True)) and cur_txt.strip():
-            ttl = max(1, min(300, int(config.get("draft_keep_ttl_sec", 5) or 5)))
+            ttl = max(1, min(300, int(config.get("draft_keep_ttl_sec", 10) or 10)))
             self._saved_draft_text = cur_txt
             self._saved_draft_expires_at = time.monotonic() + float(ttl)
         else:
