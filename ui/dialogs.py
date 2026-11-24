@@ -378,7 +378,7 @@ class Qwen3QuantChoiceDialog(QDialog):
             "dlg.qwen_quant.body",
             "<b>Яку модель ви хочете встановити?</b><br><br>"
             "• <b>ZONOS3-Mini</b> — менше використання відеопам’яті (<b>~2.5 ГБ VRAM</b>) та швидший старт мовлення.<br>"
-            "• <b>Qwen3-TTS 1.7B (Q8)</b> — краща якість голосу, але більше використання відеопам’яті (<b>~3.9 ГБ VRAM</b>).<br><br>"
+            "• <b>Qwen3-TTS 1.7B (Q8)</b> — краща якість голосу, але більше використання відеопам’яті (<b>~3.5 ГБ VRAM</b>).<br><br>"
             "<i>Якщо у вас менше 9 ГБ відеопам’яті й ви плануєте грати в ігри паралельно з програмою, "
             "Qwen3-TTS (Q8) може не залишити достатньо відеопам’яті для гри.</i>",
         )
@@ -409,7 +409,7 @@ class Qwen3QuantChoiceDialog(QDialog):
         lay.addWidget(self.radio_zonos3)
 
         self.radio_q8 = QRadioButton(
-            tr("dlg.qwen_quant.opt_q8", "Qwen3-TTS 1.7B (Q8) — краща якість (~3.9 ГБ VRAM)")
+            tr("dlg.qwen_quant.opt_q8", "Qwen3-TTS 1.7B (Q8) — краща якість (~3.5 ГБ VRAM)")
         )
         self.radio_q8.setCursor(Qt.CursorShape.PointingHandCursor)
         self.radio_q8.setStyleSheet(radio_style)
