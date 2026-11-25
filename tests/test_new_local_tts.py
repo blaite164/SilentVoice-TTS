@@ -520,7 +520,8 @@ class NewLocalTtsModelsTests(unittest.TestCase):
             def close(self) -> None:
                 pass
 
-        player = _EasterEggAudioPlayer(audio_path)
+        player = _EasterEggAudioPlayer(audio_path, start_delay_sec=0.0)
+        self.assertEqual(_EasterEggAudioPlayer(audio_path)._start_delay_sec, 1.0)
         with (
             patch("core.audio_router.resolve_secondary_output_targets", return_value=[8]),
             patch("core.audio_router.resolve_default_output_device_index", return_value=8),

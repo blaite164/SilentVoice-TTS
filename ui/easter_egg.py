@@ -577,8 +577,9 @@ class _EasterEggAudioPlayer:
     плавно зациклюється та миттєво зупиняється при закритті вікна.
     """
 
-    def __init__(self, audio_path: Optional[Path] = None) -> None:
+    def __init__(self, audio_path: Optional[Path] = None, start_delay_sec: float = 1.0) -> None:
         self._audio_path = audio_path
+        self._start_delay_sec = max(0.0, float(start_delay_sec))
         self._stop_event = threading.Event()
         self._stream_lock = threading.Lock()
         self._stream: Any = None
@@ -664,6 +665,9 @@ class _EasterEggAudioPlayer:
         return None
 
     def _play_loop(self, path: Path) -> None:
+        if self._start_delay_sec > 0.0:
+            if self._stop_event.wait(self._start_delay_sec):
+                return
         try:
             import numpy as np
             import sounddevice as sd
