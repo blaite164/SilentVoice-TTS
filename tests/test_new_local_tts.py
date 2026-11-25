@@ -478,6 +478,48 @@ class NewLocalTtsModelsTests(unittest.TestCase):
             tts_manager.shutdown()
         _ = app
 
+    def test_blaite_easter_egg_dialog_and_credit_link(self) -> None:
+        from PySide6.QtCore import Qt
+        from PySide6.QtWidgets import QApplication
+        from ui.easter_egg import BlaiteEasterEggDialog, HEIGHT, WIDTH
+        from ui.main_window import MainWindow
+
+        app = QApplication.instance() or QApplication([])
+        assert app is not None
+
+        # 1) Dialog renders all phases (eye, zoom+stars, 3D heart) cleanly and stops timer on close
+        dlg = BlaiteEasterEggDialog()
+        try:
+            self.assertEqual(dlg.width(), WIDTH)
+            self.assertEqual(dlg.height(), HEIGHT)
+            self.assertTrue(dlg._timer.isActive())
+            for sample_t in (0.0, 5.0, 18.0, 32.0, 50.5):
+                dlg._canvas.render_frame(sample_t)
+            self.assertEqual(dlg._canvas._frame_buf.shape, (HEIGHT, WIDTH, 4))
+            self.assertTrue(bool((dlg._canvas._frame_buf[..., 3] == 255).all()))
+        finally:
+            dlg.reject()
+            self.assertFalse(dlg._timer.isActive())
+            dlg.deleteLater()
+
+        # 2) MainWindow creator credit label has clickable Blaite link & pointing-hand cursor on hover
+        win = MainWindow()
+        try:
+            lbl = win._creator_credit_lbl
+            self.assertIn('href="blaite_easter_egg"', lbl.text())
+            self.assertIn("Blaite", lbl.text())
+            lbl.linkHovered.emit("blaite_easter_egg")
+            self.assertEqual(lbl.cursor().shape(), Qt.CursorShape.PointingHandCursor)
+            lbl.linkHovered.emit("")
+            self.assertEqual(lbl.cursor().shape(), Qt.CursorShape.ArrowCursor)
+
+            with patch.object(win, "_open_blaite_easter_egg") as mock_open:
+                lbl.linkActivated.emit("blaite_easter_egg")
+                mock_open.assert_called_once()
+        finally:
+            win.close()
+            win.deleteLater()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -9130,9 +9130,21 @@ class MainWindow(QMainWindow):
             "border-radius: 9px; padding: 8px 13px; font-size: 13.5px;"
         )
         creator_lbl = QLabel(
-            f"✍️ {tr('audio.credits.created_by', 'Створив')}: <b>Blaite</b>"
+            f"✍️ {tr('audio.credits.created_by', 'Створив')}: "
+            f"<a href=\"blaite_easter_egg\" style=\"color: #EEF2FF; text-decoration: none;\"><b>Blaite</b></a>"
         )
         creator_lbl.setStyleSheet(credit_pill_style)
+        creator_lbl.setTextFormat(Qt.TextFormat.RichText)
+        creator_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.LinksAccessibleByMouse)
+        creator_lbl.setOpenExternalLinks(False)
+        creator_lbl.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        creator_lbl.linkHovered.connect(
+            lambda link, lbl=creator_lbl: lbl.setCursor(
+                Qt.CursorShape.PointingHandCursor if link else Qt.CursorShape.ArrowCursor
+            )
+        )
+        creator_lbl.linkActivated.connect(lambda _href="": self._open_blaite_easter_egg())
+        self._creator_credit_lbl = creator_lbl
         tester_lbl = QLabel(
             f"🧪 {tr('audio.credits.tested_by', 'Протестував')}: <b>DedProger</b>"
         )
@@ -9175,6 +9187,13 @@ class MainWindow(QMainWindow):
         if (live[0] or live[1]) and live != getattr(self, "_last_core_audio_devices", ((), ())):
             self._last_core_audio_devices = live
             self._populate_audio_devices(refresh_backend=True)
+
+    def _open_blaite_easter_egg(self) -> None:
+        """Відкриває пасхалку «Eye -> Heart» при натисканні на нік Blaite."""
+        from ui.easter_egg import BlaiteEasterEggDialog
+
+        dlg = BlaiteEasterEggDialog(self)
+        dlg.exec()
 
     def _open_update_dialog(self, initial_release: Optional[Any] = None) -> None:
         dlg = AppUpdateDialog(
