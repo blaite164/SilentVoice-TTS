@@ -1352,6 +1352,14 @@ def _resolve_optional_ref_wav(
     return None
 
 
+def resolve_kokoro_device() -> str:
+    """Повертає пристрій для Kokoro-82M ('gpu' для GGUF або 'cpu' для ONNX FP32)."""
+    pref = str(config.get("kokoro_82m_device", "gpu") or "gpu").strip().lower()
+    if pref == "cpu" or not has_hardware_gpu():
+        return "cpu"
+    return "gpu"
+
+
 def resolve_soprano_device() -> str:
     """Повертає пристрій для Soprano-1.1-80M ('gpu' або 'cpu') з урахуванням вибору користувача й наявності GPU."""
     pref = str(config.get("soprano_1_1_device", "gpu") or "gpu").strip().lower()
@@ -1394,6 +1402,8 @@ def warmup_llama_tts(engine_id: str, lang: str = "", voice: str = "") -> None:
     eid = str(engine_id or "").strip()
     if eid == "qwen3_tts":
         warmup_qwen3_tts()
+        return
+    if eid == "kokoro_82m" and resolve_kokoro_device() == "cpu":
         return
     eff_lang = str(lang or config.get("app_language", "en") or "en").strip().lower() or "en"
     if not is_llama_engine_installed(eid, lang=eff_lang):

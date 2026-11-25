@@ -1347,7 +1347,7 @@
   "update.completed_toast": "Update completed successfully! Now running v{version}.",
   "update.dlg.show_original_btn": "🌐 Show Original",
   "update.dlg.translate_btn": "🌐 Translate",
-  "tts.size.kokoro_82m": "~258 MB",
+  "tts.size.kokoro_82m": "~258–337 MB",
   "tts.size.zonos3_mini": "~1.9 GB",
   "tts.title.zonos3_mini": "ZONOS3-Mini (GGUF) - with voice cloning",
   "dlg.qwen_quant.opt_zonos3": "ZONOS3-Mini — less VRAM (~2.5 GB VRAM, recommended for gaming)",

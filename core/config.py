@@ -229,6 +229,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "qwen3_tts_ref_text": "",
     "qwen3_tts_quant": "q8",
     "zonos3_mini_ref_path": "",
+    "kokoro_82m_device": "gpu",
     "soprano_1_1_device": "gpu",
     "custom_clone_samples": {},
 

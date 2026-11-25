@@ -1347,7 +1347,7 @@
   "update.completed_toast": "Оновлення успішно завершено! Встановлено версію v{version}.",
   "update.dlg.show_original_btn": "🌐 Показати оригінал",
   "update.dlg.translate_btn": "🌐 Перекласти",
-  "tts.size.kokoro_82m": "~258 МБ",
+  "tts.size.kokoro_82m": "~258–337 МБ",
   "tts.size.zonos3_mini": "~1.9 ГБ",
   "tts.title.zonos3_mini": "ZONOS3-Mini (GGUF) - з клонуванням",
   "dlg.qwen_quant.opt_zonos3": "ZONOS3-Mini — менше відеопам’яті (~2.5 ГБ VRAM, рекомендовано для ігор)",

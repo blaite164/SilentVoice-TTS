@@ -1347,7 +1347,7 @@
   "update.completed_toast": "Mise à jour terminée avec succès ! Version v{version} installée.",
   "update.dlg.show_original_btn": "🌐 Afficher l'original",
   "update.dlg.translate_btn": "🌐 Traduire",
-  "tts.size.kokoro_82m": "~258 Mo",
+  "tts.size.kokoro_82m": "~258–337 Mo",
   "tts.size.zonos3_mini": "~1,9 Go",
   "tts.title.zonos3_mini": "ZONOS3-Mini (GGUF) - avec clonage vocal",
   "dlg.qwen_quant.opt_zonos3": "ZONOS3-Mini — moins de VRAM (~2,5 Go VRAM, recommandé pour les jeux)",

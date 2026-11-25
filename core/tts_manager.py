@@ -618,8 +618,8 @@ ENGINE_SPECS: Dict[str, Dict[str, Any]] = {
     },
     "kokoro_82m": {
         "id": "kokoro_82m",
-        "title": "Kokoro-82M (GGUF)",
-        "size_label": "~258 МБ",
+        "title": "Kokoro-82M",
+        "size_label": "~258–337 МБ",
         "voices": [
             {"id": "kokoro_af_heart", "name": "Heart (US)", "gender": "female", "lang": "en", "speaker": "af_heart"},
             {"id": "kokoro_af_bella", "name": "Bella (US)", "gender": "female", "lang": "en", "speaker": "af_bella"},
@@ -2022,14 +2022,25 @@ class TTSEngineManager(QObject):
         targets = self._resolve_local_warmup_targets()
         online_targets = self._resolve_online_warmup_targets()
         _llama_eids = ("qwen3_tts", "zonos3_mini", "kokoro_82m", "soprano_1_1")
-        if not any(item[0] in _llama_eids for item in targets):
+        _kokoro_uses_cpu = False
+        try:
+            from core.llama_tts import resolve_kokoro_device
+            _kokoro_uses_cpu = resolve_kokoro_device() == "cpu"
+        except Exception:
+            pass
+        _active_llama_targets = [
+            item for item in targets
+            if item[0] in _llama_eids and not (item[0] == "kokoro_82m" and _kokoro_uses_cpu)
+        ]
+        if not _active_llama_targets:
             try:
                 from core.llama_tts import is_qwen3_server_running, shutdown_llama_tts
 
                 if is_qwen3_server_running():
                     shutdown_llama_tts()
                 self._warmed_models = {
-                    item for item in self._warmed_models if item[0] not in _llama_eids
+                    item for item in self._warmed_models
+                    if item[0] not in _llama_eids or (item[0] == "kokoro_82m" and _kokoro_uses_cpu)
                 }
             except Exception:
                 pass
@@ -2139,7 +2150,7 @@ class TTSEngineManager(QObject):
                     if engine_id == "qwen3_tts":
                         from core.llama_tts import warmup_qwen3_tts
                         warmup_qwen3_tts()
-                    elif engine_id in ("zonos3_mini", "kokoro_82m", "soprano_1_1"):
+                    elif engine_id in ("zonos3_mini", "soprano_1_1") or (engine_id == "kokoro_82m" and not _kokoro_uses_cpu):
                         from core.llama_tts import warmup_llama_tts
                         voices = ENGINE_SPECS.get(engine_id, {}).get("voices", [])
                         v_entry = next((v for v in voices if str(v.get("id")) == voice_id), None)
@@ -2389,6 +2400,24 @@ class TTSEngineManager(QObject):
 
     def is_engine_installed(self, engine_id: str) -> bool:
         """Перевіряє, чи встановлений локальний движок для поточної обраної мови."""
+        if engine_id == "qwen3_tts":
+            from core.llama_tts import is_qwen3_tts_installed
+            return is_qwen3_tts_installed()
+        if engine_id == "zonos3_mini":
+            from core.llama_tts import is_zonos3_installed
+            return is_zonos3_installed()
+        if engine_id == "kokoro_82m":
+            from core.llama_tts import is_kokoro_installed, resolve_kokoro_device
+            if resolve_kokoro_device() == "cpu":
+                from core.kokoro_onnx_tts import is_kokoro_onnx_installed
+                return is_kokoro_onnx_installed()
+            return is_kokoro_installed()
+        if engine_id == "soprano_1_1":
+            from core.llama_tts import is_soprano_installed
+            return is_soprano_installed()
+        if engine_id == "openvoice":
+            from core.voice_cloner import voice_cloner
+            return voice_cloner.is_installed()
         eng_dir = ENGINES_DIR / engine_id
         if not eng_dir.exists():
             return False
@@ -2401,21 +2430,6 @@ class TTSEngineManager(QObject):
             if self._current_lang() != "ru":
                 return False
             return (eng_dir / "ready.marker").exists()
-        if engine_id == "qwen3_tts":
-            from core.llama_tts import is_qwen3_tts_installed
-            return is_qwen3_tts_installed()
-        if engine_id == "zonos3_mini":
-            from core.llama_tts import is_zonos3_installed
-            return is_zonos3_installed()
-        if engine_id == "kokoro_82m":
-            from core.llama_tts import is_kokoro_installed
-            return is_kokoro_installed()
-        if engine_id == "soprano_1_1":
-            from core.llama_tts import is_soprano_installed
-            return is_soprano_installed()
-        if engine_id == "openvoice":
-            from core.voice_cloner import voice_cloner
-            return voice_cloner.is_installed()
         return False
 
     def _resolve_engine_voices_for_lang(
@@ -2754,6 +2768,11 @@ class TTSEngineManager(QObject):
         try:
             from core.llama_tts import shutdown_llama_tts
             shutdown_llama_tts()
+        except Exception:
+            pass
+        try:
+            from core.kokoro_onnx_tts import kokoro_onnx_engine
+            kokoro_onnx_engine.unload()
         except Exception:
             pass
         try:
@@ -3563,7 +3582,28 @@ class TTSEngineManager(QObject):
             return self._synth_holos(voice_id, text, speed)
         if engine_id == "teratts":
             return self._synth_teratts(voice_id, text, speed)
-        if engine_id in ("zonos3_mini", "kokoro_82m", "soprano_1_1"):
+        if engine_id == "kokoro_82m":
+            from core.llama_tts import resolve_kokoro_device, synthesize_llama_tts
+
+            voices = ENGINE_SPECS.get(engine_id, {}).get("voices", [])
+            voice_entry = next((v for v in voices if str(v.get("id")) == voice_id), None)
+            speaker = str((voice_entry or {}).get("speaker") or "af_heart")
+            if resolve_kokoro_device() == "cpu":
+                from core.kokoro_onnx_tts import kokoro_onnx_engine
+                return kokoro_onnx_engine.synthesize(
+                    format_stress_marks(text, "strip"),
+                    voice=speaker,
+                    speed=speed,
+                )
+            lang = str((voice_entry or {}).get("lang") or self._current_lang() or "en")
+            return synthesize_llama_tts(
+                engine_id,
+                format_stress_marks(text, "strip"),
+                lang=lang,
+                voice=speaker,
+                speed=speed,
+            )
+        if engine_id in ("zonos3_mini", "soprano_1_1"):
             from core.llama_tts import synthesize_llama_tts
 
             voices = ENGINE_SPECS.get(engine_id, {}).get("voices", [])
@@ -5305,6 +5345,9 @@ class TTSEngineManager(QObject):
                 elif engine_id in ("qwen3_tts", "zonos3_mini", "kokoro_82m", "soprano_1_1"):
                     from core.llama_tts import shutdown_llama_tts
                     shutdown_llama_tts()
+                    if engine_id == "kokoro_82m":
+                        from core.kokoro_onnx_tts import kokoro_onnx_engine
+                        kokoro_onnx_engine.unload()
                 self._warmed_models = {item for item in self._warmed_models if item[0] != engine_id}
 
             gc.collect()
@@ -5606,7 +5649,68 @@ class TTSEngineManager(QObject):
                         )
                 if str(config.get("active_engine", "") or "").strip() == "qwen3_tts":
                     warmup_qwen3_tts()
-            elif engine_id in ("zonos3_mini", "kokoro_82m", "soprano_1_1"):
+            elif engine_id == "kokoro_82m":
+                from core.llama_tts import (
+                    get_llama_engine_downloads,
+                    install_llama_tts_runtime,
+                    resolve_kokoro_device,
+                    warmup_llama_tts,
+                )
+
+                if resolve_kokoro_device() == "cpu":
+                    from core.kokoro_onnx_tts import KOKORO_ONNX_DIR, KOKORO_ONNX_DOWNLOAD_FILES
+
+                    KOKORO_ONNX_DIR.mkdir(parents=True, exist_ok=True)
+                    total_files = len(KOKORO_ONNX_DOWNLOAD_FILES)
+                    for idx, (fname, url, bpct, spct) in enumerate(KOKORO_ONNX_DOWNLOAD_FILES, start=1):
+                        _check_cancel()
+                        dest_f = KOKORO_ONNX_DIR / fname
+                        if not dest_f.exists() or dest_f.stat().st_size == 0:
+                            _dl_simple(
+                                url,
+                                dest_f,
+                                engine_id,
+                                bpct,
+                                spct,
+                                tr(
+                                    "tts.dl.file_progress",
+                                    "Завантаження {fname} ({idx}/{total})...",
+                                    fname=fname,
+                                    idx=idx,
+                                    total=total_files,
+                                ),
+                            )
+                else:
+                    px_dict = self._resolve_active_proxies_dict()
+                    install_llama_tts_runtime(
+                        engine_id=engine_id,
+                        progress_cb=_emit_progress,
+                        download_fn=_dl_simple,
+                        cancel_check=_check_cancel,
+                        proxies=px_dict,
+                    )
+                    downloads = get_llama_engine_downloads(engine_id, lang=self._current_lang())
+                    for idx, (url, dest_f, fname, bpct, spct) in enumerate(downloads, start=1):
+                        _check_cancel()
+                        dest_f.parent.mkdir(parents=True, exist_ok=True)
+                        if not dest_f.exists() or dest_f.stat().st_size == 0:
+                            _dl_simple(
+                                url,
+                                dest_f,
+                                engine_id,
+                                bpct,
+                                spct,
+                                tr(
+                                    "tts.dl.file_progress",
+                                    "Завантаження {fname} ({idx}/{total})...",
+                                    fname=fname,
+                                    idx=idx,
+                                    total=len(downloads),
+                                ),
+                            )
+                    if str(config.get("active_engine", "") or "").strip() == engine_id:
+                        warmup_llama_tts(engine_id, lang=self._current_lang())
+            elif engine_id in ("zonos3_mini", "soprano_1_1"):
                 from core.llama_tts import (
                     get_llama_engine_downloads,
                     install_llama_tts_runtime,

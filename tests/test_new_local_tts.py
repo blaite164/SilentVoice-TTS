@@ -1,3 +1,4 @@
+import io
 import json
 import tempfile
 import unittest
@@ -7,6 +8,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import soundfile as sf
 
+import core.kokoro_onnx_tts as kokoro_onnx_tts
 import core.llama_tts as llama_tts
 from core.tts_manager import ENGINE_SPECS, tts_manager
 
@@ -218,6 +220,77 @@ class NewLocalTtsModelsTests(unittest.TestCase):
             self.assertGreater(len(ENGINE_SPECS[eid]["voices"]), 0)
         self.assertNotIn("pocket_tts", ENGINE_SPECS)
         self.assertNotIn("supertonic3", ENGINE_SPECS)
+
+    def test_kokoro_gpu_vs_cpu_onnx_selection_and_synthesis(self) -> None:
+        self.assertEqual(kokoro_onnx_tts.normalize_espeak_ipa_for_kokoro("tʃdʒeɪoʊ"), "ʧʤAO")
+        chunks = kokoro_onnx_tts.split_kokoro_text("Sentence one. " * 30, max_chars=80)
+        self.assertGreater(len(chunks), 2)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            onnx_dir = Path(tmp) / "kokoro_onnx"
+            onnx_dir.mkdir(parents=True)
+            with patch.object(kokoro_onnx_tts, "KOKORO_ONNX_DIR", onnx_dir):
+                self.assertFalse(kokoro_onnx_tts.is_kokoro_onnx_installed())
+
+                (onnx_dir / kokoro_onnx_tts.KOKORO_ONNX_MODEL_FILE).write_bytes(b"onnx")
+                (onnx_dir / kokoro_onnx_tts.KOKORO_ONNX_CONFIG_FILE).write_text(
+                    json.dumps({"vocab": {"h": 1, "ə": 2, "l": 3, "O": 4, "!": 5}}),
+                    encoding="utf-8",
+                )
+                np.savez(
+                    str(onnx_dir / kokoro_onnx_tts.KOKORO_ONNX_VOICES_FILE),
+                    af_heart=np.ones((16, 1, 256), dtype=np.float32),
+                )
+                # np.savez appends .npz if suffix isn't .npz; rename to exact voices-v1.0.bin
+                npz_written = onnx_dir / f"{kokoro_onnx_tts.KOKORO_ONNX_VOICES_FILE}.npz"
+                if npz_written.is_file():
+                    npz_written.replace(onnx_dir / kokoro_onnx_tts.KOKORO_ONNX_VOICES_FILE)
+                self.assertTrue(kokoro_onnx_tts.is_kokoro_onnx_installed())
+
+                # Device resolution: GPU when selected & GPU present, CPU when selected or no GPU
+                with (
+                    patch.object(llama_tts, "has_hardware_gpu", return_value=True),
+                    patch.object(llama_tts.config, "get", side_effect=lambda k, d=None: "cpu" if k == "kokoro_82m_device" else d),
+                ):
+                    self.assertEqual(llama_tts.resolve_kokoro_device(), "cpu")
+                    self.assertTrue(tts_manager.is_engine_installed("kokoro_82m"))
+                with (
+                    patch.object(llama_tts, "has_hardware_gpu", return_value=False),
+                    patch.object(llama_tts.config, "get", side_effect=lambda k, d=None: "gpu" if k == "kokoro_82m_device" else d),
+                ):
+                    self.assertEqual(llama_tts.resolve_kokoro_device(), "cpu")
+                with (
+                    patch.object(llama_tts, "has_hardware_gpu", return_value=True),
+                    patch.object(llama_tts.config, "get", side_effect=lambda k, d=None: "gpu" if k == "kokoro_82m_device" else d),
+                ):
+                    self.assertEqual(llama_tts.resolve_kokoro_device(), "gpu")
+
+                # Mock ORT + EspeakPhonemizer synthesis
+                fake_inp = MagicMock()
+                fake_inp.name = "tokens"
+                fake_sess = MagicMock()
+                fake_sess.get_inputs.return_value = [fake_inp]
+                fake_sess.run.return_value = [np.linspace(-0.2, 0.2, 2400, dtype=np.float32)]
+
+                fake_ort = MagicMock()
+                fake_ort.SessionOptions.return_value = MagicMock()
+                fake_ort.InferenceSession.return_value = fake_sess
+
+                fake_ph = MagicMock()
+                fake_ph.phonemize.return_value = [["h", "ə", "l", "o", "ʊ", "!"]]
+                fake_pe_mod = MagicMock()
+                fake_pe_mod.ESPEAK_DATA_DIR = Path(tmp)
+                fake_pe_mod.EspeakPhonemizer.return_value = fake_ph
+
+                eng = kokoro_onnx_tts.KokoroOnnxEngine()
+                with patch.dict("sys.modules", {"onnxruntime": fake_ort, "piper.phonemize_espeak": fake_pe_mod}):
+                    wav, sr = eng.synthesize("Hello!", voice="af_heart", speed=1.15)
+                self.assertEqual(sr, 24000)
+                self.assertEqual(len(wav), 2400)
+                feeds = fake_sess.run.call_args.args[1]
+                self.assertIn("tokens", feeds)
+                self.assertAlmostEqual(float(feeds["speed"][0]), 1.15, places=2)
+                eng.unload()
 
 
 if __name__ == "__main__":
