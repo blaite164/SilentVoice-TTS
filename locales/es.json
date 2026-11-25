@@ -1347,7 +1347,6 @@
   "update.completed_toast": "¡Actualización completada con éxito! Ahora usando la versión v{version}.",
   "update.dlg.show_original_btn": "🌐 Mostrar original",
   "update.dlg.translate_btn": "🌐 Traducir",
-  "tts.size.supertonic3": "~380 MB",
   "tts.size.kokoro_82m": "~258 MB",
   "tts.size.zonos3_mini": "~1,9 GB",
   "tts.title.zonos3_mini": "ZONOS3-Mini (GGUF) - con clonación de voz",

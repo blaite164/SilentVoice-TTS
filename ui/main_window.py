@@ -2024,7 +2024,7 @@ class MainWindow(QMainWindow):
                 listen_btn.clicked.connect(
                     lambda checked=False, eid=eng_id, title=spec["title"]: VoiceSamplesDialog(eid, title, self).exec()
                 )
-                if eng_id in ("supertonic3", "kokoro_82m", "soprano_1_1"):
+                if eng_id in ("kokoro_82m", "soprano_1_1"):
                     from core.tts_manager import get_sample_files_for_engine
                     if not get_sample_files_for_engine(eng_id):
                         listen_btn.setVisible(False)

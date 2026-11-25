@@ -8,7 +8,6 @@ import numpy as np
 import soundfile as sf
 
 import core.llama_tts as llama_tts
-import core.supertonic_tts as supertonic_tts
 from core.tts_manager import ENGINE_SPECS, tts_manager
 
 
@@ -16,28 +15,28 @@ class NewLocalTtsModelsTests(unittest.TestCase):
     def test_visible_local_engines_include_new_models_for_supported_languages(self) -> None:
         with patch.object(tts_manager, "_current_lang", return_value="en"):
             en_ids = [item["id"] for item in tts_manager.get_visible_local_engines()]
-        self.assertIn("supertonic3", en_ids)
         self.assertIn("kokoro_82m", en_ids)
         self.assertIn("soprano_1_1", en_ids)
         self.assertIn("zonos3_mini", en_ids)
         self.assertIn("qwen3_tts", en_ids)
         self.assertNotIn("pocket_tts", en_ids)
+        self.assertNotIn("supertonic3", en_ids)
 
         with patch.object(tts_manager, "_current_lang", return_value="uk"):
             uk_ids = [item["id"] for item in tts_manager.get_visible_local_engines()]
-        self.assertIn("supertonic3", uk_ids)
         self.assertIn("zonos3_mini", uk_ids)
         self.assertNotIn("kokoro_82m", uk_ids)
         self.assertNotIn("soprano_1_1", uk_ids)
         self.assertNotIn("pocket_tts", uk_ids)
+        self.assertNotIn("supertonic3", uk_ids)
 
         with patch.object(tts_manager, "_current_lang", return_value="de"):
             de_ids = [item["id"] for item in tts_manager.get_visible_local_engines()]
-        self.assertIn("supertonic3", de_ids)
         self.assertIn("zonos3_mini", de_ids)
         self.assertNotIn("kokoro_82m", de_ids)
         self.assertNotIn("soprano_1_1", de_ids)
         self.assertNotIn("pocket_tts", de_ids)
+        self.assertNotIn("supertonic3", de_ids)
 
     def test_llama_engine_install_checks_and_downloads(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -212,78 +211,12 @@ class NewLocalTtsModelsTests(unittest.TestCase):
         self.assertEqual(plan["primary_id"], "zonos3_mini")
         self.assertEqual(plan["speaker"], "Imogen_en-British_F_1")
 
-    def test_supertonic3_install_check_preprocess_and_synthesize(self) -> None:
-        self.assertEqual(supertonic_tts.SUPERTONIC3_DEFAULT_STEPS, 6)
-        # Tail trimmer removes low-level post-speech vocoder hiss and fades smoothly to zero
-        sr_t = 44100
-        speech = 0.25 * np.sin(np.linspace(0.0, 400.0, sr_t, dtype=np.float32))
-        hiss_tail = 0.0008 * np.ones(int(sr_t * 0.6), dtype=np.float32)
-        trimmed = supertonic_tts._trim_supertonic_tail(np.concatenate([speech, hiss_tail]), sr_t)
-        self.assertLess(len(trimmed), len(speech) + int(sr_t * 0.2))
-        self.assertLess(abs(float(trimmed[-1])), 1e-4)
-        self.assertEqual(
-            supertonic_tts.preprocess_supertonic_text("Привіт світ", "uk"),
-            "<uk>Привіт світ.</uk>",
-        )
-        self.assertEqual(
-            supertonic_tts.preprocess_supertonic_text("Hello world!", "xx"),
-            "<na>Hello world!</na>",
-        )
-
-        with tempfile.TemporaryDirectory() as tmp:
-            st_dir = Path(tmp) / "supertonic3"
-            onnx_dir = st_dir / "onnx"
-            styles_dir = st_dir / "voice_styles"
-            onnx_dir.mkdir(parents=True)
-            styles_dir.mkdir(parents=True)
-
-            with patch.object(supertonic_tts, "SUPERTONIC3_DIR", st_dir):
-                self.assertFalse(supertonic_tts.is_supertonic3_installed())
-
-                for fname in ("duration_predictor.onnx", "text_encoder.onnx", "vector_estimator.onnx", "vocoder.onnx"):
-                    (onnx_dir / fname).write_bytes(b"onnx")
-                (onnx_dir / "tts.json").write_text(
-                    json.dumps({"ae": {"sample_rate": 44100, "base_chunk_size": 512}, "ttl": {"latent_dim": 24, "chunk_compress_factor": 6}}),
-                    encoding="utf-8",
-                )
-                indexer = [i % 64 for i in range(256)]
-                (onnx_dir / "unicode_indexer.json").write_text(json.dumps(indexer), encoding="utf-8")
-                (styles_dir / "F1.json").write_text(
-                    json.dumps({
-                        "style_ttl": {"dims": [1, 2, 4], "data": [0.1] * 8},
-                        "style_dp": {"dims": [1, 2, 4], "data": [0.2] * 8},
-                    }),
-                    encoding="utf-8",
-                )
-                self.assertTrue(supertonic_tts.is_supertonic3_installed())
-
-                dp_sess = MagicMock()
-                dp_sess.run.return_value = [np.array([0.2], dtype=np.float32)]
-                enc_sess = MagicMock()
-                enc_sess.run.return_value = [np.zeros((1, 4, 8), dtype=np.float32)]
-                vec_sess = MagicMock()
-                vec_sess.run.side_effect = lambda _out, feeds: [feeds["noisy_latent"]]
-                voc_sess = MagicMock()
-                voc_sess.run.return_value = [np.ones((1, 10000), dtype=np.float32) * 0.25]
-
-                fake_ort = MagicMock()
-                fake_ort.SessionOptions.return_value = MagicMock()
-                fake_ort.InferenceSession.side_effect = [dp_sess, enc_sess, vec_sess, voc_sess]
-
-                eng = supertonic_tts.Supertonic3Engine()
-                with patch.dict("sys.modules", {"onnxruntime": fake_ort}):
-                    audio, sr = eng.synthesize("Hello test ☃", voice_name="F1", lang="en", total_step=2)
-
-                self.assertEqual(sr, 44100)
-                self.assertGreater(len(audio), 0)
-                self.assertEqual(vec_sess.run.call_count, 2)
-                eng.unload()
-
-    def test_engine_specs_contain_all_four_new_models(self) -> None:
-        for eid in ("supertonic3", "kokoro_82m", "soprano_1_1", "zonos3_mini"):
+    def test_engine_specs_contain_new_gguf_models_only(self) -> None:
+        for eid in ("kokoro_82m", "soprano_1_1", "zonos3_mini"):
             self.assertIn(eid, ENGINE_SPECS)
             self.assertGreater(len(ENGINE_SPECS[eid]["voices"]), 0)
         self.assertNotIn("pocket_tts", ENGINE_SPECS)
+        self.assertNotIn("supertonic3", ENGINE_SPECS)
 
 
 if __name__ == "__main__":

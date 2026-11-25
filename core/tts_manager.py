@@ -616,23 +616,6 @@ ENGINE_SPECS: Dict[str, Dict[str, Any]] = {
         ],
         "hf_repo": "TeraTTS/natasha-g2p-vits",
     },
-    "supertonic3": {
-        "id": "supertonic3",
-        "title": "Supertonic 3 (ONNX)",
-        "size_label": "~380 МБ",
-        "voices": [
-            {"id": "supertonic3_f1", "name": "F1 (Female)", "gender": "female", "lang": "multi", "speaker": "F1"},
-            {"id": "supertonic3_f2", "name": "F2 (Female)", "gender": "female", "lang": "multi", "speaker": "F2"},
-            {"id": "supertonic3_f3", "name": "F3 (Female)", "gender": "female", "lang": "multi", "speaker": "F3"},
-            {"id": "supertonic3_f4", "name": "F4 (Female)", "gender": "female", "lang": "multi", "speaker": "F4"},
-            {"id": "supertonic3_f5", "name": "F5 (Female)", "gender": "female", "lang": "multi", "speaker": "F5"},
-            {"id": "supertonic3_m1", "name": "M1 (Male)", "gender": "male", "lang": "multi", "speaker": "M1"},
-            {"id": "supertonic3_m2", "name": "M2 (Male)", "gender": "male", "lang": "multi", "speaker": "M2"},
-            {"id": "supertonic3_m3", "name": "M3 (Male)", "gender": "male", "lang": "multi", "speaker": "M3"},
-            {"id": "supertonic3_m4", "name": "M4 (Male)", "gender": "male", "lang": "multi", "speaker": "M4"},
-            {"id": "supertonic3_m5", "name": "M5 (Male)", "gender": "male", "lang": "multi", "speaker": "M5"},
-        ],
-    },
     "kokoro_82m": {
         "id": "kokoro_82m",
         "title": "Kokoro-82M (GGUF)",
@@ -1787,7 +1770,7 @@ class TTSEngineManager(QObject):
 
     def _resolve_local_target_for(self, engine_id: str, voice_id: str) -> Optional[Tuple[str, str, str]]:
         eng = str(engine_id or "").strip()
-        if eng not in ("piper", "silero", "holos", "teratts", "supertonic3", "kokoro_82m", "soprano_1_1", "zonos3_mini", "qwen3_tts"):
+        if eng not in ("piper", "silero", "holos", "teratts", "kokoro_82m", "soprano_1_1", "zonos3_mini", "qwen3_tts"):
             return None
         if not self.is_engine_installed(eng):
             return None
@@ -2430,9 +2413,6 @@ class TTSEngineManager(QObject):
         if engine_id == "soprano_1_1":
             from core.llama_tts import is_soprano_installed
             return is_soprano_installed()
-        if engine_id == "supertonic3":
-            from core.supertonic_tts import is_supertonic3_installed
-            return is_supertonic3_installed()
         if engine_id == "openvoice":
             from core.voice_cloner import voice_cloner
             return voice_cloner.is_installed()
@@ -2774,11 +2754,6 @@ class TTSEngineManager(QObject):
         try:
             from core.llama_tts import shutdown_llama_tts
             shutdown_llama_tts()
-        except Exception:
-            pass
-        try:
-            from core.supertonic_tts import supertonic3_engine
-            supertonic3_engine.unload()
         except Exception:
             pass
         try:
@@ -3588,18 +3563,6 @@ class TTSEngineManager(QObject):
             return self._synth_holos(voice_id, text, speed)
         if engine_id == "teratts":
             return self._synth_teratts(voice_id, text, speed)
-        if engine_id == "supertonic3":
-            from core.supertonic_tts import supertonic3_engine
-
-            voices = ENGINE_SPECS.get(engine_id, {}).get("voices", [])
-            voice_entry = next((v for v in voices if str(v.get("id")) == voice_id), None)
-            speaker = str((voice_entry or {}).get("speaker") or "F1")
-            return supertonic3_engine.synthesize(
-                format_stress_marks(text, "strip"),
-                voice_name=speaker,
-                lang=self._current_lang(),
-                speed=speed,
-            )
         if engine_id in ("zonos3_mini", "kokoro_82m", "soprano_1_1"):
             from core.llama_tts import synthesize_llama_tts
 
@@ -5339,9 +5302,6 @@ class TTSEngineManager(QObject):
                     from core.voice_cloner import voice_cloner
                     voice_cloner.shutdown()
                     config.set("openvoice_enabled", False)
-                elif engine_id == "supertonic3":
-                    from core.supertonic_tts import supertonic3_engine
-                    supertonic3_engine.unload()
                 elif engine_id in ("qwen3_tts", "zonos3_mini", "kokoro_82m", "soprano_1_1"):
                     from core.llama_tts import shutdown_llama_tts
                     shutdown_llama_tts()
@@ -5682,32 +5642,6 @@ class TTSEngineManager(QObject):
                         )
                 if str(config.get("active_engine", "") or "").strip() == engine_id:
                     warmup_llama_tts(engine_id, lang=self._current_lang())
-            elif engine_id == "supertonic3":
-                from core.supertonic_tts import SUPERTONIC3_DOWNLOAD_FILES
-
-                total_files = len(SUPERTONIC3_DOWNLOAD_FILES)
-                for idx, (rel_path, url) in enumerate(SUPERTONIC3_DOWNLOAD_FILES):
-                    _check_cancel()
-                    dest_f = eng_dir / rel_path
-                    dest_f.parent.mkdir(parents=True, exist_ok=True)
-                    if dest_f.exists() and dest_f.stat().st_size > 0:
-                        continue
-                    base_pct = int((idx / max(1, total_files)) * 96) + 2
-                    span_pct = max(1, int(96 / max(1, total_files)))
-                    _dl_simple(
-                        url,
-                        dest_f,
-                        engine_id,
-                        base_pct,
-                        span_pct,
-                        tr(
-                            "tts.dl.file_progress",
-                            "Завантаження {fname} ({idx}/{total})...",
-                            fname=Path(rel_path).name,
-                            idx=idx + 1,
-                            total=total_files,
-                        ),
-                    )
 
             _emit_progress(100, tr("tts.dl.installed", "Встановлено!"))
             self.model_status_changed.emit(engine_id, True)

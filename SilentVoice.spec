@@ -95,7 +95,6 @@ hidden_imports = [
     "onnxruntime",
     "core.voice_cloner",
     "core.llama_tts",
-    "core.supertonic_tts",
     "holos_onnx",
     "ipa_uk",
     "ukrainian_word_stress",
