@@ -331,6 +331,55 @@ class NewLocalTtsModelsTests(unittest.TestCase):
                 self.assertIn("tokens", feeds)
                 eng.unload()
 
+    def test_all_internal_imports_resolve(self) -> None:
+        """Статично перевіряє, що кожен `from core.* / ui.* import <sym>` реально існує."""
+        import ast
+
+        root = Path(__file__).resolve().parent.parent
+        py_files = [root / "main.py"] + sorted((root / "core").glob("*.py")) + sorted((root / "ui").glob("*.py"))
+        exports: dict[str, set[str]] = {}
+        for f in py_files:
+            mod_name = ".".join(f.relative_to(root).with_suffix("").parts)
+            tree = ast.parse(f.read_text(encoding="utf-8"), filename=str(f))
+            names: set[str] = set()
+            for node in tree.body:
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                    names.add(node.name)
+                elif isinstance(node, ast.Assign):
+                    for t in node.targets:
+                        if isinstance(t, ast.Name):
+                            names.add(t.id)
+                        elif isinstance(t, (ast.Tuple, ast.List)):
+                            for elt in t.elts:
+                                if isinstance(elt, ast.Name):
+                                    names.add(elt.id)
+                elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                    names.add(node.target.id)
+                elif isinstance(node, (ast.Import, ast.ImportFrom)):
+                    for a in node.names:
+                        names.add(a.asname or a.name.split(".")[0])
+                elif isinstance(node, (ast.If, ast.Try)):
+                    for sub in ast.walk(node):
+                        if isinstance(sub, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                            names.add(sub.name)
+                        elif isinstance(sub, ast.Assign):
+                            for t in sub.targets:
+                                if isinstance(t, ast.Name):
+                                    names.add(t.id)
+                        elif isinstance(sub, ast.AnnAssign) and isinstance(sub.target, ast.Name):
+                            names.add(sub.target.id)
+            exports[mod_name] = names
+
+        broken: list[str] = []
+        for f in py_files:
+            tree = ast.parse(f.read_text(encoding="utf-8"), filename=str(f))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom) and node.module in exports:
+                    for a in node.names:
+                        if a.name != "*" and a.name not in exports[node.module]:
+                            broken.append(f"{f.name}:{node.lineno}: from {node.module} import {a.name}")
+        self.assertEqual(broken, [], f"Broken internal imports: {broken}")
+
 
 if __name__ == "__main__":
     unittest.main()

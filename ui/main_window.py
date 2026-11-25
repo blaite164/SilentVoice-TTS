@@ -2025,8 +2025,8 @@ class MainWindow(QMainWindow):
                     lambda checked=False, eid=eng_id, title=spec["title"]: VoiceSamplesDialog(eid, title, self).exec()
                 )
                 if eng_id in ("kokoro_82m", "soprano_1_1"):
-                    from core.tts_manager import get_sample_files_for_engine
-                    if not get_sample_files_for_engine(eng_id):
+                    from core.tts_manager import get_samples_for_engine
+                    if not get_samples_for_engine(eng_id):
                         listen_btn.setVisible(False)
             top_r.addWidget(listen_btn)
 
@@ -10718,6 +10718,13 @@ class MainWindow(QMainWindow):
             d_combo = ui.get("device_combo")
             if isinstance(d_combo, QComboBox):
                 d_combo.setEnabled(False)
+            if tts_manager.is_downloading(engine_id):
+                btn: QPushButton = ui["action_btn"]  # type: ignore
+                btn.setEnabled(False)
+                btn.setText(tr("ui_173", "⏳ Завантаження..."))
+                c_btn = ui.get("cancel_btn")
+                if isinstance(c_btn, QPushButton):
+                    c_btn.setVisible(True)
             lbl_w: QLabel = ui["prog_label"]  # type: ignore
             lbl_w.setStyleSheet("color: #CBD5E1; font-size: 12px;")
             lbl_w.setVisible(True)
