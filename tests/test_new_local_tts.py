@@ -214,6 +214,13 @@ class NewLocalTtsModelsTests(unittest.TestCase):
 
     def test_supertonic3_install_check_preprocess_and_synthesize(self) -> None:
         self.assertEqual(supertonic_tts.SUPERTONIC3_DEFAULT_STEPS, 6)
+        # Tail trimmer removes low-level post-speech vocoder hiss and fades smoothly to zero
+        sr_t = 44100
+        speech = 0.25 * np.sin(np.linspace(0.0, 400.0, sr_t, dtype=np.float32))
+        hiss_tail = 0.0008 * np.ones(int(sr_t * 0.6), dtype=np.float32)
+        trimmed = supertonic_tts._trim_supertonic_tail(np.concatenate([speech, hiss_tail]), sr_t)
+        self.assertLess(len(trimmed), len(speech) + int(sr_t * 0.2))
+        self.assertLess(abs(float(trimmed[-1])), 1e-4)
         self.assertEqual(
             supertonic_tts.preprocess_supertonic_text("Привіт світ", "uk"),
             "<uk>Привіт світ.</uk>",

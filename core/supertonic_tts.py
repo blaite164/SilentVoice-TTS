@@ -8,6 +8,7 @@ core/supertonic_tts.py — Локальний CPU ONNX рушій Supertonic 3 (
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import threading
@@ -221,6 +222,34 @@ class _UnicodeProcessor:
         return text_ids, text_mask
 
 
+def _trim_supertonic_tail(wav: np.ndarray, sr: int) -> np.ndarray:
+    """Акуратно прибирає зайвий тихий хвіст/шипіння vocoder у кінці фрази з плавним косинусним fade-out."""
+    if len(wav) < int(sr * 0.25):
+        return wav
+    peak = float(np.max(np.abs(wav)))
+    if peak < 1e-4:
+        return wav
+    hop = max(1, int(sr * 0.01))  # 10 мс
+    n_frames = len(wav) // hop
+    if n_frames < 4:
+        return wav
+    frames = wav[: n_frames * hop].reshape(n_frames, hop)
+    rms = np.sqrt(np.mean(frames * frames, axis=1) + 1e-12)
+    thresh = max(1e-4, peak * (10.0 ** (-42.0 / 20.0)))
+    active = np.flatnonzero(rms >= thresh)
+    if len(active) == 0:
+        return wav
+    last_active_sample = int((int(active[-1]) + 1) * hop)
+    keep_pad = int(sr * 0.08)   # 80 мс природного затухання кінцевого приголосного
+    fade_len = int(sr * 0.05)   # 50 мс плавного косинусного спаду в нуль
+    end_idx = min(len(wav), last_active_sample + keep_pad + fade_len)
+    out = wav[:end_idx].copy()
+    if fade_len > 0 and len(out) > fade_len:
+        fade = 0.5 * (1.0 + np.cos(np.linspace(0.0, math.pi, fade_len, dtype=np.float32)))
+        out[-fade_len:] *= fade
+    return out
+
+
 class Supertonic3Engine:
     """Потокобезпечний ONNX CPU рушій для Supertonic 3 (44.1 kHz)."""
 
@@ -380,7 +409,7 @@ class Supertonic3Engine:
         expected_len = int(wav_lengths[0])
         if 0 < expected_len < len(out):
             out = out[:expected_len]
-        return out
+        return _trim_supertonic_tail(out, self.sample_rate)
 
     def synthesize(
         self,
