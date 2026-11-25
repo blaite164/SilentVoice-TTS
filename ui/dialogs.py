@@ -656,6 +656,8 @@ class VoiceSamplesDialog(QDialog):
             else []
         )
         self._has_dual_tabs = bool(self._is_clone_engine and self._model_samples)
+        if self._has_dual_tabs:
+            self._active_tab_mode = "model"
 
         self.setMinimumSize(520, 380)
         self.resize(580, 440)
@@ -695,10 +697,10 @@ class VoiceSamplesDialog(QDialog):
                 "QTabBar::tab:hover { background-color: #30374F; color: #FFFFFF; }"
                 "QTabBar::tab:selected { background-color: #635BFF; color: #FFFFFF; border-color: #827BFF; }"
             )
-            idx_clone = self._mode_tabs.addTab(tr("dlg.samples.tab_clone", "Голоси для клонування"))
-            self._mode_tabs.setTabData(idx_clone, "clone")
             idx_model = self._mode_tabs.addTab(tr("dlg.samples.tab_model", "Голоси моделі"))
             self._mode_tabs.setTabData(idx_model, "model")
+            idx_clone = self._mode_tabs.addTab(tr("dlg.samples.tab_clone", "Голоси для клонування"))
+            self._mode_tabs.setTabData(idx_clone, "clone")
             self._mode_tabs.setCurrentIndex(0)
             self._mode_tabs.currentChanged.connect(self._on_mode_tab_changed)
             lay.addWidget(self._mode_tabs)

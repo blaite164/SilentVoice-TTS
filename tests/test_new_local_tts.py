@@ -384,7 +384,7 @@ class NewLocalTtsModelsTests(unittest.TestCase):
                         dlg_clone.close()
                         dlg_clone.deleteLater()
 
-                    # ZONOS3-Mini with built-in model samples shows 2 tabs & switches window/header title
+                    # ZONOS3-Mini with built-in model samples opens on tab 0 ("model") first, then switches to "clone"
                     dlg_z = VoiceSamplesDialog(
                         "zonos3_mini",
                         "ZONOS3-Mini",
@@ -395,12 +395,17 @@ class NewLocalTtsModelsTests(unittest.TestCase):
                     self.assertIsNotNone(dlg_z._mode_tabs)
                     assert dlg_z._mode_tabs is not None
                     self.assertEqual(dlg_z._mode_tabs.count(), 2)
-                    title_clone = dlg_z.windowTitle()
-                    hdr_clone = dlg_z._hdr_label.text()
-                    dlg_z._mode_tabs.setCurrentIndex(1)
-                    self.assertNotEqual(dlg_z.windowTitle(), title_clone)
-                    self.assertNotEqual(dlg_z._hdr_label.text(), hdr_clone)
+                    self.assertEqual(dlg_z._mode_tabs.currentIndex(), 0)
+                    self.assertEqual(dlg_z._mode_tabs.tabData(0), "model")
+                    self.assertEqual(dlg_z._mode_tabs.tabData(1), "clone")
+                    self.assertEqual(dlg_z._active_tab_mode, "model")
                     self.assertEqual(len(dlg_z._install_buttons), 0)
+                    title_model = dlg_z.windowTitle()
+                    hdr_model = dlg_z._hdr_label.text()
+                    dlg_z._mode_tabs.setCurrentIndex(1)
+                    self.assertEqual(dlg_z._active_tab_mode, "clone")
+                    self.assertNotEqual(dlg_z.windowTitle(), title_model)
+                    self.assertNotEqual(dlg_z._hdr_label.text(), hdr_model)
                     dlg_z.close()
                     dlg_z.deleteLater()
 
