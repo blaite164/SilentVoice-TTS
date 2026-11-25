@@ -585,20 +585,47 @@ class _EasterEggAudioPlayer:
         self._thread: Optional[threading.Thread] = None
 
     @staticmethod
-    def _pick_local_output_device() -> Optional[int]:
-        """Повертає індекс локального пристрою виводу (Канал 2, якщо обраний; інакше системний за замовчуванням)."""
+    def _pick_local_output_devices() -> list[Optional[int]]:
+        """
+        Повертає пріоритетний список індексів реальних локальних пристроїв виводу (навушники/динаміки),
+        виключаючи VB-Audio Virtual Cable, щоб музика гарантовано грала користувачу, а не в мікрофон.
+        """
+        candidates: list[Optional[int]] = []
         try:
-            from core.audio_router import audio_router
-            from core.config import config
+            from core.audio_router import (
+                resolve_default_output_device_index,
+                resolve_non_cable_speaker_indices,
+                resolve_secondary_output_targets,
+            )
 
-            sec = str(config.get("secondary_output_device", "") or "").strip()
-            if sec and sec not in ("__off__", "__vban__"):
-                idx = audio_router._resolve_device_index(sec)
-                if idx is not None and idx >= 0:
-                    return int(idx)
+            for idx in resolve_secondary_output_targets():
+                if idx is not None and idx >= 0 and idx not in candidates:
+                    candidates.append(int(idx))
+
+            def_idx = resolve_default_output_device_index(skip_cable=True)
+            if def_idx is not None and def_idx >= 0 and def_idx not in candidates:
+                candidates.append(int(def_idx))
+
+            for idx in resolve_non_cable_speaker_indices():
+                if idx is not None and idx >= 0 and idx not in candidates:
+                    candidates.append(int(idx))
         except Exception:
             pass
-        return None
+        if not candidates:
+            candidates.append(None)
+        return candidates
+
+    @staticmethod
+    def _get_playback_gain() -> float:
+        try:
+            from core.config import config
+
+            vol = int(config.get("secondary_volume", 85))
+            if vol > 0:
+                return max(0.15, min(1.0, vol / 100.0))
+        except Exception:
+            pass
+        return 0.85
 
     def start(self) -> bool:
         path = self._audio_path or get_easter_egg_audio_path()
@@ -617,8 +644,7 @@ class _EasterEggAudioPlayer:
         return True
 
     def _open_stream(self, sd: Any, samplerate: int, channels: int) -> Any:
-        dev_idx = self._pick_local_output_device()
-        candidates: list[Optional[int]] = [dev_idx, None] if dev_idx is not None else [None]
+        candidates = self._pick_local_output_devices()
         last_exc: Optional[Exception] = None
         for dev in candidates:
             try:
@@ -645,7 +671,6 @@ class _EasterEggAudioPlayer:
         except Exception:
             return
 
-        stream: Any = None
         try:
             with sf.SoundFile(str(path), mode="r") as audio_file:
                 sr = int(audio_file.samplerate)
@@ -658,6 +683,7 @@ class _EasterEggAudioPlayer:
                 with self._stream_lock:
                     self._stream = stream
 
+                gain = np.float32(self._get_playback_gain())
                 fade_frames = max(1, int(sr * 0.35))
                 played_frames = 0
                 block_size = 2048
@@ -667,6 +693,7 @@ class _EasterEggAudioPlayer:
                     if chunk.size == 0:
                         audio_file.seek(0)
                         continue
+                    chunk = chunk * gain
                     if played_frames < fade_frames:
                         n = int(chunk.shape[0])
                         end_f = min(fade_frames, played_frames + n)
@@ -677,14 +704,13 @@ class _EasterEggAudioPlayer:
                             ramp_len,
                             dtype=np.float32,
                         )[:, None]
-                        chunk = chunk.copy()
                         chunk[:ramp_len] *= ramp
                         played_frames += n
                     if self._stop_event.is_set():
                         break
                     stream.write(chunk)
-        except Exception:
-            pass
+        except Exception as exc:
+            print(f"[EasterEgg] Помилка відтворення музики: {exc}")
         finally:
             with self._stream_lock:
                 s = self._stream

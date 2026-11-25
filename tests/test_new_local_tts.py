@@ -521,6 +521,13 @@ class NewLocalTtsModelsTests(unittest.TestCase):
                 pass
 
         player = _EasterEggAudioPlayer(audio_path)
+        with (
+            patch("core.audio_router.resolve_secondary_output_targets", return_value=[8]),
+            patch("core.audio_router.resolve_default_output_device_index", return_value=8),
+            patch("core.audio_router.resolve_non_cable_speaker_indices", return_value=[8, 10]),
+        ):
+            self.assertEqual(player._pick_local_output_devices(), [8, 10])
+
         with patch.object(player, "_open_stream", return_value=_FakeStream()):
             self.assertTrue(player.start())
             self.assertTrue(wrote_ev.wait(timeout=2.0))
