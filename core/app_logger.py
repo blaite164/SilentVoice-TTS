@@ -491,6 +491,37 @@ def clear_pending_freeze(data_dir: Path) -> None:
             pass
 
 
+_WIN_FATAL_CODE_RE = re.compile(r"Windows fatal exception:\s*code\s+0x([0-9a-fA-F]+)", re.IGNORECASE)
+
+
+def _extract_real_native_crash_summary(delta_text: str) -> str | None:
+    """
+    Перевіряє новий фрагмент crash.log на наявність справжнього фатального крашу.
+    Ігнорує нефатальні оброблені Windows COM/RPC/debug first-chance винятки
+    (наприклад, 0x8001010d RPC_E_CANTCALLOUT_ININPUTSYNCCALL у модальних діалогах Qt),
+    які Python faulthandler записує через VEH навіть коли програма не падає.
+    """
+    for raw_line in delta_text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith("Fatal Python error:"):
+            return line[:300]
+        if line.startswith("Windows fatal exception:"):
+            m = _WIN_FATAL_CODE_RE.match(line)
+            if m is not None:
+                code_hex = m.group(1).lower()
+                # NTSTATUS фатальні коди Windows завжди починаються з 0xc... (0xc0000005, 0xc0000409 тощо);
+                # 0x8001xxxx (COM/RPC) та 0x400xxxxx / 0x406d1388 (debug/thread name) — оброблені, не фатальні.
+                if code_hex.startswith("c"):
+                    return line[:300]
+                continue
+            return line[:300]
+        if "[ERROR]" in line or "[Qt FATAL]" in line or "[UI FREEZE]" in line:
+            return line[:300]
+    return None
+
+
 def consume_pending_crash_report(
     data_dir: Path,
     crash_log_path: Path,
@@ -517,12 +548,22 @@ def consume_pending_crash_report(
         except OSError:
             cur_crash_size = 0
         if cur_crash_size > prev_crash_size:
-            return {
-                "kind": "native_crash",
-                "summary": "Abnormal termination detected (crash.log updated)",
-                "session_log": str(last_state.get("session_log", "") or ""),
-                "timestamp": str(last_state.get("started_at", "") or datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
-            }
+            delta_text = ""
+            try:
+                read_from = max(prev_crash_size, cur_crash_size - 256 * 1024)
+                with open(crash_log_path, "rb") as fh:
+                    fh.seek(read_from)
+                    delta_text = fh.read(cur_crash_size - read_from).decode("utf-8", errors="replace")
+            except OSError:
+                delta_text = ""
+            real_summary = _extract_real_native_crash_summary(delta_text)
+            if real_summary is not None:
+                return {
+                    "kind": "native_crash",
+                    "summary": real_summary,
+                    "session_log": str(last_state.get("session_log", "") or ""),
+                    "timestamp": str(last_state.get("started_at", "") or datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+                }
 
     return None
 

@@ -225,6 +225,22 @@ class AppLoggerTests(unittest.TestCase):
             self.assertIsNotNone(native)
             assert native is not None
             self.assertEqual(native["kind"], "native_crash")
+            self.assertIn("Segmentation fault", native["summary"])
+
+            # 3b. Нефатальний Windows COM first-chance виняток 0x8001010d — НЕ повинен викликати діалог крашу
+            mark_session_started(data_dir, "app_3b.log", crash_log)
+            with open(crash_log, "a", encoding="utf-8") as fh:
+                fh.write("Windows fatal exception: code 0x8001010d\n\nCurrent thread 0x1:\n  File main.py\n")
+            self.assertIsNone(consume_pending_crash_report(data_dir, crash_log, logs_dir))
+
+            # 3c. Справжній NTSTATUS краш 0xc0000409 / access violation — повинен показати діалог
+            mark_session_started(data_dir, "app_3c.log", crash_log)
+            with open(crash_log, "a", encoding="utf-8") as fh:
+                fh.write("Windows fatal exception: access violation\n")
+            av = consume_pending_crash_report(data_dir, crash_log, logs_dir)
+            self.assertIsNotNone(av)
+            assert av is not None
+            self.assertIn("access violation", av["summary"])
 
             # 4. Коректне завершення — не показує діалог
             mark_session_started(data_dir, "app_4.log", crash_log)
