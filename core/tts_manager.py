@@ -1439,7 +1439,10 @@ def remove_custom_clone_sample(engine_id: str, sample_path: str) -> None:
 
 
 def get_samples_for_engine(
-    engine_id: str, lang: Optional[str] = None, gender: Optional[str] = None
+    engine_id: str,
+    lang: Optional[str] = None,
+    gender: Optional[str] = None,
+    clone_mode: Optional[bool] = None,
 ) -> List[Dict[str, str]]:
     """
     Повертає список доступних прикладів для конкретного локального движка,
@@ -1448,7 +1451,10 @@ def get_samples_for_engine(
     - data/samples/<engine_id>/*.{wav,ogg,flac,mp3}
     - data/samples/<engine_id>_*.{wav,ogg,flac,mp3}
     - samples/<engine_id>_*.{wav,ogg,flac,mp3}
+    Якщо clone_mode=False — сканує лише власні зразки движка без спільної папки clone_voices.
+    Якщо clone_mode=True — сканує спільний каталог голосів для клонування (clone_voices).
     """
+    use_clone_catalog = (engine_id in CLONE_ENGINE_IDS) if clone_mode is None else bool(clone_mode)
     target_lang = str(lang if lang is not None else (config.get("app_language", "uk") or "uk")).strip().lower()
     if target_lang == "ua":
         target_lang = "uk"
@@ -1480,7 +1486,15 @@ def get_samples_for_engine(
 
     candidates: List[Tuple[Path, str]] = []
     exts = ("*.wav", "*.ogg", "*.flac", "*.mp3")
-    scan_keys = _sample_scan_keys(engine_id)
+    if clone_mode is False:
+        scan_keys: Tuple[str, ...] = (engine_id,)
+        custom_scan_keys: Tuple[str, ...] = ()
+    elif clone_mode is True:
+        scan_keys = (SHARED_CLONE_SAMPLES_SUBDIR, "openvoice")
+        custom_scan_keys = _sample_scan_keys(engine_id)
+    else:
+        scan_keys = _sample_scan_keys(engine_id)
+        custom_scan_keys = scan_keys
     for key in scan_keys:
         sub_dir = SAMPLES_DIR / key
         if sub_dir.exists():
@@ -1506,8 +1520,8 @@ def get_samples_for_engine(
 
     custom_paths_norm = set()
     custom_map = config.get("custom_clone_samples", {}) or {}
-    if isinstance(custom_map, dict):
-        for key in scan_keys:
+    if isinstance(custom_map, dict) and custom_scan_keys:
+        for key in custom_scan_keys:
             for entry in (custom_map.get(key) or []):
                 if not isinstance(entry, dict):
                     continue
@@ -1539,7 +1553,7 @@ def get_samples_for_engine(
                 sample_lang = known_prefixes[prefix]
         if sample_lang and target_lang not in ("", "all", "multi") and sample_lang != target_lang:
             continue
-        if engine_id in CLONE_ENGINE_IDS:
+        if use_clone_catalog:
             clone_dedup_key = (sample_lang, wav_path.name.lower())
             if clone_dedup_key in seen_clone_keys:
                 continue
@@ -1567,7 +1581,7 @@ def get_samples_for_engine(
             "is_custom": "1" if norm in custom_paths_norm else "",
         })
 
-    if engine_id in CLONE_ENGINE_IDS:
+    if use_clone_catalog:
         result.sort(
             key=lambda item: (
                 0 if item.get("gender") == "female" else (1 if item.get("gender") == "male" else 2),

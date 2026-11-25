@@ -2005,48 +2005,43 @@ class MainWindow(QMainWindow):
             top_r.addWidget(meta_lbl)
             top_r.addStretch(1)
 
+            clone_voices_btn: Optional[QPushButton] = None
+            if is_clone_gguf:
+                clone_voices_btn = QPushButton("▼")
+                clone_voices_btn.setFixedWidth(32)
+                clone_voices_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+                clone_voices_btn.setStyleSheet("padding: 7px 0px; font-size: 11px;")
+                clone_voices_btn.setToolTip(
+                    tr("llama_tts.clone_voices_tip", "Відкрити доступні голоси для клонування")
+                )
+                clone_voices_btn.clicked.connect(
+                    lambda checked=False, eid=eng_id, title=str(spec["title"]): VoiceSamplesDialog(
+                        eid,
+                        title,
+                        self,
+                        on_select_sample=lambda p, e=eid: self._set_clone_ref_file(e, p),
+                        allow_install=tts_manager.is_engine_installed(eid),
+                        selected_sample_path=str(config.get(f"{eid}_ref_path", "") or ""),
+                        on_delete_sample=lambda _p, e=eid: self._on_clone_sample_deleted(e),
+                        clone_mode=True,
+                    ).exec()
+                )
+                top_r.addWidget(clone_voices_btn)
+
             listen_btn = QPushButton(tr("ui_129", "🎧 Прослухати"))
             listen_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             listen_btn.setToolTip(tr("ui_130", "Відкрити список доступних голосів для прослуховування"))
             if is_clone_gguf:
                 listen_btn.clicked.connect(
                     lambda checked=False, eid=eng_id, title=str(spec["title"]): VoiceSamplesDialog(
-                        eid,
-                        title,
-                        self,
-                        on_select_sample=lambda p, e=eid: self._set_clone_ref_file(e, p),
-                        allow_install=True,
-                        selected_sample_path=str(config.get(f"{eid}_ref_path", "") or ""),
-                        on_delete_sample=lambda _p, e=eid: self._on_clone_sample_deleted(e),
+                        eid, title, self, clone_mode=False
                     ).exec()
                 )
             else:
                 listen_btn.clicked.connect(
                     lambda checked=False, eid=eng_id, title=spec["title"]: VoiceSamplesDialog(eid, title, self).exec()
                 )
-                if eng_id in ("kokoro_82m", "soprano_1_1"):
-                    from core.tts_manager import get_samples_for_engine
-                    if not get_samples_for_engine(eng_id):
-                        listen_btn.setVisible(False)
             top_r.addWidget(listen_btn)
-
-            dev_combo: Optional[QComboBox] = None
-            if eng_id in ("kokoro_82m", "soprano_1_1"):
-                dev_combo = QComboBox()
-                dev_combo.setToolTip(tr("tts.dev.tip", "Оберіть пристрій для генерації голосу (GPU або CPU)"))
-                if has_hardware_gpu():
-                    dev_combo.addItem(tr("tts.dev.gpu", "🎮 GPU"), "gpu")
-                dev_combo.addItem(tr("ov.dev.cpu", "🧠 CPU"), "cpu")
-                cur_d = str(config.get(f"{eng_id}_device", "gpu") or "gpu").strip().lower()
-                d_idx = dev_combo.findData(cur_d)
-                if d_idx >= 0:
-                    dev_combo.setCurrentIndex(d_idx)
-                if eng_id == "kokoro_82m":
-                    dev_combo.currentIndexChanged.connect(self._on_kokoro_device_changed)
-                else:
-                    dev_combo.currentIndexChanged.connect(self._on_soprano_device_changed)
-                    dev_combo.setVisible(installed)
-                top_r.addWidget(dev_combo)
 
             action_btn = QPushButton()
             action_btn.setMinimumWidth(115)
@@ -2062,6 +2057,32 @@ class MainWindow(QMainWindow):
             top_r.addWidget(cancel_btn)
 
             c_lay.addLayout(top_r)
+
+            dev_combo: Optional[QComboBox] = None
+            dev_opts_widget: Optional[QWidget] = None
+            if eng_id in ("kokoro_82m", "soprano_1_1"):
+                dev_opts_widget = QWidget()
+                dev_lay = QHBoxLayout(dev_opts_widget)
+                dev_lay.setContentsMargins(0, 2, 0, 0)
+                dev_lay.setSpacing(8)
+                dev_combo = QComboBox()
+                dev_combo.setMinimumWidth(140)
+                dev_combo.setToolTip(tr("tts.dev.tip", "Оберіть пристрій для генерації голосу (GPU або CPU)"))
+                if has_hardware_gpu():
+                    dev_combo.addItem(tr("tts.dev.gpu", "🚀 GPU"), "gpu")
+                dev_combo.addItem(tr("ov.dev.cpu", "🧠 CPU"), "cpu")
+                cur_d = str(config.get(f"{eng_id}_device", "gpu") or "gpu").strip().lower()
+                d_idx = dev_combo.findData(cur_d)
+                if d_idx >= 0:
+                    dev_combo.setCurrentIndex(d_idx)
+                if eng_id == "kokoro_82m":
+                    dev_combo.currentIndexChanged.connect(self._on_kokoro_device_changed)
+                else:
+                    dev_combo.currentIndexChanged.connect(self._on_soprano_device_changed)
+                dev_lay.addWidget(dev_combo)
+                dev_lay.addStretch(1)
+                dev_opts_widget.setVisible(False)
+                c_lay.addWidget(dev_opts_widget)
 
             clone_ui: Dict[str, Any] = {}
             if is_clone_gguf:
@@ -2087,8 +2108,12 @@ class MainWindow(QMainWindow):
                 "cancel_btn": cancel_btn,
                 "listen_btn": listen_btn,
             }
+            if clone_voices_btn is not None:
+                card_entry["clone_voices_btn"] = clone_voices_btn
             if dev_combo is not None:
                 card_entry["device_combo"] = dev_combo
+            if dev_opts_widget is not None:
+                card_entry["dev_opts_widget"] = dev_opts_widget
             card_entry.update(clone_ui)
             self._engine_cards_ui[eng_id] = card_entry
             self._update_engine_card_state(eng_id, installed)
@@ -2206,13 +2231,15 @@ class MainWindow(QMainWindow):
         opts_lay.addWidget(enabled_chk)
 
         device_combo = QComboBox()
-        device_combo.addItem(tr("ov.dev.gpu", "🎮 GPU (DirectML)"), "gpu")
+        device_combo.setMinimumWidth(165)
+        device_combo.addItem(tr("ov.dev.gpu", "🚀 GPU (DirectML)"), "gpu")
         device_combo.addItem(tr("ov.dev.cpu", "🧠 CPU"), "cpu")
         cur_dev = str(config.get("openvoice_device", "gpu") or "gpu").strip().lower()
         d_idx = device_combo.findData(cur_dev)
         if d_idx >= 0:
             device_combo.setCurrentIndex(d_idx)
         device_combo.currentIndexChanged.connect(self._on_openvoice_device_changed)
+        device_combo.setVisible(device_combo.count() > 1)
         opts_lay.addWidget(device_combo)
 
         ref_lbl = ElidedLabel("")
@@ -2401,9 +2428,13 @@ class MainWindow(QMainWindow):
         if not ui:
             return
         installed = tts_manager.is_engine_installed(engine_id)
+        has_gpu = has_hardware_gpu()
         listen_btn = ui.get("listen_btn")
         if isinstance(listen_btn, QPushButton) and engine_id != "openvoice":
-            listen_btn.setVisible(installed)
+            listen_btn.setVisible(has_gpu)
+        clone_voices_btn = ui.get("clone_voices_btn")
+        if isinstance(clone_voices_btn, QPushButton):
+            clone_voices_btn.setVisible(has_gpu)
         choose_btn = ui.get("choose_ref_btn")
         if isinstance(choose_btn, QPushButton):
             choose_btn.setVisible(installed)
@@ -9841,10 +9872,24 @@ class MainWindow(QMainWindow):
         btn.style().unpolish(btn)
         btn.style().polish(btn)
         d_combo = ui.get("device_combo")
+        dev_opts_w = ui.get("dev_opts_widget")
         if isinstance(d_combo, QComboBox):
             d_combo.setEnabled(True)
-            if engine_id == "soprano_1_1":
-                d_combo.setVisible(installed)
+            has_choice = d_combo.count() > 1
+            if engine_id in ("kokoro_82m", "soprano_1_1"):
+                if engine_id == "kokoro_82m":
+                    from core.kokoro_onnx_tts import is_kokoro_onnx_installed
+                    from core.llama_tts import is_kokoro_installed
+
+                    show_dev = has_choice and (installed or is_kokoro_installed() or is_kokoro_onnx_installed())
+                else:
+                    show_dev = has_choice and installed
+                if isinstance(dev_opts_w, QWidget):
+                    dev_opts_w.setVisible(show_dev)
+                else:
+                    d_combo.setVisible(show_dev)
+            else:
+                d_combo.setVisible(has_choice)
         if engine_id in ("openvoice", "qwen3_tts", "zonos3_mini"):
             self._refresh_clone_card_ui(engine_id)
 

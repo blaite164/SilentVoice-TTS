@@ -1195,7 +1195,7 @@
   "ov.pick_file": "📂 Stimme wählen",
   "ov.pick_file_tip": "Wählen oder ziehen Sie eine .wav/.mp3/.ogg-Stimmprobe zum Klonen hierher",
   "ov.enable_chk": "Auf jedes TTS anwenden",
-  "ov.dev.gpu": "🎮 GPU (DirectML)",
+  "ov.dev.gpu": "🚀 GPU (DirectML)",
   "ov.dev.cpu": "🧠 CPU",
   "ov.pick_dlg_title": "Stimmprobe zum Klonen auswählen",
   "ov.pick_dlg_filter": "Audiodateien (*.wav *.mp3 *.ogg *.flac *.m4a);;Alle Dateien (*.*)",
@@ -1352,6 +1352,9 @@
   "tts.title.zonos3_mini": "ZONOS3-Mini (GGUF) - mit Stimmklonen",
   "dlg.qwen_quant.opt_zonos3": "ZONOS3-Mini — weniger VRAM (~2,5 GB VRAM, empfohlen für Spiele)",
   "tts.size.soprano_1_1": "~139 MB",
-  "tts.dev.gpu": "🎮 GPU",
-  "tts.dev.tip": "Wählen Sie das Gerät für die Sprachgenerierung (GPU oder CPU)"
+  "tts.dev.gpu": "🚀 GPU",
+  "tts.dev.tip": "Wählen Sie das Gerät für die Sprachgenerierung (GPU oder CPU)",
+  "llama_tts.clone_voices_tip": "Verfügbare Stimmen zum Klonen öffnen",
+  "dlg.clone_voices.header": "🎧 Verfügbare Stimmen zum Klonen: {engine_title}",
+  "clone.samples.install_required_tip": "Installieren Sie zuerst {name}, um diese Stimme auszuwählen"
 }

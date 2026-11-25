@@ -380,6 +380,109 @@ class NewLocalTtsModelsTests(unittest.TestCase):
                             broken.append(f"{f.name}:{node.lineno}: from {node.module} import {a.name}")
         self.assertEqual(broken, [], f"Broken internal imports: {broken}")
 
+    def test_local_engine_cards_listen_clone_buttons_and_device_dropdown_rules(self) -> None:
+        from PySide6.QtWidgets import QApplication
+        from core.config import config
+        from core.tts_manager import get_samples_for_engine
+        from ui.dialogs import VoiceSamplesDialog
+        from ui.main_window import MainWindow
+
+        app = QApplication.instance() or QApplication([])
+        orig_data = dict(config._data)
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                samples_root = Path(tmp) / "samples"
+                (samples_root / "zonos3_mini").mkdir(parents=True)
+                (samples_root / "zonos3_mini" / "en_savannah.ogg").write_bytes(b"z")
+                (samples_root / "clone_voices" / "en").mkdir(parents=True)
+                (samples_root / "clone_voices" / "en" / "CloneVoice.mp3").write_bytes(b"c")
+
+                with (
+                    patch("core.tts_manager.SAMPLES_DIR", samples_root),
+                    patch("core.tts_manager.config.get", side_effect=lambda k, d=None: "en" if k == "app_language" else ("both" if k == "voice_gender_filter" else d)),
+                ):
+                    own_only = get_samples_for_engine("zonos3_mini", lang="en", gender="both", clone_mode=False)
+                    clone_only = get_samples_for_engine("zonos3_mini", lang="en", gender="both", clone_mode=True)
+                    self.assertEqual([x["file_name"] for x in own_only], ["en_savannah.ogg"])
+                    self.assertEqual([x["file_name"] for x in clone_only], ["CloneVoice.mp3"])
+
+                    dlg_own = VoiceSamplesDialog("zonos3_mini", "ZONOS3-Mini", clone_mode=False)
+                    self.assertFalse(dlg_own._is_clone_engine)
+                    self.assertIsNone(dlg_own._lang_combo)
+                    self.assertIsNone(dlg_own._guide_btn)
+                    dlg_own.close()
+                    dlg_own.deleteLater()
+
+                    dlg_clone = VoiceSamplesDialog(
+                        "zonos3_mini",
+                        "ZONOS3-Mini",
+                        on_select_sample=lambda _p: None,
+                        allow_install=False,
+                        clone_mode=True,
+                    )
+                    self.assertTrue(dlg_clone._is_clone_engine)
+                    self.assertIsNotNone(dlg_clone._lang_combo)
+                    self.assertIsNotNone(dlg_clone._guide_btn)
+                    dlg_clone.close()
+                    dlg_clone.deleteLater()
+
+            # 1) PC WITHOUT GPU: ZONOS3 & Qwen3 hide listen + clone triangle buttons; Kokoro & Soprano show listen, hide device dropdown even when installed
+            with (
+                patch.object(config, "save", lambda *a, **k: None),
+                patch("ui.main_window.has_hardware_gpu", return_value=False),
+                patch("core.llama_tts.has_hardware_gpu", return_value=False),
+                patch.object(tts_manager, "is_engine_installed", side_effect=lambda eid: eid in ("kokoro_82m", "soprano_1_1")),
+            ):
+                config._data["app_language"] = "en"
+                win = MainWindow()
+                try:
+                    for eid in ("zonos3_mini", "qwen3_tts"):
+                        ui = win._engine_cards_ui[eid]
+                        self.assertTrue(ui["listen_btn"].isHidden())
+                        self.assertTrue(ui["clone_voices_btn"].isHidden())
+                    for eid in ("kokoro_82m", "soprano_1_1"):
+                        ui = win._engine_cards_ui[eid]
+                        self.assertFalse(ui["listen_btn"].isHidden())
+                        self.assertTrue(ui["dev_opts_widget"].isHidden())
+                finally:
+                    win.close()
+                    win.deleteLater()
+
+            # 2) PC WITH GPU: ZONOS3 & Qwen3 always show both listen + clone triangle buttons (even uninstalled);
+            #    Kokoro & Soprano hide device dropdown BEFORE install and show it (with 🚀 GPU) AFTER install
+            with (
+                patch.object(config, "save", lambda *a, **k: None),
+                patch("ui.main_window.has_hardware_gpu", return_value=True),
+                patch("core.llama_tts.has_hardware_gpu", return_value=True),
+                patch("core.llama_tts.is_kokoro_installed", return_value=False),
+                patch("core.kokoro_onnx_tts.is_kokoro_onnx_installed", return_value=False),
+                patch.object(tts_manager, "is_engine_installed", return_value=False),
+            ):
+                config._data["app_language"] = "en"
+                win = MainWindow()
+                try:
+                    for eid in ("zonos3_mini", "qwen3_tts"):
+                        ui = win._engine_cards_ui[eid]
+                        self.assertFalse(ui["listen_btn"].isHidden())
+                        self.assertFalse(ui["clone_voices_btn"].isHidden())
+                        self.assertEqual(ui["clone_voices_btn"].text(), "▼")
+                    for eid in ("kokoro_82m", "soprano_1_1"):
+                        ui = win._engine_cards_ui[eid]
+                        self.assertFalse(ui["listen_btn"].isHidden())
+                        self.assertTrue(ui["dev_opts_widget"].isHidden())
+                        self.assertIn("🚀", ui["device_combo"].itemText(0))
+                        win._update_engine_card_state(eid, True)
+                        self.assertFalse(ui["dev_opts_widget"].isHidden())
+                        self.assertGreaterEqual(ui["device_combo"].minimumWidth(), 130)
+                finally:
+                    win.close()
+                    win.deleteLater()
+        finally:
+            config._data.clear()
+            config._data.update(orig_data)
+            tts_manager.shutdown()
+        _ = app
+
 
 if __name__ == "__main__":
     unittest.main()

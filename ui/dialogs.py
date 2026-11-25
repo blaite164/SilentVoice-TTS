@@ -359,13 +359,13 @@ class Qwen3QuantChoiceDialog(QDialog):
         if vram_gb is not None and vram_gb > 0:
             vram_rounded = round(float(vram_gb)) if abs(float(vram_gb) - round(float(vram_gb))) <= 0.35 else round(float(vram_gb), 1)
             vram_label = f"{int(vram_rounded)}" if isinstance(vram_rounded, int) or float(vram_rounded).is_integer() else f"{vram_rounded:.1f}"
-            hdr_text = "🎮 " + tr(
+            hdr_text = "🚀 " + tr(
                 "dlg.qwen_quant.header_vram",
                 "Виявлено менше 9 ГБ відеопам’яті (~{vram} ГБ VRAM)",
                 vram=vram_label,
             )
         else:
-            hdr_text = "🎮 " + tr(
+            hdr_text = "🚀 " + tr(
                 "dlg.qwen_quant.header_unknown",
                 "Оберіть GPU-модель TTS для вашої відеокарти",
             )
@@ -631,11 +631,13 @@ class VoiceSamplesDialog(QDialog):
         allow_install: bool = True,
         selected_sample_path: str = "",
         on_delete_sample: Optional[Callable[[str], None]] = None,
+        clone_mode: Optional[bool] = None,
     ) -> None:
         super().__init__(parent)
         self._engine_id = engine_id
         self._engine_title = engine_title
-        self._is_clone_engine = engine_id in self._CLONE_ENGINES
+        self._clone_mode_arg = clone_mode
+        self._is_clone_engine = (engine_id in self._CLONE_ENGINES) if clone_mode is None else bool(clone_mode)
         self._on_select_sample = on_select_sample
         self._on_delete_sample = on_delete_sample
         self._allow_install = bool(allow_install)
@@ -656,7 +658,15 @@ class VoiceSamplesDialog(QDialog):
 
         hdr_row = QHBoxLayout()
         hdr_row.setSpacing(8)
-        hdr = ElidedLabel(tr("dlg_f_004", "🎧 Доступні голоси: {engine_title}", engine_title=engine_title))
+        if self._is_clone_engine and self._clone_mode_arg is True and engine_id != "openvoice":
+            hdr_text = tr(
+                "dlg.clone_voices.header",
+                "🎧 Доступні голоси для клонування: {engine_title}",
+                engine_title=engine_title,
+            )
+        else:
+            hdr_text = tr("dlg_f_004", "🎧 Доступні голоси: {engine_title}", engine_title=engine_title)
+        hdr = ElidedLabel(hdr_text)
         hdr.setObjectName("dialogTitle")
         hdr.setToolTip("")
         hdr_row.addWidget(hdr, 1)
@@ -719,9 +729,9 @@ class VoiceSamplesDialog(QDialog):
         self._c_lay.setSpacing(8)
 
         self._all_samples = (
-            get_samples_for_engine(engine_id, lang="all", gender="both")
+            get_samples_for_engine(engine_id, lang="all", gender="both", clone_mode=self._clone_mode_arg)
             if self._is_clone_engine
-            else get_samples_for_engine(engine_id, gender="both")
+            else get_samples_for_engine(engine_id, gender="both", clone_mode=self._clone_mode_arg)
         )
         self._populate_samples_list()
 
@@ -848,8 +858,9 @@ class VoiceSamplesDialog(QDialog):
                 use_btn.setEnabled(False)
                 use_btn.setToolTip(
                     tr(
-                        "ov.samples.install_required_tip",
-                        "Спочатку встановіть OpenVoice, щоб обрати цей голос",
+                        "clone.samples.install_required_tip",
+                        "Спочатку встановіть {name}, щоб обрати цей голос",
+                        name=self._engine_title,
                     )
                 )
             self._install_buttons.append((norm_item, use_btn))
@@ -886,9 +897,9 @@ class VoiceSamplesDialog(QDialog):
             self._selected_norm = ""
         remove_custom_clone_sample(self._engine_id, path_str)
         self._all_samples = (
-            get_samples_for_engine(self._engine_id, lang="all", gender="both")
+            get_samples_for_engine(self._engine_id, lang="all", gender="both", clone_mode=self._clone_mode_arg)
             if self._is_clone_engine
-            else get_samples_for_engine(self._engine_id, gender="both")
+            else get_samples_for_engine(self._engine_id, gender="both", clone_mode=self._clone_mode_arg)
         )
         if self._on_delete_sample is not None:
             self._on_delete_sample(path_str)
