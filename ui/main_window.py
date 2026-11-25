@@ -2336,8 +2336,17 @@ class MainWindow(QMainWindow):
             return
         combo = ui.get("device_combo")
         if isinstance(combo, QComboBox):
+            if tts_manager.is_downloading("kokoro_82m"):
+                cur_d = str(config.get("kokoro_82m_device", "gpu") or "gpu").strip().lower()
+                idx = combo.findData(cur_d)
+                if idx >= 0:
+                    combo.blockSignals(True)
+                    combo.setCurrentIndex(idx)
+                    combo.blockSignals(False)
+                return
             dev = str(combo.currentData() or "cpu")
             config.set("kokoro_82m_device", dev)
+            tts_manager.invalidate_warmup("kokoro_82m")
             try:
                 from core.llama_tts import _qwen3_server, shutdown_llama_tts
                 if getattr(_qwen3_server, "_engine_id", "") == "kokoro_82m":
@@ -2353,6 +2362,7 @@ class MainWindow(QMainWindow):
             installed = tts_manager.is_engine_installed("kokoro_82m")
             self._update_engine_card_state("kokoro_82m", installed)
             self._sync_tts_page_selectors()
+            self._refresh_status_banners()
             active = str(config.get("active_engine", "") or "").strip()
             fallback = str(config.get("fallback_engine", "") or "").strip()
             if installed and "kokoro_82m" in (active, fallback):
@@ -2364,8 +2374,17 @@ class MainWindow(QMainWindow):
             return
         combo = ui.get("device_combo")
         if isinstance(combo, QComboBox):
+            if tts_manager.is_downloading("soprano_1_1"):
+                cur_d = str(config.get("soprano_1_1_device", "gpu") or "gpu").strip().lower()
+                idx = combo.findData(cur_d)
+                if idx >= 0:
+                    combo.blockSignals(True)
+                    combo.setCurrentIndex(idx)
+                    combo.blockSignals(False)
+                return
             dev = str(combo.currentData() or "cpu")
             config.set("soprano_1_1_device", dev)
+            tts_manager.invalidate_warmup("soprano_1_1")
             try:
                 from core.llama_tts import _qwen3_server, shutdown_llama_tts
                 if getattr(_qwen3_server, "_engine_id", "") == "soprano_1_1":
@@ -9773,6 +9792,9 @@ class MainWindow(QMainWindow):
             btn: QPushButton = ui["action_btn"]  # type: ignore
             btn.setEnabled(False)
             btn.setText(tr("ui_173", "⏳ Завантаження..."))
+            d_combo = ui.get("device_combo")
+            if isinstance(d_combo, QComboBox):
+                d_combo.setEnabled(False)
             c_btn = ui.get("cancel_btn")
             if isinstance(c_btn, QPushButton):
                 c_btn.setEnabled(True)
@@ -9818,10 +9840,11 @@ class MainWindow(QMainWindow):
             btn.setToolTip(tr("ui_413", "Завантажити та встановити цей TTS на комп'ютер"))
         btn.style().unpolish(btn)
         btn.style().polish(btn)
-        if engine_id == "soprano_1_1":
-            s_combo = ui.get("device_combo")
-            if isinstance(s_combo, QComboBox):
-                s_combo.setVisible(installed)
+        d_combo = ui.get("device_combo")
+        if isinstance(d_combo, QComboBox):
+            d_combo.setEnabled(True)
+            if engine_id == "soprano_1_1":
+                d_combo.setVisible(installed)
         if engine_id in ("openvoice", "qwen3_tts", "zonos3_mini"):
             self._refresh_clone_card_ui(engine_id)
 
@@ -10692,6 +10715,9 @@ class MainWindow(QMainWindow):
         if ui:
             ui["progress"].setVisible(True)
             ui["progress"].setValue(pct)
+            d_combo = ui.get("device_combo")
+            if isinstance(d_combo, QComboBox):
+                d_combo.setEnabled(False)
             lbl_w: QLabel = ui["prog_label"]  # type: ignore
             lbl_w.setStyleSheet("color: #CBD5E1; font-size: 12px;")
             lbl_w.setVisible(True)
@@ -10706,6 +10732,9 @@ class MainWindow(QMainWindow):
         ui = self._engine_cards_ui.get(engine_id)
         if ui:
             ui["progress"].setVisible(False)
+            d_combo = ui.get("device_combo")
+            if isinstance(d_combo, QComboBox):
+                d_combo.setEnabled(True)
             c_btn = ui.get("cancel_btn")
             if isinstance(c_btn, QPushButton):
                 c_btn.setVisible(False)
@@ -10730,6 +10759,9 @@ class MainWindow(QMainWindow):
         ui = self._engine_cards_ui.get(engine_id)
         if ui:
             ui["progress"].setVisible(False)
+            d_combo = ui.get("device_combo")
+            if isinstance(d_combo, QComboBox):
+                d_combo.setEnabled(True)
             c_btn = ui.get("cancel_btn")
             if isinstance(c_btn, QPushButton):
                 c_btn.setVisible(False)

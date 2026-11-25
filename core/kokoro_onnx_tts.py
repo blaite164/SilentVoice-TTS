@@ -50,6 +50,43 @@ _MISAKI_REPLACEMENTS: Tuple[Tuple[str, str], ...] = (
 )
 
 _CLAUSE_SPLIT_RE = re.compile(r"(?<=[.!?;:])\s+")
+_SOFT_SPLIT_RE = re.compile(r"(?<=,)\s+")
+
+
+def _split_oversized_clause(clause: str, max_chars: int) -> List[str]:
+    """Ділить надто довге речення без крапок по комах або пробілах, щоб не різати слова."""
+    if len(clause) <= max_chars:
+        return [clause]
+    out: List[str] = []
+    sub_parts = [p.strip() for p in _SOFT_SPLIT_RE.split(clause) if p.strip()]
+    cur = ""
+    for sub in sub_parts:
+        if len(sub) > max_chars:
+            if cur:
+                out.append(cur)
+                cur = ""
+            words = sub.split(" ")
+            w_cur = ""
+            for w in words:
+                if not w_cur:
+                    w_cur = w
+                elif len(w_cur) + 1 + len(w) <= max_chars:
+                    w_cur = f"{w_cur} {w}"
+                else:
+                    out.append(w_cur)
+                    w_cur = w
+            if w_cur:
+                cur = w_cur
+        elif not cur:
+            cur = sub
+        elif len(cur) + 1 + len(sub) <= max_chars:
+            cur = f"{cur} {sub}"
+        else:
+            out.append(cur)
+            cur = sub
+    if cur:
+        out.append(cur)
+    return out or [clause]
 
 
 def is_kokoro_onnx_installed() -> bool:
@@ -72,13 +109,16 @@ def normalize_espeak_ipa_for_kokoro(ipa: str) -> str:
 
 
 def split_kokoro_text(text: str, max_chars: int = 260) -> List[str]:
-    """Розбиває довгий текст по межах речень, щоб не перевищити ліміт 510 фонем Kokoro."""
+    """Розбиває довгий текст по межах речень/ком/пробілів, щоб не перевищити ліміт 510 фонем Kokoro."""
     clean = re.sub(r"\s+", " ", str(text or "")).strip()
     if not clean:
         return []
     if len(clean) <= max_chars:
         return [clean]
-    parts = [p.strip() for p in _CLAUSE_SPLIT_RE.split(clean) if p.strip()]
+    raw_parts = [p.strip() for p in _CLAUSE_SPLIT_RE.split(clean) if p.strip()]
+    parts: List[str] = []
+    for rp in raw_parts:
+        parts.extend(_split_oversized_clause(rp, max_chars))
     chunks: List[str] = []
     cur = ""
     for part in parts:
@@ -142,6 +182,10 @@ class KokoroOnnxEngine:
             voices = {str(k): np.asarray(voices_npz[k], dtype=np.float32) for k in voices_npz.files}
         finally:
             voices_npz.close()
+        if not voices:
+            raise RuntimeError("Kokoro ONNX voices archive is empty or corrupted.")
+        if not vocab:
+            raise RuntimeError("Kokoro ONNX config.json has empty vocab.")
 
         # За результатами CPU-бенчмарків стандартний ORT пул потоків дає найкращий час для Kokoro FP32.
         opts = ort.SessionOptions()
@@ -160,7 +204,13 @@ class KokoroOnnxEngine:
 
     def _text_to_token_ids_locked(self, text: str, espeak_lang: str) -> List[int]:
         assert self._phonemizer is not None
-        sents = self._phonemizer.phonemize(espeak_lang, text)
+        try:
+            sents = self._phonemizer.phonemize(espeak_lang, text)
+        except RuntimeError:
+            if espeak_lang != "en-us":
+                sents = self._phonemizer.phonemize("en-us", text)
+            else:
+                raise
         ipa = normalize_espeak_ipa_for_kokoro(" ".join("".join(s) for s in sents))
         return [self._vocab[ch] for ch in ipa if ch in self._vocab]
 
@@ -194,7 +244,8 @@ class KokoroOnnxEngine:
             return np.zeros(0, dtype=np.float32), KOKORO_ONNX_SAMPLE_RATE
 
         v_name = str(voice or "af_heart").strip() or "af_heart"
-        espeak_lang = "en-gb" if v_name.startswith("b") else "en-us"
+        # У piper.phonemize_espeak голос British English називається "en" (lang/gmw/en), а не "en-gb".
+        espeak_lang = "en" if v_name.startswith("b") else "en-us"
         eff_speed = max(0.5, min(2.0, float(speed)))
         chunks = split_kokoro_text(clean)
 
@@ -220,7 +271,14 @@ class KokoroOnnxEngine:
                     parts.append(wav)
 
             if not parts:
-                return np.zeros(0, dtype=np.float32), KOKORO_ONNX_SAMPLE_RATE
+                raise RuntimeError(
+                    tr(
+                        "tts.err.no_speakable_chars",
+                        "Не вдалося озвучити текст «{text}» цією моделлю ({lang}): немає підтримуваних символів.",
+                        text=clean[:40],
+                        lang="en",
+                    )
+                )
             merged = np.concatenate(parts).astype(np.float32, copy=False)
             return merged, KOKORO_ONNX_SAMPLE_RATE
 

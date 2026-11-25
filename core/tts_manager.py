@@ -1805,6 +1805,14 @@ class TTSEngineManager(QObject):
             if not p.exists():
                 return None
             cache_key = str(p)
+        elif eng == "kokoro_82m":
+            from core.llama_tts import resolve_kokoro_device
+
+            cache_key = f"kokoro_82m:{resolve_kokoro_device()}"
+        elif eng == "soprano_1_1":
+            from core.llama_tts import resolve_soprano_device
+
+            cache_key = f"soprano_1_1:{resolve_soprano_device()}"
         else:
             cache_key = eng
 
@@ -1992,6 +2000,10 @@ class TTSEngineManager(QObject):
             except Exception:
                 pass
 
+    def invalidate_warmup(self, engine_id: str) -> None:
+        """Скидає позначку прогріву для вказаного движка (наприклад, після зміни GPU/CPU)."""
+        self._warmed_models = {item for item in self._warmed_models if item[0] != engine_id}
+
     def schedule_smart_warmup(self, delay_sec: float = 2.5, reason: str = "startup", _retry: int = 0) -> None:
         """
         Планує розумний фоновий прогрів TTS-рушіїв (локальних та онлайн), DSP-бібліотек і OpenVoice
@@ -2158,7 +2170,7 @@ class TTSEngineManager(QObject):
                         warmup_llama_tts(engine_id, lang=self._current_lang(), voice=spk)
                     else:
                         cur_lang = self._current_lang()
-                        probe_text = "а." if cur_lang in ("uk", "ru") else "a."
+                        probe_text = "a." if engine_id == "kokoro_82m" else ("а." if cur_lang in ("uk", "ru") else "a.")
                         self._synthesize_dispatch(engine_id, voice_id, probe_text, 1.0)
                     self._prewarm_dsp_libs(engine_id, voice_id)
                     self._warmed_models.add((engine_id, cache_key))
@@ -2840,6 +2852,14 @@ class TTSEngineManager(QObject):
                 if ref_sig:
                     ov_dev = str(config.get("openvoice_device", "gpu") or "gpu").strip().lower()
                     ov_sig = f"ov:{ov_dev}:{ref_sig}"
+        if engine_id == "kokoro_82m":
+            from core.llama_tts import resolve_kokoro_device
+
+            ov_sig = f"{ov_sig}|dev:{resolve_kokoro_device()}"
+        elif engine_id == "soprano_1_1":
+            from core.llama_tts import resolve_soprano_device
+
+            ov_sig = f"{ov_sig}|dev:{resolve_soprano_device()}"
         return (synth_text, engine_id, voice_id, dsp_sig, lang, online_sig, ov_sig)
 
     @staticmethod
@@ -5748,7 +5768,10 @@ class TTSEngineManager(QObject):
                     warmup_llama_tts(engine_id, lang=self._current_lang())
 
             _emit_progress(100, tr("tts.dl.installed", "Встановлено!"))
-            self.model_status_changed.emit(engine_id, True)
+            self.model_status_changed.emit(
+                engine_id,
+                self.is_engine_installed(engine_id) if engine_id == "kokoro_82m" else True,
+            )
             install_succeeded = True
         except self._DownloadCancelledError:
             for part_f in list(eng_dir.rglob("*.part")) + list(eng_dir.rglob("*.part.meta")):

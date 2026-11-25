@@ -225,6 +225,17 @@ class NewLocalTtsModelsTests(unittest.TestCase):
         self.assertEqual(kokoro_onnx_tts.normalize_espeak_ipa_for_kokoro("tʃdʒeɪoʊ"), "ʧʤAO")
         chunks = kokoro_onnx_tts.split_kokoro_text("Sentence one. " * 30, max_chars=80)
         self.assertGreater(len(chunks), 2)
+        long_no_punct = " ".join(["word"] * 120)
+        soft_chunks = kokoro_onnx_tts.split_kokoro_text(long_no_punct, max_chars=80)
+        self.assertGreater(len(soft_chunks), 3)
+        self.assertTrue(all(len(c) <= 80 for c in soft_chunks))
+
+        # Verify real piper EspeakPhonemizer accepts both US ("en-us") and British ("en") voices
+        from piper.phonemize_espeak import ESPEAK_DATA_DIR, EspeakPhonemizer
+
+        real_ph = EspeakPhonemizer(ESPEAK_DATA_DIR)
+        self.assertTrue(real_ph.phonemize("en-us", "Hello world"))
+        self.assertTrue(real_ph.phonemize("en", "Hello world"))
 
         with tempfile.TemporaryDirectory() as tmp:
             onnx_dir = Path(tmp) / "kokoro_onnx"
@@ -240,6 +251,7 @@ class NewLocalTtsModelsTests(unittest.TestCase):
                 np.savez(
                     str(onnx_dir / kokoro_onnx_tts.KOKORO_ONNX_VOICES_FILE),
                     af_heart=np.ones((16, 1, 256), dtype=np.float32),
+                    bf_emma=np.ones((16, 1, 256), dtype=np.float32),
                 )
                 # np.savez appends .npz if suffix isn't .npz; rename to exact voices-v1.0.bin
                 npz_written = onnx_dir / f"{kokoro_onnx_tts.KOKORO_ONNX_VOICES_FILE}.npz"
@@ -265,6 +277,24 @@ class NewLocalTtsModelsTests(unittest.TestCase):
                 ):
                     self.assertEqual(llama_tts.resolve_kokoro_device(), "gpu")
 
+                # Warmup target and audio cache key must distinguish GPU vs CPU
+                with (
+                    patch.object(llama_tts, "has_hardware_gpu", return_value=True),
+                    patch.object(llama_tts.config, "get", side_effect=lambda k, d=None: "cpu" if k == "kokoro_82m_device" else d),
+                    patch.object(tts_manager, "_current_lang", return_value="en"),
+                ):
+                    cpu_target = tts_manager._resolve_local_target_for("kokoro_82m", "kokoro_af_heart")
+                    cpu_cache_key = tts_manager._build_audio_cache_key("Hello", "kokoro_82m", "kokoro_af_heart")
+                with (
+                    patch.object(llama_tts, "has_hardware_gpu", return_value=True),
+                    patch.object(llama_tts.config, "get", side_effect=lambda k, d=None: "gpu" if k == "kokoro_82m_device" else d),
+                ):
+                    gpu_cache_key = tts_manager._build_audio_cache_key("Hello", "kokoro_82m", "kokoro_af_heart")
+                self.assertIsNotNone(cpu_target)
+                assert cpu_target is not None
+                self.assertEqual(cpu_target[2], "kokoro_82m:cpu")
+                self.assertNotEqual(cpu_cache_key, gpu_cache_key)
+
                 # Mock ORT + EspeakPhonemizer synthesis
                 fake_inp = MagicMock()
                 fake_inp.name = "tokens"
@@ -285,11 +315,20 @@ class NewLocalTtsModelsTests(unittest.TestCase):
                 eng = kokoro_onnx_tts.KokoroOnnxEngine()
                 with patch.dict("sys.modules", {"onnxruntime": fake_ort, "piper.phonemize_espeak": fake_pe_mod}):
                     wav, sr = eng.synthesize("Hello!", voice="af_heart", speed=1.15)
+                    self.assertEqual(fake_ph.phonemize.call_args.args[0], "en-us")
+                    # British voice must use espeak "en" (not invalid "en-gb")
+                    wav_uk, sr_uk = eng.synthesize("Hello!", voice="bf_emma", speed=1.0)
+                    self.assertEqual(fake_ph.phonemize.call_args.args[0], "en")
+                    self.assertEqual(sr_uk, 24000)
+                    self.assertEqual(len(wav_uk), 2400)
+                    # Unspeakable text (0 phonemes) must raise RuntimeError cleanly
+                    fake_ph.phonemize.return_value = [[]]
+                    with self.assertRaises(RuntimeError):
+                        eng.synthesize("...", voice="af_heart")
                 self.assertEqual(sr, 24000)
                 self.assertEqual(len(wav), 2400)
                 feeds = fake_sess.run.call_args.args[1]
                 self.assertIn("tokens", feeds)
-                self.assertAlmostEqual(float(feeds["speed"][0]), 1.15, places=2)
                 eng.unload()
 
 

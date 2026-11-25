@@ -92,6 +92,7 @@ hidden_imports = [
     # Локальні TTS та обробка тексту
     "piper",
     "piper.voice",
+    "piper.phonemize_espeak",
     "onnxruntime",
     "core.voice_cloner",
     "core.llama_tts",
