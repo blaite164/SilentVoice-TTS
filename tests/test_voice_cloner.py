@@ -77,14 +77,20 @@ class VoiceClonerTests(unittest.TestCase):
                 state = {"openvoice_enabled": False, "openvoice_ref_path": "", "openvoice_device": "gpu", "app_language": "uk"}
                 mock_get.side_effect = lambda k, d=None: state.get(k, d)
 
-                with patch("core.voice_cloner.OpenVoiceCloner.models_present", return_value=True):
+                with (
+                    patch("core.voice_cloner.OpenVoiceCloner.models_present", return_value=True),
+                    patch("core.voice_cloner.OpenVoiceCloner._use_gpu", return_value=True),
+                ):
                     k_off = tts_manager._build_audio_cache_key("привіт", "piper", "lada")
                     state["openvoice_enabled"] = True
                     state["openvoice_ref_path"] = str(ref1)
                     k_ref1 = tts_manager._build_audio_cache_key("привіт", "piper", "lada")
                     state["openvoice_ref_path"] = str(ref2)
                     k_ref2 = tts_manager._build_audio_cache_key("привіт", "piper", "lada")
-                    state["openvoice_device"] = "cpu"
+                with (
+                    patch("core.voice_cloner.OpenVoiceCloner.models_present", return_value=True),
+                    patch("core.voice_cloner.OpenVoiceCloner._use_gpu", return_value=False),
+                ):
                     k_cpu = tts_manager._build_audio_cache_key("привіт", "piper", "lada")
 
                     self.assertNotEqual(k_off, k_ref1)

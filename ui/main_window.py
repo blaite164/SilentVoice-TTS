@@ -2041,32 +2041,6 @@ class MainWindow(QMainWindow):
 
             c_lay.addLayout(top_r)
 
-            dev_combo: Optional[QComboBox] = None
-            dev_opts_widget: Optional[QWidget] = None
-            if eng_id in ("kokoro_82m", "soprano_1_1"):
-                dev_opts_widget = QWidget()
-                dev_lay = QHBoxLayout(dev_opts_widget)
-                dev_lay.setContentsMargins(0, 2, 0, 0)
-                dev_lay.setSpacing(8)
-                dev_combo = QComboBox()
-                dev_combo.setMinimumWidth(140)
-                dev_combo.setToolTip(tr("tts.dev.tip", "Оберіть пристрій для генерації голосу (GPU або CPU)"))
-                if has_hardware_gpu():
-                    dev_combo.addItem(tr("tts.dev.gpu", "🚀 GPU"), "gpu")
-                dev_combo.addItem(tr("ov.dev.cpu", "🧠 CPU"), "cpu")
-                cur_d = str(config.get(f"{eng_id}_device", "gpu") or "gpu").strip().lower()
-                d_idx = dev_combo.findData(cur_d)
-                if d_idx >= 0:
-                    dev_combo.setCurrentIndex(d_idx)
-                if eng_id == "kokoro_82m":
-                    dev_combo.currentIndexChanged.connect(self._on_kokoro_device_changed)
-                else:
-                    dev_combo.currentIndexChanged.connect(self._on_soprano_device_changed)
-                dev_lay.addWidget(dev_combo)
-                dev_lay.addStretch(1)
-                dev_opts_widget.setVisible(False)
-                c_lay.addWidget(dev_opts_widget)
-
             clone_ui: Dict[str, Any] = {}
             if is_clone_gguf:
                 clone_ui = self._build_llama_tts_clone_opts(eng_id, str(spec["title"]), c_lay)
@@ -2091,10 +2065,6 @@ class MainWindow(QMainWindow):
                 "cancel_btn": cancel_btn,
                 "listen_btn": listen_btn,
             }
-            if dev_combo is not None:
-                card_entry["device_combo"] = dev_combo
-            if dev_opts_widget is not None:
-                card_entry["dev_opts_widget"] = dev_opts_widget
             card_entry.update(clone_ui)
             self._engine_cards_ui[eng_id] = card_entry
             self._update_engine_card_state(eng_id, installed)
@@ -2211,18 +2181,6 @@ class MainWindow(QMainWindow):
         enabled_chk.toggled.connect(self._on_openvoice_enabled_toggled)
         opts_lay.addWidget(enabled_chk)
 
-        device_combo = QComboBox()
-        device_combo.setMinimumWidth(140)
-        device_combo.addItem(tr("ov.dev.gpu", "🚀 GPU"), "gpu")
-        device_combo.addItem(tr("ov.dev.cpu", "🧠 CPU"), "cpu")
-        cur_dev = str(config.get("openvoice_device", "gpu") or "gpu").strip().lower()
-        d_idx = device_combo.findData(cur_dev)
-        if d_idx >= 0:
-            device_combo.setCurrentIndex(d_idx)
-        device_combo.currentIndexChanged.connect(self._on_openvoice_device_changed)
-        device_combo.setVisible(device_combo.count() > 1)
-        opts_lay.addWidget(device_combo)
-
         ref_lbl = ElidedLabel("")
         opts_lay.addWidget(ref_lbl, 1)
 
@@ -2256,7 +2214,6 @@ class MainWindow(QMainWindow):
             "listen_btn": listen_btn,
             "opts_widget": opts_widget,
             "enabled_chk": enabled_chk,
-            "device_combo": device_combo,
             "ref_lbl": ref_lbl,
         }
         self._update_engine_card_state(eng_id, installed)
@@ -2321,88 +2278,6 @@ class MainWindow(QMainWindow):
         self._refresh_clone_card_ui("openvoice")
         if checked:
             tts_manager.schedule_smart_warmup(0.2, "openvoice_enabled")
-
-    def _on_openvoice_device_changed(self) -> None:
-        ui = self._engine_cards_ui.get("openvoice")
-        if not ui:
-            return
-        combo = ui.get("device_combo")
-        if isinstance(combo, QComboBox):
-            dev = str(combo.currentData() or "gpu")
-            config.set("openvoice_device", dev)
-            try:
-                from core.voice_cloner import voice_cloner
-                voice_cloner.shutdown()
-            except Exception:
-                pass
-            if bool(config.get("openvoice_enabled", False)):
-                tts_manager.schedule_smart_warmup(0.2, "openvoice_device")
-
-    def _on_kokoro_device_changed(self) -> None:
-        ui = self._engine_cards_ui.get("kokoro_82m")
-        if not ui:
-            return
-        combo = ui.get("device_combo")
-        if isinstance(combo, QComboBox):
-            if tts_manager.is_downloading("kokoro_82m"):
-                cur_d = str(config.get("kokoro_82m_device", "gpu") or "gpu").strip().lower()
-                idx = combo.findData(cur_d)
-                if idx >= 0:
-                    combo.blockSignals(True)
-                    combo.setCurrentIndex(idx)
-                    combo.blockSignals(False)
-                return
-            dev = str(combo.currentData() or "cpu")
-            config.set("kokoro_82m_device", dev)
-            tts_manager.invalidate_warmup("kokoro_82m")
-            try:
-                from core.llama_tts import _qwen3_server, shutdown_llama_tts
-                if getattr(_qwen3_server, "_engine_id", "") == "kokoro_82m":
-                    shutdown_llama_tts()
-            except Exception:
-                pass
-            try:
-                from core.kokoro_onnx_tts import kokoro_onnx_engine
-                if dev == "gpu":
-                    kokoro_onnx_engine.unload()
-            except Exception:
-                pass
-            installed = tts_manager.is_engine_installed("kokoro_82m")
-            self._update_engine_card_state("kokoro_82m", installed)
-            self._sync_tts_page_selectors()
-            self._refresh_status_banners()
-            active = str(config.get("active_engine", "") or "").strip()
-            fallback = str(config.get("fallback_engine", "") or "").strip()
-            if installed and "kokoro_82m" in (active, fallback):
-                tts_manager.schedule_smart_warmup(0.2, "kokoro_device")
-
-    def _on_soprano_device_changed(self) -> None:
-        ui = self._engine_cards_ui.get("soprano_1_1")
-        if not ui:
-            return
-        combo = ui.get("device_combo")
-        if isinstance(combo, QComboBox):
-            if tts_manager.is_downloading("soprano_1_1"):
-                cur_d = str(config.get("soprano_1_1_device", "gpu") or "gpu").strip().lower()
-                idx = combo.findData(cur_d)
-                if idx >= 0:
-                    combo.blockSignals(True)
-                    combo.setCurrentIndex(idx)
-                    combo.blockSignals(False)
-                return
-            dev = str(combo.currentData() or "cpu")
-            config.set("soprano_1_1_device", dev)
-            tts_manager.invalidate_warmup("soprano_1_1")
-            try:
-                from core.llama_tts import _qwen3_server, shutdown_llama_tts
-                if getattr(_qwen3_server, "_engine_id", "") == "soprano_1_1":
-                    shutdown_llama_tts()
-            except Exception:
-                pass
-            active = str(config.get("active_engine", "") or "").strip()
-            fallback = str(config.get("fallback_engine", "") or "").strip()
-            if "soprano_1_1" in (active, fallback):
-                tts_manager.schedule_smart_warmup(0.2, "soprano_device")
 
     def _refresh_clone_card_ui(self, engine_id: str) -> None:
         ui = self._engine_cards_ui.get(engine_id)
@@ -9801,9 +9676,6 @@ class MainWindow(QMainWindow):
             btn: QPushButton = ui["action_btn"]  # type: ignore
             btn.setEnabled(False)
             btn.setText(tr("ui_173", "⏳ Завантаження..."))
-            d_combo = ui.get("device_combo")
-            if isinstance(d_combo, QComboBox):
-                d_combo.setEnabled(False)
             c_btn = ui.get("cancel_btn")
             if isinstance(c_btn, QPushButton):
                 c_btn.setEnabled(True)
@@ -9849,25 +9721,6 @@ class MainWindow(QMainWindow):
             btn.setToolTip(tr("ui_413", "Завантажити та встановити цей TTS на комп'ютер"))
         btn.style().unpolish(btn)
         btn.style().polish(btn)
-        d_combo = ui.get("device_combo")
-        dev_opts_w = ui.get("dev_opts_widget")
-        if isinstance(d_combo, QComboBox):
-            d_combo.setEnabled(True)
-            has_choice = d_combo.count() > 1
-            if engine_id in ("kokoro_82m", "soprano_1_1"):
-                if engine_id == "kokoro_82m":
-                    from core.kokoro_onnx_tts import is_kokoro_onnx_installed
-                    from core.llama_tts import is_kokoro_installed
-
-                    show_dev = has_choice and (installed or is_kokoro_installed() or is_kokoro_onnx_installed())
-                else:
-                    show_dev = has_choice and installed
-                if isinstance(dev_opts_w, QWidget):
-                    dev_opts_w.setVisible(show_dev)
-                else:
-                    d_combo.setVisible(show_dev)
-            else:
-                d_combo.setVisible(has_choice)
         if engine_id in ("openvoice", "qwen3_tts", "zonos3_mini"):
             self._refresh_clone_card_ui(engine_id)
 
@@ -10738,9 +10591,6 @@ class MainWindow(QMainWindow):
         if ui:
             ui["progress"].setVisible(True)
             ui["progress"].setValue(pct)
-            d_combo = ui.get("device_combo")
-            if isinstance(d_combo, QComboBox):
-                d_combo.setEnabled(False)
             if tts_manager.is_downloading(engine_id):
                 btn: QPushButton = ui["action_btn"]  # type: ignore
                 btn.setEnabled(False)
@@ -10762,9 +10612,6 @@ class MainWindow(QMainWindow):
         ui = self._engine_cards_ui.get(engine_id)
         if ui:
             ui["progress"].setVisible(False)
-            d_combo = ui.get("device_combo")
-            if isinstance(d_combo, QComboBox):
-                d_combo.setEnabled(True)
             c_btn = ui.get("cancel_btn")
             if isinstance(c_btn, QPushButton):
                 c_btn.setVisible(False)
@@ -10789,9 +10636,6 @@ class MainWindow(QMainWindow):
         ui = self._engine_cards_ui.get(engine_id)
         if ui:
             ui["progress"].setVisible(False)
-            d_combo = ui.get("device_combo")
-            if isinstance(d_combo, QComboBox):
-                d_combo.setEnabled(True)
             c_btn = ui.get("cancel_btn")
             if isinstance(c_btn, QPushButton):
                 c_btn.setVisible(False)

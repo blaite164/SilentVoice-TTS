@@ -24,7 +24,7 @@ from typing import Any, Callable, Dict, Optional, Tuple
 import numpy as np
 
 from core.config import ENGINES_DIR, config
-from core.win_api import assign_process_to_kill_on_close_job
+from core.win_api import assign_process_to_kill_on_close_job, has_hardware_gpu
 
 OPENVOICE_DIR = ENGINES_DIR / "openvoice"
 REF_ENCODER_FILE = "tone_ref_encoder.onnx"
@@ -442,8 +442,7 @@ class OpenVoiceCloner:
         return self._cpu_enc, self._cpu_conv
 
     def _use_gpu(self) -> bool:
-        pref = str(config.get("openvoice_device", "gpu") or "gpu").strip().lower()
-        return pref != "cpu" and self.gpu_runtime_present()
+        return has_hardware_gpu() and self.gpu_runtime_present()
 
     def _get_target_embedding(self, ref_path: Path, use_gpu: bool) -> np.ndarray:
         st = ref_path.stat()

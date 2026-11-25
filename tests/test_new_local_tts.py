@@ -158,11 +158,9 @@ class NewLocalTtsModelsTests(unittest.TestCase):
             self.assertAlmostEqual(mock_post.call_args.kwargs["json"]["speed"], 1.2, places=2)
             self.assertNotIn("n_predict", mock_post.call_args.kwargs["json"])
 
-            # 3) Soprano-1.1-80M -> 32kHz, respects user GPU/CPU choice (and falls back to CPU without GPU)
-            cfg_s_cpu = {"soprano_1_1_device": "cpu"}
+            # 3) Soprano-1.1-80M -> 32kHz, automatic GPU when hardware GPU present, CPU otherwise
             with (
-                patch.object(llama_tts, "has_hardware_gpu", return_value=True),
-                patch.object(llama_tts.config, "get", side_effect=lambda k, d=None: cfg_s_cpu.get(k, d)),
+                patch.object(llama_tts, "has_hardware_gpu", return_value=False),
                 patch.object(llama_tts._qwen3_server, "ensure_started", return_value=54332) as mock_start_s_cpu,
                 patch.object(llama_tts._qwen3_server._session, "post", return_value=fake_resp_32k) as mock_post,
             ):
@@ -176,20 +174,15 @@ class NewLocalTtsModelsTests(unittest.TestCase):
             self.assertNotIn("voice", mock_post.call_args.kwargs["json"])
             self.assertNotIn("n_predict", mock_post.call_args.kwargs["json"])
 
-            cfg_s_gpu = {"soprano_1_1_device": "gpu"}
             with (
                 patch.object(llama_tts, "has_hardware_gpu", return_value=True),
-                patch.object(llama_tts.config, "get", side_effect=lambda k, d=None: cfg_s_gpu.get(k, d)),
                 patch.object(llama_tts._qwen3_server, "ensure_started", return_value=54333) as mock_start_s_gpu,
                 patch.object(llama_tts._qwen3_server._session, "post", return_value=fake_resp_32k),
             ):
                 llama_tts.synthesize_llama_tts("soprano_1_1", "Hello GPU!", lang="en")
             self.assertEqual(mock_start_s_gpu.call_args.args[0], "gpu")
 
-            with (
-                patch.object(llama_tts, "has_hardware_gpu", return_value=False),
-                patch.object(llama_tts.config, "get", side_effect=lambda k, d=None: cfg_s_gpu.get(k, d)),
-            ):
+            with patch.object(llama_tts, "has_hardware_gpu", return_value=False):
                 self.assertEqual(llama_tts.resolve_soprano_device(), "cpu")
 
     def test_zonos3_stream_plan_resolves_speaker(self) -> None:
@@ -250,36 +243,21 @@ class NewLocalTtsModelsTests(unittest.TestCase):
                     npz_written.replace(onnx_dir / kokoro_onnx_tts.KOKORO_ONNX_VOICES_FILE)
                 self.assertTrue(kokoro_onnx_tts.is_kokoro_onnx_installed())
 
-                # Device resolution: GPU when selected & GPU present, CPU when selected or no GPU
-                with (
-                    patch.object(llama_tts, "has_hardware_gpu", return_value=True),
-                    patch.object(llama_tts.config, "get", side_effect=lambda k, d=None: "cpu" if k == "kokoro_82m_device" else d),
-                ):
+                # Automatic device resolution: GPU when hardware GPU present, CPU otherwise
+                with patch.object(llama_tts, "has_hardware_gpu", return_value=False):
                     self.assertEqual(llama_tts.resolve_kokoro_device(), "cpu")
                     self.assertTrue(tts_manager.is_engine_installed("kokoro_82m"))
-                with (
-                    patch.object(llama_tts, "has_hardware_gpu", return_value=False),
-                    patch.object(llama_tts.config, "get", side_effect=lambda k, d=None: "gpu" if k == "kokoro_82m_device" else d),
-                ):
-                    self.assertEqual(llama_tts.resolve_kokoro_device(), "cpu")
-                with (
-                    patch.object(llama_tts, "has_hardware_gpu", return_value=True),
-                    patch.object(llama_tts.config, "get", side_effect=lambda k, d=None: "gpu" if k == "kokoro_82m_device" else d),
-                ):
+                with patch.object(llama_tts, "has_hardware_gpu", return_value=True):
                     self.assertEqual(llama_tts.resolve_kokoro_device(), "gpu")
 
-                # Warmup target and audio cache key must distinguish GPU vs CPU
+                # Warmup target and audio cache key distinguish GPU vs CPU automatically
                 with (
-                    patch.object(llama_tts, "has_hardware_gpu", return_value=True),
-                    patch.object(llama_tts.config, "get", side_effect=lambda k, d=None: "cpu" if k == "kokoro_82m_device" else d),
+                    patch.object(llama_tts, "has_hardware_gpu", return_value=False),
                     patch.object(tts_manager, "_current_lang", return_value="en"),
                 ):
                     cpu_target = tts_manager._resolve_local_target_for("kokoro_82m", "kokoro_af_heart")
                     cpu_cache_key = tts_manager._build_audio_cache_key("Hello", "kokoro_82m", "kokoro_af_heart")
-                with (
-                    patch.object(llama_tts, "has_hardware_gpu", return_value=True),
-                    patch.object(llama_tts.config, "get", side_effect=lambda k, d=None: "gpu" if k == "kokoro_82m_device" else d),
-                ):
+                with patch.object(llama_tts, "has_hardware_gpu", return_value=True):
                     gpu_cache_key = tts_manager._build_audio_cache_key("Hello", "kokoro_82m", "kokoro_af_heart")
                 self.assertIsNotNone(cpu_target)
                 assert cpu_target is not None
@@ -402,7 +380,7 @@ class NewLocalTtsModelsTests(unittest.TestCase):
                         dlg_clone.close()
                         dlg_clone.deleteLater()
 
-            # 1) PC WITHOUT GPU: ZONOS3 & Qwen3 hide listen btn; Kokoro & Soprano show listen, hide device dropdown even when installed
+            # 1) PC WITHOUT GPU: ZONOS3 & Qwen3 hide listen btn; Kokoro, Soprano, OpenVoice have no manual device dropdown
             with (
                 patch.object(config, "save", lambda *a, **k: None),
                 patch("ui.main_window.has_hardware_gpu", return_value=False),
@@ -419,22 +397,18 @@ class NewLocalTtsModelsTests(unittest.TestCase):
                     for eid in ("kokoro_82m", "soprano_1_1"):
                         ui = win._engine_cards_ui[eid]
                         self.assertFalse(ui["listen_btn"].isHidden())
-                        self.assertTrue(ui["dev_opts_widget"].isHidden())
-                    ov_combo = win._engine_cards_ui["openvoice"]["device_combo"]
-                    self.assertNotIn("DirectML", ov_combo.itemText(0))
-                    self.assertIn("🚀", ov_combo.itemText(0))
+                        self.assertNotIn("device_combo", ui)
+                        self.assertNotIn("dev_opts_widget", ui)
+                    self.assertNotIn("device_combo", win._engine_cards_ui["openvoice"])
                 finally:
                     win.close()
                     win.deleteLater()
 
-            # 2) PC WITH GPU: ZONOS3 & Qwen3 always show listen btn (no triangle btn);
-            #    Kokoro & Soprano hide device dropdown BEFORE install and show it (with 🚀 GPU) AFTER install
+            # 2) PC WITH GPU: ZONOS3 & Qwen3 always show listen btn; no manual GPU/CPU dropdowns anywhere
             with (
                 patch.object(config, "save", lambda *a, **k: None),
                 patch("ui.main_window.has_hardware_gpu", return_value=True),
                 patch("core.llama_tts.has_hardware_gpu", return_value=True),
-                patch("core.llama_tts.is_kokoro_installed", return_value=False),
-                patch("core.kokoro_onnx_tts.is_kokoro_onnx_installed", return_value=False),
                 patch.object(tts_manager, "is_engine_installed", return_value=False),
             ):
                 config._data["app_language"] = "en"
@@ -444,14 +418,11 @@ class NewLocalTtsModelsTests(unittest.TestCase):
                         ui = win._engine_cards_ui[eid]
                         self.assertFalse(ui["listen_btn"].isHidden())
                         self.assertNotIn("clone_voices_btn", ui)
-                    for eid in ("kokoro_82m", "soprano_1_1"):
+                    for eid in ("kokoro_82m", "soprano_1_1", "openvoice"):
                         ui = win._engine_cards_ui[eid]
                         self.assertFalse(ui["listen_btn"].isHidden())
-                        self.assertTrue(ui["dev_opts_widget"].isHidden())
-                        self.assertIn("🚀", ui["device_combo"].itemText(0))
-                        win._update_engine_card_state(eid, True)
-                        self.assertFalse(ui["dev_opts_widget"].isHidden())
-                        self.assertGreaterEqual(ui["device_combo"].minimumWidth(), 130)
+                        self.assertNotIn("device_combo", ui)
+                        self.assertNotIn("dev_opts_widget", ui)
                 finally:
                     win.close()
                     win.deleteLater()

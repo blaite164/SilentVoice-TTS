@@ -2840,14 +2840,14 @@ class TTSEngineManager(QObject):
                 if voice_cloner.models_present():
                     ref_sig = voice_cloner.get_ref_cache_signature(str(config.get("openvoice_ref_path", "") or ""))
                     if ref_sig:
-                        ov_dev = str(config.get("openvoice_device", "gpu") or "gpu").strip().lower()
+                        ov_dev = "gpu" if voice_cloner._use_gpu() else "cpu"
                         ov_sig += f"|ov:{ov_dev}:{ref_sig}"
         elif bool(config.get("openvoice_enabled", False)):
             from core.voice_cloner import voice_cloner
             if voice_cloner.models_present():
                 ref_sig = voice_cloner.get_ref_cache_signature(str(config.get("openvoice_ref_path", "") or ""))
                 if ref_sig:
-                    ov_dev = str(config.get("openvoice_device", "gpu") or "gpu").strip().lower()
+                    ov_dev = "gpu" if voice_cloner._use_gpu() else "cpu"
                     ov_sig = f"ov:{ov_dev}:{ref_sig}"
         if engine_id == "kokoro_82m":
             from core.llama_tts import resolve_kokoro_device
@@ -5603,12 +5603,15 @@ class TTSEngineManager(QObject):
                     if px_url:
                         px_env = {"HTTP_PROXY": px_url, "HTTPS_PROXY": px_url, "ALL_PROXY": px_url}
 
-                install_gpu_runtime(
-                    progress_cb=_emit_progress,
-                    download_fn=_dl_simple,
-                    cancel_check=_check_cancel,
-                    proxy_env=px_env,
-                )
+                from core.win_api import has_hardware_gpu
+
+                if has_hardware_gpu():
+                    install_gpu_runtime(
+                        progress_cb=_emit_progress,
+                        download_fn=_dl_simple,
+                        cancel_check=_check_cancel,
+                        proxy_env=px_env,
+                    )
                 voice_cloner.clear_ref_cache()
             elif engine_id == "qwen3_tts":
                 from core.llama_tts import (

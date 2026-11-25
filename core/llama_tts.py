@@ -1353,19 +1353,13 @@ def _resolve_optional_ref_wav(
 
 
 def resolve_kokoro_device() -> str:
-    """Повертає пристрій для Kokoro-82M ('gpu' для GGUF або 'cpu' для ONNX FP32)."""
-    pref = str(config.get("kokoro_82m_device", "gpu") or "gpu").strip().lower()
-    if pref == "cpu" or not has_hardware_gpu():
-        return "cpu"
-    return "gpu"
+    """Автоматично обирає пристрій для Kokoro-82M ('gpu' для GGUF за наявності GPU або 'cpu' для ONNX FP32)."""
+    return "gpu" if has_hardware_gpu() else "cpu"
 
 
 def resolve_soprano_device() -> str:
-    """Повертає пристрій для Soprano-1.1-80M ('gpu' або 'cpu') з урахуванням вибору користувача й наявності GPU."""
-    pref = str(config.get("soprano_1_1_device", "gpu") or "gpu").strip().lower()
-    if pref == "cpu" or not has_hardware_gpu():
-        return "cpu"
-    return "gpu"
+    """Автоматично обирає пристрій для Soprano-1.1-80M ('gpu' за наявності GPU або 'cpu')."""
+    return "gpu" if has_hardware_gpu() else "cpu"
 
 
 def _resolve_llama_call_params(
