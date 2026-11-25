@@ -119,6 +119,61 @@ class UpdaterUxTests(unittest.TestCase):
         finally:
             dlg.close()
 
+    def test_launch_downloaded_installer_runs_in_background_without_blocking_ui(self) -> None:
+        import os
+        import threading
+        import time
+
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+        from PySide6.QtCore import QCoreApplication
+        from PySide6.QtWidgets import QApplication
+        from ui.dialogs import AppUpdateDialog
+
+        _app = QApplication.instance() or QApplication([])
+        rel = updater.UpdateReleaseInfo(
+            version="9.9.9",
+            tag_name="v9.9.9",
+            title="v9.9.9",
+            notes="",
+            installer_url="https://example.invalid/setup.exe",
+            installer_name="setup.exe",
+        )
+        gate = threading.Event()
+        launch_thread_id: list[int] = []
+        quit_called = threading.Event()
+
+        def slow_launch(_path: Path, silent: bool = True) -> bool:
+            launch_thread_id.append(threading.get_ident())
+            gate.wait(timeout=2.0)
+            return True
+
+        dlg = AppUpdateDialog(initial_release=rel, on_quit_for_install=quit_called.set)
+        try:
+            with (
+                mock.patch.object(updater, "launch_update_installer", side_effect=slow_launch),
+                mock.patch("ui.dialogs.config.set"),
+            ):
+                t0 = time.monotonic()
+                dlg._launch_downloaded_installer(Path("C:/fake/setup.exe"))
+                elapsed = time.monotonic() - t0
+                # Must return immediately without blocking the GUI thread
+                self.assertLess(elapsed, 0.2)
+                self.assertTrue(dlg._launching)
+                self.assertEqual(dlg.progress_bar.maximum(), 0)
+
+                gate.set()
+                deadline = time.monotonic() + 3.0
+                while not quit_called.is_set() and time.monotonic() < deadline:
+                    QCoreApplication.processEvents()
+                    time.sleep(0.01)
+
+                self.assertTrue(quit_called.is_set())
+                self.assertFalse(dlg._launching)
+                self.assertEqual(len(launch_thread_id), 1)
+                self.assertNotEqual(launch_thread_id[0], threading.get_ident())
+        finally:
+            dlg.close()
+
 
 if __name__ == "__main__":
     unittest.main()

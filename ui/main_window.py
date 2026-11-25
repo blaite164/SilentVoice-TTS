@@ -10232,7 +10232,19 @@ class MainWindow(QMainWindow):
         self._quit_in_progress = True
         self._save_main_window_geometry()
         self._force_quit = True
+        # Миттєво приховуємо всі вікна та іконку в треї, щоб програма не здавалася завислою під час зупинки движків
+        for w_obj in (self, getattr(self, "overlay", None), getattr(self, "fallback_window", None), getattr(self, "tray", None)):
+            if w_obj is not None:
+                try:
+                    w_obj.hide()
+                except Exception:
+                    pass
         app = QApplication.instance()
+        if app is not None:
+            try:
+                app.processEvents()
+            except Exception:
+                pass
         release_lock = app.property("_release_instance_lock") if app is not None else None
         if callable(release_lock):
             try:

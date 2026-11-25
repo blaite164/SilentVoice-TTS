@@ -18,6 +18,7 @@ import re
 import subprocess
 import sys
 import threading
+import time
 from typing import Callable, List, Optional, Tuple
 from urllib.parse import quote, urlsplit
 
@@ -451,6 +452,8 @@ def download_update_installer(
                 raise RuntimeError(f"HTTP {resp.status_code}")
             total = int(resp.headers.get("Content-Length", 0) or release.installer_size or 0)
             with open(part_path, "wb") as out_f:
+                last_cb_ts = 0.0
+                last_cb_pct = -1
                 for chunk in resp.iter_content(chunk_size=65536):
                     if cancel_event is not None and cancel_event.is_set():
                         raise RuntimeError(tr("update.cancelled", "Завантаження оновлення скасовано."))
@@ -462,10 +465,14 @@ def download_update_installer(
                     hasher.update(chunk)
                     downloaded += len(chunk)
                     if progress_cb is not None:
-                        dl_mb = downloaded / (1024.0 * 1024.0)
-                        tot_mb = total / (1024.0 * 1024.0) if total > 0 else 0.0
                         pct = min(99, int(downloaded * 100 / total)) if total > 0 else 50
-                        progress_cb(pct, dl_mb, tot_mb)
+                        now = time.monotonic()
+                        if pct != last_cb_pct or (now - last_cb_ts) >= 0.05:
+                            last_cb_ts = now
+                            last_cb_pct = pct
+                            dl_mb = downloaded / (1024.0 * 1024.0)
+                            tot_mb = total / (1024.0 * 1024.0) if total > 0 else 0.0
+                            progress_cb(pct, dl_mb, tot_mb)
 
         if len(first_bytes) < 2 or first_bytes[:2] != b"MZ":
             raise RuntimeError(

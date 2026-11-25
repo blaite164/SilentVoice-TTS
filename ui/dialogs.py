@@ -4641,6 +4641,7 @@ class AppUpdateDialog(QDialog):
         self._on_quit_for_install = on_quit_for_install
         self._cancel_event = threading.Event()
         self._downloading = False
+        self._launching = False
         self._checking = False
         self._downloaded_path: Optional[Path] = None
         self._notes_req_id = 0
@@ -4921,7 +4922,7 @@ class AppUpdateDialog(QDialog):
             QDesktopServices.openUrl(QUrl(url))
 
     def _start_download_and_install(self) -> None:
-        if self._release is None or self._downloading:
+        if self._release is None or self._downloading or self._launching:
             return
         # Якщо інсталятор уже завантажено у цій сесії (наприклад, користувач скасував UAC) — запускаємо одразу
         if self._downloaded_path is not None and self._downloaded_path.is_file():
@@ -5001,11 +5002,17 @@ class AppUpdateDialog(QDialog):
         self._launch_downloaded_installer(installer_path)
 
     def _launch_downloaded_installer(self, installer_path: Path) -> None:
+        if self._launching:
+            return
         from core.updater import launch_update_installer
 
-        self.progress_bar.setValue(100)
+        self._launching = True
+        self.progress_bar.setRange(0, 0)
         self.progress_bar.setVisible(True)
         self.install_btn.setEnabled(False)
+        self.check_btn.setEnabled(False)
+        self.repo_edit.setEnabled(False)
+        self.close_btn.setEnabled(False)
         self.status_lbl.setStyleSheet("font-size: 13.5px; color: #4ADE80; padding: 4px 0;")
         self.status_lbl.setText(
             tr(
@@ -5013,37 +5020,49 @@ class AppUpdateDialog(QDialog):
                 "✅ Завантаження завершено! Запускаємо інсталятор — зараз відкриється вікно встановлення, а після завершення SilentVoice перезапуститься сам.",
             )
         )
-        QApplication.processEvents()
 
         target_ver = str(getattr(self._release, "version", "") or "").strip()
         if target_ver:
             config.set("pending_update_target_version", target_ver)
 
-        try:
-            launched = launch_update_installer(installer_path, silent=True)
-        except Exception as exc:
-            config.set("pending_update_target_version", "")
-            self.install_btn.setEnabled(True)
-            self.status_lbl.setStyleSheet("font-size: 13.5px; color: #FCA5A5; padding: 4px 0;")
-            self.status_lbl.setText(f"⚠️ {exc}")
-            return
+        def _do_launch() -> bool:
+            return bool(launch_update_installer(installer_path, silent=True))
 
-        if launched:
-            self.accept()
-            if self._on_quit_for_install is not None:
-                QTimer.singleShot(300, self._on_quit_for_install)
-        else:
-            config.set("pending_update_target_version", "")
-            self.install_btn.setEnabled(True)
-            self.status_lbl.setStyleSheet("font-size: 13.5px; color: #FBBF24; padding: 4px 0;")
-            self.status_lbl.setText(
-                tr(
-                    "update.dlg.uac_cancelled",
-                    "⚠️ Запуск інсталятора скасовано (UAC). Файл оновлення вже завантажено — натисніть «Оновити зараз», щоб продовжити встановлення.",
+        def _on_launch_done(launched: Any, err: str) -> None:
+            self._launching = False
+            self.progress_bar.setRange(0, 100)
+            self.progress_bar.setValue(100)
+            self.check_btn.setEnabled(True)
+            self.repo_edit.setEnabled(True)
+            self.close_btn.setEnabled(True)
+
+            if err:
+                config.set("pending_update_target_version", "")
+                self.install_btn.setEnabled(True)
+                self.status_lbl.setStyleSheet("font-size: 13.5px; color: #FCA5A5; padding: 4px 0;")
+                self.status_lbl.setText(f"⚠️ {err}")
+                return
+
+            if bool(launched):
+                self.accept()
+                if self._on_quit_for_install is not None:
+                    QTimer.singleShot(50, self._on_quit_for_install)
+            else:
+                config.set("pending_update_target_version", "")
+                self.install_btn.setEnabled(True)
+                self.status_lbl.setStyleSheet("font-size: 13.5px; color: #FBBF24; padding: 4px 0;")
+                self.status_lbl.setText(
+                    tr(
+                        "update.dlg.uac_cancelled",
+                        "⚠️ Запуск інсталятора скасовано (UAC). Файл оновлення вже завантажено — натисніть «Оновити зараз», щоб продовжити встановлення.",
+                    )
                 )
-            )
+
+        run_in_background(self, _do_launch, _on_launch_done)
 
     def reject(self) -> None:
+        if self._launching:
+            return
         if self._downloading:
             self._cancel_event.set()
         super().reject()
