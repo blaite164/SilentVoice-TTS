@@ -1357,5 +1357,7 @@
   "dlg.clone_voices.header": "🎧 Voix disponibles pour le clonage : {engine_title}",
   "clone.samples.install_required_tip": "Installez d'abord {name} pour sélectionner cette voix",
   "dlg.clone_voices.title": "Voix disponibles pour le clonage — {engine_title}",
-  "tts.badge.recommended": "Recommandé"
+  "tts.badge.recommended": "Recommandé",
+  "dlg.samples.tab_clone": "Voix pour le clonage",
+  "dlg.samples.tab_model": "Voix du modèle"
 }

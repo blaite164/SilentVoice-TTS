@@ -39,6 +39,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QSlider,
     QStackedWidget,
+    QTabBar,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -611,16 +612,7 @@ class VoiceSamplesDialog(QDialog):
     """
 
     _CLONE_ENGINES = ("openvoice", "qwen3_tts", "zonos3_mini")
-
-    _LANG_LABELS = {
-        "uk": "🇺🇦 Українська",
-        "en": "🇺🇸 English",
-        "ru": "🇷🇺 Русский",
-        "pl": "🇵🇱 Polski",
-        "de": "🇩🇪 Deutsch",
-        "fr": "🇫🇷 Français",
-        "es": "🇪🇸 Español",
-    }
+    _ENGINES_WITH_BUILTIN_AND_CLONE = ("zonos3_mini",)
 
     def __init__(
         self,
@@ -644,13 +636,26 @@ class VoiceSamplesDialog(QDialog):
         self._lang_combo: Optional[DialogComboBox] = None
         self._gender_combo: Optional[DialogComboBox] = None
         self._guide_btn: Optional[QPushButton] = None
+        self._mode_tabs: Optional[QTabBar] = None
+        self._active_tab_mode: str = "clone" if self._is_clone_engine else "model"
 
-        if self._is_clone_engine:
-            self.setWindowTitle(
-                tr("dlg.clone_voices.title", "Доступні голоси для клонування — {engine_title}", engine_title=engine_title)
-            )
-        else:
-            self.setWindowTitle(tr("dlg_f_003", "Прослухати голоси — {engine_title}", engine_title=engine_title))
+        cur_lang = str(config.get("app_language", "uk") or "uk").strip().lower()
+        if cur_lang == "ua":
+            cur_lang = "uk"
+        self._target_lang = cur_lang
+
+        self._all_samples: List[Dict[str, str]] = (
+            get_samples_for_engine(engine_id, lang=cur_lang, gender="both")
+            if self._is_clone_engine
+            else get_samples_for_engine(engine_id, gender="both")
+        )
+        self._model_samples: List[Dict[str, str]] = (
+            get_samples_for_engine(engine_id, lang=cur_lang, gender="both", own_only=True)
+            if engine_id in self._ENGINES_WITH_BUILTIN_AND_CLONE
+            else []
+        )
+        self._has_dual_tabs = bool(self._is_clone_engine and self._model_samples)
+
         self.setMinimumSize(520, 380)
         self.resize(580, 440)
         self.setStyleSheet(DIALOG_STYLESHEET)
@@ -661,18 +666,10 @@ class VoiceSamplesDialog(QDialog):
 
         hdr_row = QHBoxLayout()
         hdr_row.setSpacing(8)
-        if self._is_clone_engine:
-            hdr_text = tr(
-                "dlg.clone_voices.header",
-                "🎧 Доступні голоси для клонування: {engine_title}",
-                engine_title=engine_title,
-            )
-        else:
-            hdr_text = tr("dlg_f_004", "🎧 Доступні голоси: {engine_title}", engine_title=engine_title)
-        hdr = ElidedLabel(hdr_text)
-        hdr.setObjectName("dialogTitle")
-        hdr.setToolTip("")
-        hdr_row.addWidget(hdr, 1)
+        self._hdr_label = ElidedLabel("")
+        self._hdr_label.setObjectName("dialogTitle")
+        self._hdr_label.setToolTip("")
+        hdr_row.addWidget(self._hdr_label, 1)
 
         if self._is_clone_engine:
             self._guide_btn = QPushButton(tr("ov.guide_btn", "📖 Гайд"))
@@ -687,6 +684,24 @@ class VoiceSamplesDialog(QDialog):
             hdr_row.addWidget(self._guide_btn)
         lay.addLayout(hdr_row)
 
+        if self._has_dual_tabs:
+            self._mode_tabs = QTabBar()
+            self._mode_tabs.setExpanding(False)
+            self._mode_tabs.setDrawBase(False)
+            self._mode_tabs.setStyleSheet(
+                "QTabBar::tab { background-color: #252B3D; color: #CBD5E1; border: 1px solid #38415C; "
+                "border-radius: 8px; padding: 6px 14px; margin-right: 6px; font-size: 12.5px; font-weight: 600; }"
+                "QTabBar::tab:hover { background-color: #30374F; color: #FFFFFF; }"
+                "QTabBar::tab:selected { background-color: #635BFF; color: #FFFFFF; border-color: #827BFF; }"
+            )
+            idx_clone = self._mode_tabs.addTab(tr("dlg.samples.tab_clone", "Голоси для клонування"))
+            self._mode_tabs.setTabData(idx_clone, "clone")
+            idx_model = self._mode_tabs.addTab(tr("dlg.samples.tab_model", "Голоси моделі"))
+            self._mode_tabs.setTabData(idx_model, "model")
+            self._mode_tabs.setCurrentIndex(0)
+            self._mode_tabs.currentChanged.connect(self._on_mode_tab_changed)
+            lay.addWidget(self._mode_tabs)
+
         filters_row = QHBoxLayout()
         filters_row.setSpacing(8)
 
@@ -700,19 +715,6 @@ class VoiceSamplesDialog(QDialog):
         self._gender_combo.setCurrentIndex(gen_idx if gen_idx >= 0 else 0)
         self._gender_combo.currentIndexChanged.connect(self._populate_samples_list)
         filters_row.addWidget(self._gender_combo)
-
-        if self._is_clone_engine:
-            self._lang_combo = DialogComboBox()
-            self._lang_combo.setMinimumWidth(145)
-            for code in ("uk", "en", "ru", "pl", "de", "fr", "es"):
-                self._lang_combo.addItem(self._LANG_LABELS[code], code)
-            cur_lang = str(config.get("app_language", "uk") or "uk").strip().lower()
-            if cur_lang == "ua":
-                cur_lang = "uk"
-            lang_idx = self._lang_combo.findData(cur_lang)
-            self._lang_combo.setCurrentIndex(lang_idx if lang_idx >= 0 else 0)
-            self._lang_combo.currentIndexChanged.connect(self._populate_samples_list)
-            filters_row.addWidget(self._lang_combo)
 
         filters_row.addStretch(1)
         lay.addLayout(filters_row)
@@ -731,11 +733,7 @@ class VoiceSamplesDialog(QDialog):
         self._c_lay.setContentsMargins(12, 12, 12, 12)
         self._c_lay.setSpacing(8)
 
-        self._all_samples = (
-            get_samples_for_engine(engine_id, lang="all", gender="both")
-            if self._is_clone_engine
-            else get_samples_for_engine(engine_id, gender="both")
-        )
+        self._sync_header_for_active_tab()
         self._populate_samples_list()
 
         scroll.setWidget(self._container)
@@ -754,6 +752,30 @@ class VoiceSamplesDialog(QDialog):
         close_btn.clicked.connect(self.accept)
         btn_row.addWidget(close_btn)
         lay.addLayout(btn_row)
+
+    def _sync_header_for_active_tab(self) -> None:
+        is_clone_tab = self._active_tab_mode == "clone"
+        if is_clone_tab:
+            self.setWindowTitle(
+                tr("dlg.clone_voices.title", "Доступні голоси для клонування — {engine_title}", engine_title=self._engine_title)
+            )
+            self._hdr_label.setText(
+                tr("dlg.clone_voices.header", "🎧 Доступні голоси для клонування: {engine_title}", engine_title=self._engine_title)
+            )
+        else:
+            self.setWindowTitle(tr("dlg_f_003", "Прослухати голоси — {engine_title}", engine_title=self._engine_title))
+            self._hdr_label.setText(tr("dlg_f_004", "🎧 Доступні голоси: {engine_title}", engine_title=self._engine_title))
+        if self._guide_btn is not None:
+            self._guide_btn.setVisible(is_clone_tab)
+
+    def _on_mode_tab_changed(self, idx: int) -> None:
+        if self._mode_tabs is None:
+            return
+        mode = str(self._mode_tabs.tabData(idx) or "clone")
+        if mode != self._active_tab_mode:
+            self._active_tab_mode = mode
+            self._sync_header_for_active_tab()
+            self._populate_samples_list()
 
     def _stop_preview_playback(self) -> None:
         """Миттєво зупиняє поточне чи заплановане в черзі прослуховування зразка."""
@@ -779,31 +801,28 @@ class VoiceSamplesDialog(QDialog):
                 w.deleteLater()
         self._install_buttons.clear()
 
-        lang_filter = str(self._lang_combo.currentData() or "uk") if self._lang_combo is not None else ""
+        is_clone_tab = self._active_tab_mode == "clone"
+        base_samples = list(self._all_samples if (is_clone_tab or not self._is_clone_engine) else self._model_samples)
         gender_filter = str(self._gender_combo.currentData() or "both") if self._gender_combo is not None else "both"
-        if self._is_clone_engine and lang_filter:
-            lang_samples = [s for s in self._all_samples if (s.get("lang") or "") in (lang_filter, "")]
-        else:
-            lang_samples = list(self._all_samples)
         if gender_filter in ("female", "male"):
-            samples = [s for s in lang_samples if (s.get("gender") or "") in (gender_filter, "")]
+            samples = [s for s in base_samples if (s.get("gender") or "") in (gender_filter, "")]
         else:
-            samples = list(lang_samples)
+            samples = list(base_samples)
 
         if not samples:
-            if self._is_clone_engine and not lang_samples:
+            if is_clone_tab and not base_samples:
                 empty_text = tr(
                     "clone.samples.empty_for_lang",
                     "Для вашої мови голосів поки що немає.\nДодайте аудіофайли (.wav, .mp3, .ogg, .flac) у data/samples/{engine_id}/{lang}/ або додайте голос через «📂 Обрати голос».\nДе взяти голоси — дивіться за кнопкою «📖 Гайд».",
                     engine_id="clone_voices",
-                    lang=lang_filter or "uk",
+                    lang=self._target_lang or "uk",
                 )
-            elif gender_filter in ("female", "male") and lang_samples:
+            elif gender_filter in ("female", "male") and base_samples:
                 empty_text = tr(
                     "clone.samples.empty_for_gender",
                     "Для обраного фільтра статі голосів поки що немає.",
                 )
-            elif self._is_clone_engine:
+            elif is_clone_tab:
                 empty_text = tr(
                     "clone.samples.empty_hint_langs",
                     "Папка прикладів {engine_title} поки порожня.\nДодайте аудіофайли (.wav, .mp3, .ogg, .flac) у data/samples/{engine_id}/<мова>/ (uk, en, ru, pl, de, fr, es).",
@@ -820,11 +839,11 @@ class VoiceSamplesDialog(QDialog):
             return
 
         for item in samples:
-            self._add_sample_row(item)
+            self._add_sample_row(item, allow_select=is_clone_tab)
         self._c_lay.addStretch(1)
         self._refresh_install_buttons()
 
-    def _add_sample_row(self, item: Dict[str, str]) -> None:
+    def _add_sample_row(self, item: Dict[str, str], allow_select: bool = True) -> None:
         row_card = QFrame()
         row_card.setStyleSheet(
             "QFrame { background-color: #2E364D; border: 1px solid #414B6B; border-radius: 8px; }"
@@ -849,7 +868,7 @@ class VoiceSamplesDialog(QDialog):
         name_lbl.setStyleSheet("border: none; background: transparent; color: #FFFFFF;")
         r_lay.addWidget(name_lbl, 1)
 
-        if self._on_select_sample is not None:
+        if allow_select and self._on_select_sample is not None:
             use_btn = QPushButton()
             use_btn.setFixedSize(34, 28)
             use_btn.setStyleSheet("padding: 0px; font-size: 13px;")
@@ -900,7 +919,7 @@ class VoiceSamplesDialog(QDialog):
             self._selected_norm = ""
         remove_custom_clone_sample(self._engine_id, path_str)
         self._all_samples = (
-            get_samples_for_engine(self._engine_id, lang="all", gender="both")
+            get_samples_for_engine(self._engine_id, lang=self._target_lang, gender="both")
             if self._is_clone_engine
             else get_samples_for_engine(self._engine_id, gender="both")
         )

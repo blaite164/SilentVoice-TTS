@@ -217,7 +217,7 @@ class VoiceClonerTests(unittest.TestCase):
                     allow_install=True,
                 )
                 self.assertIsNotNone(dlg._gender_combo)
-                self.assertIsNotNone(dlg._lang_combo)
+                self.assertIsNone(dlg._lang_combo)
                 self.assertIsNotNone(dlg._guide_btn)
                 self.assertEqual(len(dlg._install_buttons), 2)
 
@@ -300,6 +300,22 @@ class VoiceClonerTests(unittest.TestCase):
                 self.assertEqual(by_name["MyCustom Ч.mp3"]["is_custom"], "1")
 
                 deleted_calls = []
+                # Empty language (pl) shows localized "for your language" message
+                cfg_state["app_language"] = "pl"
+                dlg_pl = VoiceSamplesDialog(
+                    "qwen3_tts",
+                    "Qwen3-TTS 1.7B",
+                    on_select_sample=lambda p: None,
+                    allow_install=True,
+                )
+                self.assertIsNone(dlg_pl._lang_combo)
+                empty_labels = [w.text() for w in dlg_pl._container.findChildren(QLabel) if not w.isHidden()]
+                self.assertTrue(any(t for t in empty_labels))
+                dlg_pl.close()
+                dlg_pl.deleteLater()
+
+                # Back to uk -> only 1 delete button (for custom sample, not builtin)
+                cfg_state["app_language"] = "uk"
                 dlg = VoiceSamplesDialog(
                     "qwen3_tts",
                     "Qwen3-TTS 1.7B",
@@ -308,15 +324,6 @@ class VoiceClonerTests(unittest.TestCase):
                     selected_sample_path=copied_path,
                     on_delete_sample=deleted_calls.append,
                 )
-                # Empty language shows localized "for your language" message
-                pl_idx = dlg._lang_combo.findData("pl")
-                dlg._lang_combo.setCurrentIndex(pl_idx)
-                empty_labels = [w.text() for w in dlg._container.findChildren(QLabel) if not w.isHidden()]
-                self.assertTrue(any(t for t in empty_labels))
-
-                # Back to uk -> only 1 delete button (for custom sample, not builtin)
-                uk_idx = dlg._lang_combo.findData("uk")
-                dlg._lang_combo.setCurrentIndex(uk_idx)
                 del_btns = [b for b in dlg._container.findChildren(QPushButton) if not b.icon().isNull()]
                 self.assertEqual(len(del_btns), 1)
 

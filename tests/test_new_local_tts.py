@@ -362,12 +362,15 @@ class NewLocalTtsModelsTests(unittest.TestCase):
                 samples_root = Path(tmp) / "samples"
                 (samples_root / "clone_voices" / "en").mkdir(parents=True)
                 (samples_root / "clone_voices" / "en" / "CloneVoice.mp3").write_bytes(b"c")
+                (samples_root / "zonos3_mini" / "en").mkdir(parents=True)
+                (samples_root / "zonos3_mini" / "en" / "zonos3_en_savannah.ogg").write_bytes(b"z")
 
                 with (
                     patch("core.tts_manager.SAMPLES_DIR", samples_root),
                     patch("core.tts_manager.config.get", side_effect=lambda k, d=None: "en" if k == "app_language" else ("both" if k == "voice_gender_filter" else d)),
+                    patch("ui.dialogs.config.get", side_effect=lambda k, d=None: "en" if k == "app_language" else ("both" if k == "voice_gender_filter" else d)),
                 ):
-                    for eid, title in (("openvoice", "OpenVoice v2"), ("zonos3_mini", "ZONOS3-Mini"), ("qwen3_tts", "Qwen3-TTS 1.7B")):
+                    for eid, title in (("openvoice", "OpenVoice v2"), ("qwen3_tts", "Qwen3-TTS 1.7B")):
                         dlg_clone = VoiceSamplesDialog(
                             eid,
                             title,
@@ -375,10 +378,31 @@ class NewLocalTtsModelsTests(unittest.TestCase):
                             allow_install=False,
                         )
                         self.assertTrue(dlg_clone._is_clone_engine)
-                        self.assertIsNotNone(dlg_clone._lang_combo)
+                        self.assertIsNone(dlg_clone._lang_combo)
+                        self.assertIsNone(dlg_clone._mode_tabs)
                         self.assertIsNotNone(dlg_clone._guide_btn)
                         dlg_clone.close()
                         dlg_clone.deleteLater()
+
+                    # ZONOS3-Mini with built-in model samples shows 2 tabs & switches window/header title
+                    dlg_z = VoiceSamplesDialog(
+                        "zonos3_mini",
+                        "ZONOS3-Mini",
+                        on_select_sample=lambda _p: None,
+                        allow_install=False,
+                    )
+                    self.assertIsNone(dlg_z._lang_combo)
+                    self.assertIsNotNone(dlg_z._mode_tabs)
+                    assert dlg_z._mode_tabs is not None
+                    self.assertEqual(dlg_z._mode_tabs.count(), 2)
+                    title_clone = dlg_z.windowTitle()
+                    hdr_clone = dlg_z._hdr_label.text()
+                    dlg_z._mode_tabs.setCurrentIndex(1)
+                    self.assertNotEqual(dlg_z.windowTitle(), title_clone)
+                    self.assertNotEqual(dlg_z._hdr_label.text(), hdr_clone)
+                    self.assertEqual(len(dlg_z._install_buttons), 0)
+                    dlg_z.close()
+                    dlg_z.deleteLater()
 
             # 1) PC WITHOUT GPU: ZONOS3 & Qwen3 stay visible (disabled 'No GPU', hidden listen btn)
             with (
