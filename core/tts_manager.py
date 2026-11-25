@@ -641,7 +641,7 @@ ENGINE_SPECS: Dict[str, Dict[str, Any]] = {
     },
     "soprano_1_1": {
         "id": "soprano_1_1",
-        "title": "Soprano-1.1-80M (GGUF)",
+        "title": "Soprano-1.1-80M",
         "size_label": "~139 МБ",
         "voices": [
             {"id": "soprano_en_default", "name": "Soprano (EN, 32kHz)", "gender": "female", "lang": "en"},
@@ -655,7 +655,7 @@ ENGINE_SPECS: Dict[str, Dict[str, Any]] = {
     },
     "zonos3_mini": {
         "id": "zonos3_mini",
-        "title": "ZONOS3-Mini (GGUF)",
+        "title": "ZONOS3-Mini",
         "size_label": "~1.9 ГБ",
         "voices": [
             # English built-in voices
@@ -683,7 +683,7 @@ ENGINE_SPECS: Dict[str, Dict[str, Any]] = {
     },
     "qwen3_tts": {
         "id": "qwen3_tts",
-        "title": "Qwen3-TTS 1.7B Base (GGUF)",
+        "title": "Qwen3-TTS 1.7B",
         "size_label": "~2.1 ГБ",
         "voices": [
             {"id": "qwen3_en", "name": "Qwen3-TTS (EN / Clone)", "gender": "female", "lang": "en"},

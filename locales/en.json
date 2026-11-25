@@ -1240,7 +1240,7 @@
   "clone.samples.empty_for_lang": "No voice samples for your language yet.\nAdd audio files (.wav, .mp3, .ogg, .flac) to data/samples/{engine_id}/{lang}/ or add a voice via «📂 Choose voice».\nTo find out where to get voices, click «📖 Guide».",
   "clone.samples.empty_for_gender": "No voice samples match the selected gender filter.",
   "ov.samples.delete_custom_tip": "Remove added voice",
-  "tts.title.qwen3_tts": "Qwen3-TTS 1.7B Base (GGUF) - with voice cloning",
+  "tts.title.qwen3_tts": "Qwen3-TTS 1.7B - with voice cloning",
   "update.section.title": "🔄 Application Updates",
   "update.current_version": "Current version: <b>v{version}</b>",
   "update.auto_check": "Automatically check for updates on startup",
@@ -1349,12 +1349,13 @@
   "update.dlg.translate_btn": "🌐 Translate",
   "tts.size.kokoro_82m": "~258–337 MB",
   "tts.size.zonos3_mini": "~1.9 GB",
-  "tts.title.zonos3_mini": "ZONOS3-Mini (GGUF) - with voice cloning",
+  "tts.title.zonos3_mini": "ZONOS3-Mini - with voice cloning",
   "dlg.qwen_quant.opt_zonos3": "ZONOS3-Mini — less VRAM (~2.5 GB VRAM, recommended for gaming)",
   "tts.size.soprano_1_1": "~139 MB",
   "tts.dev.gpu": "🚀 GPU",
   "tts.dev.tip": "Choose the device for speech generation (GPU or CPU)",
   "dlg.clone_voices.header": "🎧 Available voices for cloning: {engine_title}",
   "clone.samples.install_required_tip": "Install {name} first to select this voice",
-  "dlg.clone_voices.title": "Available voices for cloning — {engine_title}"
+  "dlg.clone_voices.title": "Available voices for cloning — {engine_title}",
+  "tts.badge.recommended": "Recommended"
 }

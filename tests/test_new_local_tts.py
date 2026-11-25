@@ -380,49 +380,64 @@ class NewLocalTtsModelsTests(unittest.TestCase):
                         dlg_clone.close()
                         dlg_clone.deleteLater()
 
-            # 1) PC WITHOUT GPU: ZONOS3 & Qwen3 hide listen btn; Kokoro, Soprano, OpenVoice have no manual device dropdown
-            with (
-                patch.object(config, "save", lambda *a, **k: None),
-                patch("ui.main_window.has_hardware_gpu", return_value=False),
-                patch("core.llama_tts.has_hardware_gpu", return_value=False),
-                patch.object(tts_manager, "is_engine_installed", side_effect=lambda eid: eid in ("kokoro_82m", "soprano_1_1")),
-            ):
-                config._data["app_language"] = "en"
-                win = MainWindow()
-                try:
-                    for eid in ("zonos3_mini", "qwen3_tts"):
-                        ui = win._engine_cards_ui[eid]
-                        self.assertTrue(ui["listen_btn"].isHidden())
-                        self.assertNotIn("clone_voices_btn", ui)
-                    for eid in ("kokoro_82m", "soprano_1_1"):
-                        ui = win._engine_cards_ui[eid]
-                        self.assertFalse(ui["listen_btn"].isHidden())
-                        self.assertNotIn("device_combo", ui)
-                        self.assertNotIn("dev_opts_widget", ui)
-                    self.assertNotIn("device_combo", win._engine_cards_ui["openvoice"])
-                finally:
-                    win.close()
-                    win.deleteLater()
+            # 1) PC WITHOUT GPU or < 3 GB VRAM: ZONOS3 & Qwen3 are hidden from local cards list completely
+            for gpu_present, vram in ((False, None), (True, 2.0)):
+                with (
+                    patch.object(config, "save", lambda *a, **k: None),
+                    patch("ui.main_window.has_hardware_gpu", return_value=gpu_present),
+                    patch("ui.main_window.get_discrete_gpu_vram_gb", return_value=vram),
+                    patch("core.llama_tts.has_hardware_gpu", return_value=gpu_present),
+                    patch.object(tts_manager, "is_engine_installed", side_effect=lambda eid: eid in ("kokoro_82m", "soprano_1_1")),
+                ):
+                    config._data["app_language"] = "en"
+                    win = MainWindow()
+                    try:
+                        self.assertNotIn("zonos3_mini", win._engine_cards_ui)
+                        self.assertNotIn("qwen3_tts", win._engine_cards_ui)
+                        for eid in ("kokoro_82m", "soprano_1_1"):
+                            ui = win._engine_cards_ui[eid]
+                            self.assertFalse(ui["listen_btn"].isHidden())
+                            self.assertNotIn("device_combo", ui)
+                            self.assertNotIn("dev_opts_widget", ui)
+                        self.assertNotIn("device_combo", win._engine_cards_ui["openvoice"])
+                    finally:
+                        win.close()
+                        win.deleteLater()
 
-            # 2) PC WITH GPU: ZONOS3 & Qwen3 always show listen btn; no manual GPU/CPU dropdowns anywhere
+            # 2) PC WITH 8 GB VRAM (< 10 GB): both shown, ZONOS3-Mini has Recommended badge, Qwen3 does not
             with (
                 patch.object(config, "save", lambda *a, **k: None),
                 patch("ui.main_window.has_hardware_gpu", return_value=True),
+                patch("ui.main_window.get_discrete_gpu_vram_gb", return_value=8.0),
                 patch("core.llama_tts.has_hardware_gpu", return_value=True),
                 patch.object(tts_manager, "is_engine_installed", return_value=False),
             ):
                 config._data["app_language"] = "en"
                 win = MainWindow()
                 try:
-                    for eid in ("zonos3_mini", "qwen3_tts"):
-                        ui = win._engine_cards_ui[eid]
-                        self.assertFalse(ui["listen_btn"].isHidden())
-                        self.assertNotIn("clone_voices_btn", ui)
-                    for eid in ("kokoro_82m", "soprano_1_1", "openvoice"):
+                    self.assertIn("recommended_badge", win._engine_cards_ui["zonos3_mini"])
+                    self.assertNotIn("recommended_badge", win._engine_cards_ui["qwen3_tts"])
+                    for eid in ("zonos3_mini", "qwen3_tts", "kokoro_82m", "soprano_1_1", "openvoice"):
                         ui = win._engine_cards_ui[eid]
                         self.assertFalse(ui["listen_btn"].isHidden())
                         self.assertNotIn("device_combo", ui)
-                        self.assertNotIn("dev_opts_widget", ui)
+                finally:
+                    win.close()
+                    win.deleteLater()
+
+            # 3) PC WITH 16 GB VRAM (> 12 GB): both shown, Qwen3-TTS 1.7B has Recommended badge, ZONOS3 does not
+            with (
+                patch.object(config, "save", lambda *a, **k: None),
+                patch("ui.main_window.has_hardware_gpu", return_value=True),
+                patch("ui.main_window.get_discrete_gpu_vram_gb", return_value=16.0),
+                patch("core.llama_tts.has_hardware_gpu", return_value=True),
+                patch.object(tts_manager, "is_engine_installed", return_value=False),
+            ):
+                config._data["app_language"] = "en"
+                win = MainWindow()
+                try:
+                    self.assertIn("recommended_badge", win._engine_cards_ui["qwen3_tts"])
+                    self.assertNotIn("recommended_badge", win._engine_cards_ui["zonos3_mini"])
                 finally:
                     win.close()
                     win.deleteLater()

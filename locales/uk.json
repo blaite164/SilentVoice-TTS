@@ -1240,7 +1240,7 @@
   "clone.samples.empty_for_lang": "Для вашої мови голосів поки що немає.\nДодайте аудіофайли (.wav, .mp3, .ogg, .flac) у data/samples/{engine_id}/{lang}/ або додайте голос через «📂 Обрати голос».\nДе взяти голоси — дивіться за кнопкою «📖 Гайд».",
   "clone.samples.empty_for_gender": "Для обраного фільтра статі голосів поки що немає.",
   "ov.samples.delete_custom_tip": "Видалити доданий голос",
-  "tts.title.qwen3_tts": "Qwen3-TTS 1.7B Base (GGUF) - з клонуванням",
+  "tts.title.qwen3_tts": "Qwen3-TTS 1.7B - з клонуванням",
   "update.section.title": "🔄 Оновлення програми",
   "update.current_version": "Поточна версія: <b>v{version}</b>",
   "update.auto_check": "Автоматично перевіряти наявність оновлень при запуску",
@@ -1349,12 +1349,13 @@
   "update.dlg.translate_btn": "🌐 Перекласти",
   "tts.size.kokoro_82m": "~258–337 МБ",
   "tts.size.zonos3_mini": "~1.9 ГБ",
-  "tts.title.zonos3_mini": "ZONOS3-Mini (GGUF) - з клонуванням",
+  "tts.title.zonos3_mini": "ZONOS3-Mini - з клонуванням",
   "dlg.qwen_quant.opt_zonos3": "ZONOS3-Mini — менше відеопам’яті (~2.5 ГБ VRAM, рекомендовано для ігор)",
   "tts.size.soprano_1_1": "~139 МБ",
   "tts.dev.gpu": "🚀 GPU",
   "tts.dev.tip": "Оберіть пристрій для генерації голосу (GPU або CPU)",
   "dlg.clone_voices.header": "🎧 Доступні голоси для клонування: {engine_title}",
   "clone.samples.install_required_tip": "Спочатку встановіть {name}, щоб обрати цей голос",
-  "dlg.clone_voices.title": "Доступні голоси для клонування — {engine_title}"
+  "dlg.clone_voices.title": "Доступні голоси для клонування — {engine_title}",
+  "tts.badge.recommended": "Рекомендовано"
 }
