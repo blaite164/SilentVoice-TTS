@@ -1971,12 +1971,12 @@ class MainWindow(QMainWindow):
         openvoice_built = False
         clone_gguf_ids = ("qwen3_tts", "zonos3_mini")
         has_gpu = has_hardware_gpu()
-        vram_gb = get_discrete_gpu_vram_gb() if has_gpu else 0.0
+        vram_gb = get_discrete_gpu_vram_gb() if has_gpu else None
         for spec in visible_engines:
             eng_id = spec["id"]
             installed = tts_manager.is_engine_installed(eng_id)
             is_clone_gguf = eng_id in clone_gguf_ids
-            if is_clone_gguf and not installed and (not has_gpu or (vram_gb is not None and vram_gb < 3.0)):
+            if is_clone_gguf and not installed and has_gpu and vram_gb is not None and vram_gb < 3.0:
                 continue
             if is_clone_gguf and not openvoice_built:
                 self._build_openvoice_card()
@@ -2007,23 +2007,6 @@ class MainWindow(QMainWindow):
             meta_lbl = QLabel(tr(f"tts.size.{eng_id}", str(spec["size_label"])))
             meta_lbl.setStyleSheet("color: #94A3B8; font-size: 12px;")
             top_r.addWidget(meta_lbl)
-
-            rec_badge: Optional[QLabel] = None
-            is_recommended = False
-            if has_gpu and vram_gb is not None:
-                if eng_id == "qwen3_tts" and vram_gb > 12.0:
-                    is_recommended = True
-                elif eng_id == "zonos3_mini" and 3.0 <= vram_gb < 10.0:
-                    is_recommended = True
-            if is_recommended:
-                rec_badge = QLabel(tr("tts.badge.recommended", "Рекомендовано"))
-                rec_badge.setStyleSheet(
-                    "color: #34D399; background-color: rgba(16, 185, 129, 0.14); "
-                    "border: 1px solid rgba(52, 211, 153, 0.35); border-radius: 6px; "
-                    "padding: 2px 7px; font-size: 11px; font-weight: 700;"
-                )
-                top_r.addWidget(rec_badge)
-
             top_r.addStretch(1)
 
             listen_btn = QPushButton(tr("ui_129", "🎧 Прослухати"))
@@ -2086,8 +2069,6 @@ class MainWindow(QMainWindow):
                 "cancel_btn": cancel_btn,
                 "listen_btn": listen_btn,
             }
-            if rec_badge is not None:
-                card_entry["recommended_badge"] = rec_badge
             card_entry.update(clone_ui)
             self._engine_cards_ui[eng_id] = card_entry
             self._update_engine_card_state(eng_id, installed)
