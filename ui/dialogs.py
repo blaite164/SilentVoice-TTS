@@ -794,7 +794,7 @@ class VoiceSamplesDialog(QDialog):
             if self._is_clone_engine and not lang_samples:
                 empty_text = tr(
                     "clone.samples.empty_for_lang",
-                    "Для вашої мови голосів поки що немає.\nДодайте аудіофайли (.wav, .mp3, .ogg, .flac) у data/samples/{engine_id}/{lang}/ або додайте голос через «📂 Обрати голос».",
+                    "Для вашої мови голосів поки що немає.\nДодайте аудіофайли (.wav, .mp3, .ogg, .flac) у data/samples/{engine_id}/{lang}/ або додайте голос через «📂 Обрати голос».\nДе взяти голоси — дивіться за кнопкою «📖 Гайд».",
                     engine_id="clone_voices",
                     lang=lang_filter or "uk",
                 )

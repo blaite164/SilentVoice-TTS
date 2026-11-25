@@ -1237,7 +1237,7 @@
   "clone.guide.win_title": "Poradnik klonowania głosu — {engine_title}",
   "clone.guide.header": "🎭 Jak uzyskać najlepszy głos w {engine_title}",
   "clone.guide.body": "<b>Jak to działa:</b> {engine_title} czyta tekst bezpośrednio barwą i stylem głosu z wybranego pliku audio.<br><br><b>Skąd wziąć próbkę głosu:</b><br>• Wytnij czysty fragment mowy z dowolnego nagrania lub filmu z internetu.<br>• Lub załóż konto w <b>ElevenLabs</b>, <b>Fish Audio</b> albo podobnym serwisie (dają darmowe kredyty), wybierz głos, <b>wklej poniższy tekst</b> i pobierz gotowy plik.<br><br><b>Jak uzyskać najlepszą jakość pliku:</b><br>• <b>Czas trwania:</b> 6–20 sekund (najlepiej ~8–15 s).<br>• <b>Czystość:</b> jeden mówca, bez muzyki, dźwięków gry, szumu ani echa.<br>• <b>Nagranie:</b> równa naturalna głośność bez szeptu, krzyku i przesterów, z krótkimi pauzami i zmienną intonacją.",
-  "clone.samples.empty_for_lang": "Brak głosów dla Twojego języka.\nDodaj pliki audio (.wav, .mp3, .ogg, .flac) do data/samples/{engine_id}/{lang}/ lub dodaj głos przyciskiem «📂 Wybierz głos».",
+  "clone.samples.empty_for_lang": "Brak głosów dla Twojego języka.\nDodaj pliki audio (.wav, .mp3, .ogg, .flac) do data/samples/{engine_id}/{lang}/ lub dodaj głos przyciskiem «📂 Wybierz głos».\nGdzie znaleźć głosy — sprawdź pod przyciskiem «📖 Poradnik».",
   "clone.samples.empty_for_gender": "Brak głosów dla wybranego filtra płci.",
   "ov.samples.delete_custom_tip": "Usuń dodany głos",
   "tts.title.qwen3_tts": "Qwen3-TTS 1.7B Base (GGUF) - z klonowaniem",

@@ -1237,7 +1237,7 @@
   "clone.guide.win_title": "Voice Cloning Guide — {engine_title}",
   "clone.guide.header": "🎭 How to get the best cloned voice in {engine_title}",
   "clone.guide.body": "<b>What it does:</b> {engine_title} speaks your text directly in the timbre and style of your selected audio sample.<br><br><b>Where to get a voice sample:</b><br>• Cut a clean speaking clip from any recording or video online.<br>• Or sign up on <b>ElevenLabs</b>, <b>Fish Audio</b>, or a similar service (free starter credits included), pick a voice, <b>paste the script below</b>, and download the generated audio file.<br><br><b>Tips for the cleanest result:</b><br>• <b>Length:</b> 6–20 seconds (sweet spot ~8–15s).<br>• <b>Clean audio:</b> single speaker only—no music, game SFX, noise, or echo.<br>• <b>Delivery:</b> steady natural volume without whispers, shouting, or clipping, with short pauses and varied intonation.",
-  "clone.samples.empty_for_lang": "No voice samples for your language yet.\nAdd audio files (.wav, .mp3, .ogg, .flac) to data/samples/{engine_id}/{lang}/ or add a voice via «📂 Choose voice».",
+  "clone.samples.empty_for_lang": "No voice samples for your language yet.\nAdd audio files (.wav, .mp3, .ogg, .flac) to data/samples/{engine_id}/{lang}/ or add a voice via «📂 Choose voice».\nTo find out where to get voices, click «📖 Guide».",
   "clone.samples.empty_for_gender": "No voice samples match the selected gender filter.",
   "ov.samples.delete_custom_tip": "Remove added voice",
   "tts.title.qwen3_tts": "Qwen3-TTS 1.7B Base (GGUF) - with voice cloning",
