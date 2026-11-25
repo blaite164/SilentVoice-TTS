@@ -5,6 +5,9 @@ ui/easter_egg.py — Пасхалка «Eye -> Heart» (ASCII 60 FPS аніма�
 from __future__ import annotations
 
 import math
+import os
+from pathlib import Path
+import threading
 import time
 from typing import Any, Dict, Optional
 
@@ -554,10 +557,172 @@ class _AsciiCanvasWidget(QWidget):
         painter.end()
 
 
+def get_easter_egg_audio_path() -> Optional[Path]:
+    """Повертає шлях до аудіотреку пасхалки `assets/easter_egg.ogg`, якщо файл існує."""
+    from core.config import BASE_DIR, BUNDLE_DIR
+
+    for candidate in (
+        BUNDLE_DIR / "assets" / "easter_egg.ogg",
+        BASE_DIR / "assets" / "easter_egg.ogg",
+    ):
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+class _EasterEggAudioPlayer:
+    """
+    Потоковий програвач фонової музики пасхалки через soundfile + sounddevice.
+    Грає локально користувачу (Канал 2 або стандартний пристрій виводу Windows — ніколи у мікрофон),
+    плавно зациклюється та миттєво зупиняється при закритті вікна.
+    """
+
+    def __init__(self, audio_path: Optional[Path] = None) -> None:
+        self._audio_path = audio_path
+        self._stop_event = threading.Event()
+        self._stream_lock = threading.Lock()
+        self._stream: Any = None
+        self._thread: Optional[threading.Thread] = None
+
+    @staticmethod
+    def _pick_local_output_device() -> Optional[int]:
+        """Повертає індекс локального пристрою виводу (Канал 2, якщо обраний; інакше системний за замовчуванням)."""
+        try:
+            from core.audio_router import audio_router
+            from core.config import config
+
+            sec = str(config.get("secondary_output_device", "") or "").strip()
+            if sec and sec not in ("__off__", "__vban__"):
+                idx = audio_router._resolve_device_index(sec)
+                if idx is not None and idx >= 0:
+                    return int(idx)
+        except Exception:
+            pass
+        return None
+
+    def start(self) -> bool:
+        path = self._audio_path or get_easter_egg_audio_path()
+        if path is None or not path.is_file():
+            return False
+        if self._thread is not None and self._thread.is_alive():
+            return True
+        self._stop_event.clear()
+        self._thread = threading.Thread(
+            target=self._play_loop,
+            args=(path,),
+            daemon=True,
+            name="EasterEggAudio",
+        )
+        self._thread.start()
+        return True
+
+    def _open_stream(self, sd: Any, samplerate: int, channels: int) -> Any:
+        dev_idx = self._pick_local_output_device()
+        candidates: list[Optional[int]] = [dev_idx, None] if dev_idx is not None else [None]
+        last_exc: Optional[Exception] = None
+        for dev in candidates:
+            try:
+                stream = sd.OutputStream(
+                    samplerate=samplerate,
+                    channels=channels,
+                    dtype="float32",
+                    device=dev,
+                    blocksize=2048,
+                )
+                stream.start()
+                return stream
+            except Exception as exc:
+                last_exc = exc
+        if last_exc is not None:
+            raise last_exc
+        return None
+
+    def _play_loop(self, path: Path) -> None:
+        try:
+            import numpy as np
+            import sounddevice as sd
+            import soundfile as sf
+        except Exception:
+            return
+
+        stream: Any = None
+        try:
+            with sf.SoundFile(str(path), mode="r") as audio_file:
+                sr = int(audio_file.samplerate)
+                ch = max(1, int(audio_file.channels))
+                if self._stop_event.is_set():
+                    return
+                stream = self._open_stream(sd, sr, ch)
+                if stream is None:
+                    return
+                with self._stream_lock:
+                    self._stream = stream
+
+                fade_frames = max(1, int(sr * 0.35))
+                played_frames = 0
+                block_size = 2048
+
+                while not self._stop_event.is_set():
+                    chunk = audio_file.read(block_size, dtype="float32", always_2d=True)
+                    if chunk.size == 0:
+                        audio_file.seek(0)
+                        continue
+                    if played_frames < fade_frames:
+                        n = int(chunk.shape[0])
+                        end_f = min(fade_frames, played_frames + n)
+                        ramp_len = end_f - played_frames
+                        ramp = np.linspace(
+                            played_frames / fade_frames,
+                            end_f / fade_frames,
+                            ramp_len,
+                            dtype=np.float32,
+                        )[:, None]
+                        chunk = chunk.copy()
+                        chunk[:ramp_len] *= ramp
+                        played_frames += n
+                    if self._stop_event.is_set():
+                        break
+                    stream.write(chunk)
+        except Exception:
+            pass
+        finally:
+            with self._stream_lock:
+                s = self._stream
+                self._stream = None
+            if s is not None:
+                try:
+                    s.stop()
+                except Exception:
+                    pass
+                try:
+                    s.close()
+                except Exception:
+                    pass
+
+    def stop(self) -> None:
+        self._stop_event.set()
+        with self._stream_lock:
+            s = self._stream
+        if s is not None:
+            try:
+                s.abort()
+            except Exception:
+                pass
+        t = self._thread
+        if t is not None and t.is_alive() and t is not threading.current_thread():
+            t.join(timeout=0.5)
+        self._thread = None
+
+
 class BlaiteEasterEggDialog(QDialog):
     """Вікно пасхалки «Eye -> Heart», що відкривається при натисканні на нік Blaite."""
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(
+        self,
+        parent: Optional[QWidget] = None,
+        *,
+        enable_audio: Optional[bool] = None,
+    ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Eye -> Heart")
         self.setStyleSheet(f"QDialog {{ background-color: {BG_HEX}; }}")
@@ -569,6 +734,15 @@ class BlaiteEasterEggDialog(QDialog):
 
         self._canvas = _AsciiCanvasWidget(self)
         lay.addWidget(self._canvas)
+
+        self._audio_player = _EasterEggAudioPlayer()
+        should_play_audio = (
+            enable_audio
+            if enable_audio is not None
+            else (os.environ.get("QT_QPA_PLATFORM", "").strip().lower() != "offscreen")
+        )
+        if should_play_audio:
+            self._audio_player.start()
 
         self._timer = QTimer(self)
         self._timer.setTimerType(Qt.TimerType.PreciseTimer)
@@ -590,8 +764,10 @@ class BlaiteEasterEggDialog(QDialog):
 
     def done(self, result: int) -> None:
         self._timer.stop()
+        self._audio_player.stop()
         super().done(result)
 
     def closeEvent(self, event: QCloseEvent) -> None:
         self._timer.stop()
+        self._audio_player.stop()
         super().closeEvent(event)

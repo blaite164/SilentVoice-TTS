@@ -479,16 +479,56 @@ class NewLocalTtsModelsTests(unittest.TestCase):
         _ = app
 
     def test_blaite_easter_egg_dialog_and_credit_link(self) -> None:
+        import threading
         from PySide6.QtCore import Qt
         from PySide6.QtWidgets import QApplication
-        from ui.easter_egg import BlaiteEasterEggDialog, HEIGHT, WIDTH
+        from ui.easter_egg import (
+            BlaiteEasterEggDialog,
+            HEIGHT,
+            WIDTH,
+            _EasterEggAudioPlayer,
+            get_easter_egg_audio_path,
+        )
         from ui.main_window import MainWindow
 
         app = QApplication.instance() or QApplication([])
         assert app is not None
 
+        # 0) Easter egg audio asset exists and streams chunks cleanly with mocked OutputStream
+        audio_path = get_easter_egg_audio_path()
+        self.assertIsNotNone(audio_path)
+        assert audio_path is not None
+        self.assertTrue(audio_path.is_file())
+
+        wrote_ev = threading.Event()
+        aborted = {"called": False}
+
+        class _FakeStream:
+            def start(self) -> None:
+                pass
+
+            def write(self, data) -> None:
+                if data is not None and len(data) > 0:
+                    wrote_ev.set()
+
+            def abort(self) -> None:
+                aborted["called"] = True
+
+            def stop(self) -> None:
+                pass
+
+            def close(self) -> None:
+                pass
+
+        player = _EasterEggAudioPlayer(audio_path)
+        with patch.object(player, "_open_stream", return_value=_FakeStream()):
+            self.assertTrue(player.start())
+            self.assertTrue(wrote_ev.wait(timeout=2.0))
+            player.stop()
+            self.assertTrue(aborted["called"])
+
         # 1) Dialog renders all phases (eye, zoom+stars, 3D heart) cleanly and stops timer on close
-        dlg = BlaiteEasterEggDialog()
+        dlg = BlaiteEasterEggDialog(enable_audio=False)
         try:
             self.assertEqual(dlg.width(), WIDTH)
             self.assertEqual(dlg.height(), HEIGHT)

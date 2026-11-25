@@ -16,6 +16,7 @@ app_datas = [
     (str(ROOT / "assets" / "icon.ico"), "assets"),
     (str(ROOT / "assets" / "edit.svg"), "assets"),
     (str(ROOT / "assets" / "delete.svg"), "assets"),
+    (str(ROOT / "assets" / "easter_egg.ogg"), "assets"),
     (str(ROOT / "locales" / "*.json"), "locales"),
     (str(ROOT / "data" / "samples"), "data/samples"),
 ]
