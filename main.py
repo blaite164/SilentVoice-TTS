@@ -160,6 +160,13 @@ def _write_crash_log(
 
 def _console_excepthook(exc_type, exc_value, exc_tb) -> None:
     """Виводить будь-яку необроблену помилку Python у консоль, crash.log та показує вікно помилки."""
+    if isinstance(exc_type, type) and issubclass(exc_type, (KeyboardInterrupt, SystemExit)):
+        try:
+            mark_session_clean_exit(DATA_DIR)
+        except Exception:
+            pass
+        sys.__excepthook__(exc_type, exc_value, exc_tb)
+        return
     _write_crash_log("[ERROR] Необроблена помилка в головному потоці:", exc_type, exc_value, exc_tb)
     err_name = getattr(exc_type, "__name__", "Error")
     record_pending_crash(
@@ -196,6 +203,9 @@ def _thread_excepthook(args: threading.ExceptHookArgs) -> None:
 
 def _unraisable_excepthook(unraisable) -> None:
     """Ловить помилки в __del__, weakref та C-колбеках (PortAudio / PySide6 / ctypes), які не доходять до sys.excepthook."""
+    u_type = getattr(unraisable, "exc_type", None)
+    if isinstance(u_type, type) and issubclass(u_type, (KeyboardInterrupt, SystemExit)):
+        return
     err_msg = getattr(unraisable, "err_msg", None) or "Unraisable exception"
     obj_repr = ""
     try:

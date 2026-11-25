@@ -339,6 +339,20 @@ class AppLoggerTests(unittest.TestCase):
         self.assertEqual(delivered_after_destroy, [])
         self.assertEqual(len(_ACTIVE_BG_BRIDGES), 0)
 
+    def test_console_excepthook_ignores_keyboard_interrupt(self) -> None:
+        from unittest.mock import patch
+        import main as app_main
+
+        with (
+            patch.object(app_main, "record_pending_crash") as mock_record,
+            patch.object(app_main, "mark_session_clean_exit") as mock_clean,
+            patch.object(app_main.sys, "__excepthook__") as mock_orig,
+        ):
+            app_main._console_excepthook(KeyboardInterrupt, KeyboardInterrupt(), None)
+            mock_record.assert_not_called()
+            mock_clean.assert_called_once()
+            mock_orig.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()
