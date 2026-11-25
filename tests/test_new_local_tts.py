@@ -15,30 +15,21 @@ from core.tts_manager import ENGINE_SPECS, tts_manager
 
 class NewLocalTtsModelsTests(unittest.TestCase):
     def test_visible_local_engines_include_new_models_for_supported_languages(self) -> None:
-        with patch.object(tts_manager, "_current_lang", return_value="en"):
-            en_ids = [item["id"] for item in tts_manager.get_visible_local_engines()]
-        self.assertIn("kokoro_82m", en_ids)
-        self.assertIn("soprano_1_1", en_ids)
-        self.assertIn("zonos3_mini", en_ids)
-        self.assertIn("qwen3_tts", en_ids)
-        self.assertNotIn("pocket_tts", en_ids)
-        self.assertNotIn("supertonic3", en_ids)
-
-        with patch.object(tts_manager, "_current_lang", return_value="uk"):
-            uk_ids = [item["id"] for item in tts_manager.get_visible_local_engines()]
-        self.assertIn("zonos3_mini", uk_ids)
-        self.assertNotIn("kokoro_82m", uk_ids)
-        self.assertNotIn("soprano_1_1", uk_ids)
-        self.assertNotIn("pocket_tts", uk_ids)
-        self.assertNotIn("supertonic3", uk_ids)
-
-        with patch.object(tts_manager, "_current_lang", return_value="de"):
-            de_ids = [item["id"] for item in tts_manager.get_visible_local_engines()]
-        self.assertIn("zonos3_mini", de_ids)
-        self.assertNotIn("kokoro_82m", de_ids)
-        self.assertNotIn("soprano_1_1", de_ids)
-        self.assertNotIn("pocket_tts", de_ids)
-        self.assertNotIn("supertonic3", de_ids)
+        expected_by_lang = {
+            "en": {"piper", "silero", "kokoro_82m", "soprano_1_1", "zonos3_mini", "qwen3_tts"},
+            "uk": {"piper", "silero", "holos", "zonos3_mini"},
+            "ru": {"piper", "silero", "teratts", "zonos3_mini", "qwen3_tts"},
+            "de": {"piper", "silero", "zonos3_mini", "qwen3_tts"},
+            "es": {"piper", "silero", "zonos3_mini", "qwen3_tts"},
+            "fr": {"piper", "silero", "zonos3_mini", "qwen3_tts"},
+            "pl": {"piper", "zonos3_mini"},
+        }
+        for lang, expected in expected_by_lang.items():
+            with patch.object(tts_manager, "_current_lang", return_value=lang):
+                ids = {item["id"] for item in tts_manager.get_visible_local_engines()}
+            self.assertEqual(ids, expected, f"Language {lang}: got {ids}, expected {expected}")
+            self.assertNotIn("pocket_tts", ids)
+            self.assertNotIn("supertonic3", ids)
 
     def test_llama_engine_install_checks_and_downloads(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -383,7 +374,6 @@ class NewLocalTtsModelsTests(unittest.TestCase):
     def test_local_engine_cards_listen_clone_buttons_and_device_dropdown_rules(self) -> None:
         from PySide6.QtWidgets import QApplication
         from core.config import config
-        from core.tts_manager import get_samples_for_engine
         from ui.dialogs import VoiceSamplesDialog
         from ui.main_window import MainWindow
 
@@ -392,8 +382,6 @@ class NewLocalTtsModelsTests(unittest.TestCase):
         try:
             with tempfile.TemporaryDirectory() as tmp:
                 samples_root = Path(tmp) / "samples"
-                (samples_root / "zonos3_mini").mkdir(parents=True)
-                (samples_root / "zonos3_mini" / "en_savannah.ogg").write_bytes(b"z")
                 (samples_root / "clone_voices" / "en").mkdir(parents=True)
                 (samples_root / "clone_voices" / "en" / "CloneVoice.mp3").write_bytes(b"c")
 
@@ -401,32 +389,20 @@ class NewLocalTtsModelsTests(unittest.TestCase):
                     patch("core.tts_manager.SAMPLES_DIR", samples_root),
                     patch("core.tts_manager.config.get", side_effect=lambda k, d=None: "en" if k == "app_language" else ("both" if k == "voice_gender_filter" else d)),
                 ):
-                    own_only = get_samples_for_engine("zonos3_mini", lang="en", gender="both", clone_mode=False)
-                    clone_only = get_samples_for_engine("zonos3_mini", lang="en", gender="both", clone_mode=True)
-                    self.assertEqual([x["file_name"] for x in own_only], ["en_savannah.ogg"])
-                    self.assertEqual([x["file_name"] for x in clone_only], ["CloneVoice.mp3"])
+                    for eid, title in (("openvoice", "OpenVoice v2"), ("zonos3_mini", "ZONOS3-Mini"), ("qwen3_tts", "Qwen3-TTS 1.7B")):
+                        dlg_clone = VoiceSamplesDialog(
+                            eid,
+                            title,
+                            on_select_sample=lambda _p: None,
+                            allow_install=False,
+                        )
+                        self.assertTrue(dlg_clone._is_clone_engine)
+                        self.assertIsNotNone(dlg_clone._lang_combo)
+                        self.assertIsNotNone(dlg_clone._guide_btn)
+                        dlg_clone.close()
+                        dlg_clone.deleteLater()
 
-                    dlg_own = VoiceSamplesDialog("zonos3_mini", "ZONOS3-Mini", clone_mode=False)
-                    self.assertFalse(dlg_own._is_clone_engine)
-                    self.assertIsNone(dlg_own._lang_combo)
-                    self.assertIsNone(dlg_own._guide_btn)
-                    dlg_own.close()
-                    dlg_own.deleteLater()
-
-                    dlg_clone = VoiceSamplesDialog(
-                        "zonos3_mini",
-                        "ZONOS3-Mini",
-                        on_select_sample=lambda _p: None,
-                        allow_install=False,
-                        clone_mode=True,
-                    )
-                    self.assertTrue(dlg_clone._is_clone_engine)
-                    self.assertIsNotNone(dlg_clone._lang_combo)
-                    self.assertIsNotNone(dlg_clone._guide_btn)
-                    dlg_clone.close()
-                    dlg_clone.deleteLater()
-
-            # 1) PC WITHOUT GPU: ZONOS3 & Qwen3 hide listen + clone triangle buttons; Kokoro & Soprano show listen, hide device dropdown even when installed
+            # 1) PC WITHOUT GPU: ZONOS3 & Qwen3 hide listen btn; Kokoro & Soprano show listen, hide device dropdown even when installed
             with (
                 patch.object(config, "save", lambda *a, **k: None),
                 patch("ui.main_window.has_hardware_gpu", return_value=False),
@@ -439,16 +415,19 @@ class NewLocalTtsModelsTests(unittest.TestCase):
                     for eid in ("zonos3_mini", "qwen3_tts"):
                         ui = win._engine_cards_ui[eid]
                         self.assertTrue(ui["listen_btn"].isHidden())
-                        self.assertTrue(ui["clone_voices_btn"].isHidden())
+                        self.assertNotIn("clone_voices_btn", ui)
                     for eid in ("kokoro_82m", "soprano_1_1"):
                         ui = win._engine_cards_ui[eid]
                         self.assertFalse(ui["listen_btn"].isHidden())
                         self.assertTrue(ui["dev_opts_widget"].isHidden())
+                    ov_combo = win._engine_cards_ui["openvoice"]["device_combo"]
+                    self.assertNotIn("DirectML", ov_combo.itemText(0))
+                    self.assertIn("🚀", ov_combo.itemText(0))
                 finally:
                     win.close()
                     win.deleteLater()
 
-            # 2) PC WITH GPU: ZONOS3 & Qwen3 always show both listen + clone triangle buttons (even uninstalled);
+            # 2) PC WITH GPU: ZONOS3 & Qwen3 always show listen btn (no triangle btn);
             #    Kokoro & Soprano hide device dropdown BEFORE install and show it (with 🚀 GPU) AFTER install
             with (
                 patch.object(config, "save", lambda *a, **k: None),
@@ -464,8 +443,7 @@ class NewLocalTtsModelsTests(unittest.TestCase):
                     for eid in ("zonos3_mini", "qwen3_tts"):
                         ui = win._engine_cards_ui[eid]
                         self.assertFalse(ui["listen_btn"].isHidden())
-                        self.assertFalse(ui["clone_voices_btn"].isHidden())
-                        self.assertEqual(ui["clone_voices_btn"].text(), "▼")
+                        self.assertNotIn("clone_voices_btn", ui)
                     for eid in ("kokoro_82m", "soprano_1_1"):
                         ui = win._engine_cards_ui[eid]
                         self.assertFalse(ui["listen_btn"].isHidden())

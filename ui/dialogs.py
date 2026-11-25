@@ -631,13 +631,11 @@ class VoiceSamplesDialog(QDialog):
         allow_install: bool = True,
         selected_sample_path: str = "",
         on_delete_sample: Optional[Callable[[str], None]] = None,
-        clone_mode: Optional[bool] = None,
     ) -> None:
         super().__init__(parent)
         self._engine_id = engine_id
         self._engine_title = engine_title
-        self._clone_mode_arg = clone_mode
-        self._is_clone_engine = (engine_id in self._CLONE_ENGINES) if clone_mode is None else bool(clone_mode)
+        self._is_clone_engine = engine_id in self._CLONE_ENGINES
         self._on_select_sample = on_select_sample
         self._on_delete_sample = on_delete_sample
         self._allow_install = bool(allow_install)
@@ -647,7 +645,12 @@ class VoiceSamplesDialog(QDialog):
         self._gender_combo: Optional[DialogComboBox] = None
         self._guide_btn: Optional[QPushButton] = None
 
-        self.setWindowTitle(tr("dlg_f_003", "Прослухати голоси — {engine_title}", engine_title=engine_title))
+        if self._is_clone_engine:
+            self.setWindowTitle(
+                tr("dlg.clone_voices.title", "Доступні голоси для клонування — {engine_title}", engine_title=engine_title)
+            )
+        else:
+            self.setWindowTitle(tr("dlg_f_003", "Прослухати голоси — {engine_title}", engine_title=engine_title))
         self.setMinimumSize(520, 380)
         self.resize(580, 440)
         self.setStyleSheet(DIALOG_STYLESHEET)
@@ -658,7 +661,7 @@ class VoiceSamplesDialog(QDialog):
 
         hdr_row = QHBoxLayout()
         hdr_row.setSpacing(8)
-        if self._is_clone_engine and self._clone_mode_arg is True and engine_id != "openvoice":
+        if self._is_clone_engine:
             hdr_text = tr(
                 "dlg.clone_voices.header",
                 "🎧 Доступні голоси для клонування: {engine_title}",
@@ -729,9 +732,9 @@ class VoiceSamplesDialog(QDialog):
         self._c_lay.setSpacing(8)
 
         self._all_samples = (
-            get_samples_for_engine(engine_id, lang="all", gender="both", clone_mode=self._clone_mode_arg)
+            get_samples_for_engine(engine_id, lang="all", gender="both")
             if self._is_clone_engine
-            else get_samples_for_engine(engine_id, gender="both", clone_mode=self._clone_mode_arg)
+            else get_samples_for_engine(engine_id, gender="both")
         )
         self._populate_samples_list()
 
@@ -897,9 +900,9 @@ class VoiceSamplesDialog(QDialog):
             self._selected_norm = ""
         remove_custom_clone_sample(self._engine_id, path_str)
         self._all_samples = (
-            get_samples_for_engine(self._engine_id, lang="all", gender="both", clone_mode=self._clone_mode_arg)
+            get_samples_for_engine(self._engine_id, lang="all", gender="both")
             if self._is_clone_engine
-            else get_samples_for_engine(self._engine_id, gender="both", clone_mode=self._clone_mode_arg)
+            else get_samples_for_engine(self._engine_id, gender="both")
         )
         if self._on_delete_sample is not None:
             self._on_delete_sample(path_str)

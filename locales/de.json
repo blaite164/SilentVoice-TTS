@@ -1195,7 +1195,7 @@
   "ov.pick_file": "📂 Stimme wählen",
   "ov.pick_file_tip": "Wählen oder ziehen Sie eine .wav/.mp3/.ogg-Stimmprobe zum Klonen hierher",
   "ov.enable_chk": "Auf jedes TTS anwenden",
-  "ov.dev.gpu": "🚀 GPU (DirectML)",
+  "ov.dev.gpu": "🚀 GPU",
   "ov.dev.cpu": "🧠 CPU",
   "ov.pick_dlg_title": "Stimmprobe zum Klonen auswählen",
   "ov.pick_dlg_filter": "Audiodateien (*.wav *.mp3 *.ogg *.flac *.m4a);;Alle Dateien (*.*)",
@@ -1207,7 +1207,7 @@
   "ov.dl.extract_uv": "uv wird entpackt...",
   "ov.dl.directml": "onnxruntime-directml für GPU wird installiert (~40 MB)...",
   "ov.dl.verify_gpu": "GPU DirectML wird geprüft...",
-  "tts.size.qwen3_tts": "~1,41 GB",
+  "tts.size.qwen3_tts": "~2.1 GB",
   "tts.dl.llama_runtime": "Lade llama.cpp-Laufzeit (Vulkan GPU) (~37 MB) herunter...",
   "tts.dl.llama_runtime_cuda": "Lade llama.cpp-Laufzeit (NVIDIA CUDA) herunter...",
   "tts.dl.llama_cudart": "Lade NVIDIA CUDA Runtime-Bibliotheken herunter...",
@@ -1354,7 +1354,7 @@
   "tts.size.soprano_1_1": "~139 MB",
   "tts.dev.gpu": "🚀 GPU",
   "tts.dev.tip": "Wählen Sie das Gerät für die Sprachgenerierung (GPU oder CPU)",
-  "llama_tts.clone_voices_tip": "Verfügbare Stimmen zum Klonen öffnen",
   "dlg.clone_voices.header": "🎧 Verfügbare Stimmen zum Klonen: {engine_title}",
-  "clone.samples.install_required_tip": "Installieren Sie zuerst {name}, um diese Stimme auszuwählen"
+  "clone.samples.install_required_tip": "Installieren Sie zuerst {name}, um diese Stimme auszuwählen",
+  "dlg.clone_voices.title": "Verfügbare Stimmen zum Klonen — {engine_title}"
 }

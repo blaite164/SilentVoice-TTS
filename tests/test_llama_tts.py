@@ -122,11 +122,18 @@ class LlamaTtsTests(unittest.TestCase):
                 self.assertTrue(np.array_equal(out_qw, dummy))
 
     def test_single_qwen3_entry_uses_streaming_plan_without_fast_duplicate(self) -> None:
-        visible_ids = [item["id"] for item in tts_manager.get_visible_local_engines()]
+        with patch.object(tts_manager, "_current_lang", return_value="en"):
+            visible_ids = [item["id"] for item in tts_manager.get_visible_local_engines()]
         self.assertIn("qwen3_tts", visible_ids)
         self.assertNotIn("qwen3_tts_fast", visible_ids)
 
+        for unsupported_lang in ("uk", "pl"):
+            with patch.object(tts_manager, "_current_lang", return_value=unsupported_lang):
+                unsup_ids = [item["id"] for item in tts_manager.get_visible_local_engines()]
+            self.assertNotIn("qwen3_tts", unsup_ids)
+
         with (
+            patch.object(tts_manager, "_current_lang", return_value="en"),
             patch.object(llama_tts, "is_qwen3_tts_installed", return_value=True),
             patch.object(tts_manager, "is_engine_installed", side_effect=lambda eid: eid == "qwen3_tts"),
         ):

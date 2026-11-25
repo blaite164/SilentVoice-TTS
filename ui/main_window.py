@@ -2005,16 +2005,11 @@ class MainWindow(QMainWindow):
             top_r.addWidget(meta_lbl)
             top_r.addStretch(1)
 
-            clone_voices_btn: Optional[QPushButton] = None
+            listen_btn = QPushButton(tr("ui_129", "🎧 Прослухати"))
+            listen_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            listen_btn.setToolTip(tr("ui_130", "Відкрити список доступних голосів для прослуховування"))
             if is_clone_gguf:
-                clone_voices_btn = QPushButton("▼")
-                clone_voices_btn.setFixedWidth(32)
-                clone_voices_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-                clone_voices_btn.setStyleSheet("padding: 7px 0px; font-size: 11px;")
-                clone_voices_btn.setToolTip(
-                    tr("llama_tts.clone_voices_tip", "Відкрити доступні голоси для клонування")
-                )
-                clone_voices_btn.clicked.connect(
+                listen_btn.clicked.connect(
                     lambda checked=False, eid=eng_id, title=str(spec["title"]): VoiceSamplesDialog(
                         eid,
                         title,
@@ -2023,18 +2018,6 @@ class MainWindow(QMainWindow):
                         allow_install=tts_manager.is_engine_installed(eid),
                         selected_sample_path=str(config.get(f"{eid}_ref_path", "") or ""),
                         on_delete_sample=lambda _p, e=eid: self._on_clone_sample_deleted(e),
-                        clone_mode=True,
-                    ).exec()
-                )
-                top_r.addWidget(clone_voices_btn)
-
-            listen_btn = QPushButton(tr("ui_129", "🎧 Прослухати"))
-            listen_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            listen_btn.setToolTip(tr("ui_130", "Відкрити список доступних голосів для прослуховування"))
-            if is_clone_gguf:
-                listen_btn.clicked.connect(
-                    lambda checked=False, eid=eng_id, title=str(spec["title"]): VoiceSamplesDialog(
-                        eid, title, self, clone_mode=False
                     ).exec()
                 )
             else:
@@ -2108,8 +2091,6 @@ class MainWindow(QMainWindow):
                 "cancel_btn": cancel_btn,
                 "listen_btn": listen_btn,
             }
-            if clone_voices_btn is not None:
-                card_entry["clone_voices_btn"] = clone_voices_btn
             if dev_combo is not None:
                 card_entry["device_combo"] = dev_combo
             if dev_opts_widget is not None:
@@ -2231,8 +2212,8 @@ class MainWindow(QMainWindow):
         opts_lay.addWidget(enabled_chk)
 
         device_combo = QComboBox()
-        device_combo.setMinimumWidth(165)
-        device_combo.addItem(tr("ov.dev.gpu", "🚀 GPU (DirectML)"), "gpu")
+        device_combo.setMinimumWidth(140)
+        device_combo.addItem(tr("ov.dev.gpu", "🚀 GPU"), "gpu")
         device_combo.addItem(tr("ov.dev.cpu", "🧠 CPU"), "cpu")
         cur_dev = str(config.get("openvoice_device", "gpu") or "gpu").strip().lower()
         d_idx = device_combo.findData(cur_dev)
@@ -2432,9 +2413,6 @@ class MainWindow(QMainWindow):
         listen_btn = ui.get("listen_btn")
         if isinstance(listen_btn, QPushButton) and engine_id != "openvoice":
             listen_btn.setVisible(has_gpu)
-        clone_voices_btn = ui.get("clone_voices_btn")
-        if isinstance(clone_voices_btn, QPushButton):
-            clone_voices_btn.setVisible(has_gpu)
         choose_btn = ui.get("choose_ref_btn")
         if isinstance(choose_btn, QPushButton):
             choose_btn.setVisible(installed)
