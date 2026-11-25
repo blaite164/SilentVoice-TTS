@@ -838,7 +838,7 @@ class _Qwen3ServerManager:
                 port = _pick_free_port()
                 ngl = "0" if eff_device == "cpu" else "99"
                 threads = str(max(2, (os.cpu_count() or 8) // 2))
-                ctx_size = 512 if eng_id == "soprano_1_1" else QWEN3_CTX_SIZE
+                ctx_size = 512 if eng_id in ("soprano_1_1", "kokoro_82m") else QWEN3_CTX_SIZE
                 cmd = [
                     str(LLAMA_TTS_SERVER_EXE),
                     "--host", "127.0.0.1",
@@ -1430,7 +1430,7 @@ def synthesize_llama_tts(
     clean_text, req_lang, ref_wav, req_voice, dev, use_lang, include_n_predict, fps = _resolve_llama_call_params(
         eid, text, lang, voice
     )
-    use_native_speed = eid == "zonos3_mini"
+    use_native_speed = eid in ("zonos3_mini", "kokoro_82m")
     eff_temp = 0.3 if eid == "soprano_1_1" else None
     samples, sr = _qwen3_server.synthesize(
         clean_text,
@@ -1465,7 +1465,7 @@ def synthesize_llama_tts_stream(
     if eid == "qwen3_tts":
         yield from synthesize_qwen3_tts_stream(text, lang=lang, speed=speed)
         return
-    use_native_speed = eid == "zonos3_mini"
+    use_native_speed = eid in ("zonos3_mini", "kokoro_82m")
     eff_temp = 0.3 if eid == "soprano_1_1" else None
     if not use_native_speed and abs(speed - 1.0) > 0.04:
         samples, sr = synthesize_llama_tts(eid, text, lang=lang, voice=voice, speed=speed)

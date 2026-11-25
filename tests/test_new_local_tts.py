@@ -148,20 +148,21 @@ class NewLocalTtsModelsTests(unittest.TestCase):
             _, sent_sr = sf.read(io.BytesIO(sent_ref_bytes), dtype="float32")
             self.assertEqual(sent_sr, 24000)
 
-            # 2) Kokoro British voice -> en-gb, no n_predict, GPU-only
+            # 2) Kokoro British voice -> en-gb, no n_predict, GPU-only, native speed
             with (
                 patch.object(llama_tts, "has_hardware_gpu", return_value=False),
                 patch.object(llama_tts._qwen3_server, "ensure_started", return_value=54331) as mock_start_k,
                 patch.object(llama_tts._qwen3_server._session, "post", return_value=fake_resp_24k) as mock_post,
             ):
                 audio_k, sr_k = llama_tts.synthesize_llama_tts(
-                    "kokoro_82m", "Hello there", lang="en", voice="bf_emma"
+                    "kokoro_82m", "Hello there", lang="en", voice="bf_emma", speed=1.2
                 )
             self.assertEqual(sr_k, 24000)
             self.assertEqual(len(audio_k), len(pcm_24k))
             self.assertEqual(mock_start_k.call_args.args[0], "gpu")
             self.assertEqual(mock_post.call_args.kwargs["json"]["voice"], "bf_emma")
             self.assertEqual(mock_post.call_args.kwargs["json"]["lang"], "en-gb")
+            self.assertAlmostEqual(mock_post.call_args.kwargs["json"]["speed"], 1.2, places=2)
             self.assertNotIn("n_predict", mock_post.call_args.kwargs["json"])
 
             # 3) Soprano-1.1-80M -> 32kHz, respects user GPU/CPU choice (and falls back to CPU without GPU)
