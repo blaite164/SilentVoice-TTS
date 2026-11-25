@@ -3,6 +3,7 @@ import io
 import os
 import tempfile
 import threading
+import time
 import unittest
 import zipfile
 from pathlib import Path
@@ -284,6 +285,59 @@ class AppLoggerTests(unittest.TestCase):
             self.assertTrue(url.startswith("https://github.com/blaite164/SilentVoice-TTS/issues/new?"))
             self.assertIn("Freeze", url)
             self.assertIn(zp.name, url)
+
+    def test_run_in_background_handles_destroyed_parent_safely(self) -> None:
+        from PySide6.QtCore import QCoreApplication, QEvent, QObject
+        from PySide6.QtWidgets import QApplication
+        from shiboken6 import isValid
+        from ui.dialogs import _ACTIVE_BG_BRIDGES, run_in_background
+
+        app = QApplication.instance() or QApplication([])
+        assert app is not None
+
+        # 1) Normal delivery when parent stays alive
+        parent_ok = QObject()
+        received: list[tuple[object, str]] = []
+        done_ev = threading.Event()
+
+        def on_ok(val: object, err: str) -> None:
+            received.append((val, err))
+            done_ev.set()
+
+        run_in_background(parent_ok, lambda: "hello", on_done=on_ok)
+        deadline = time.monotonic() + 3.0
+        while not done_ev.is_set() and time.monotonic() < deadline:
+            QCoreApplication.processEvents()
+            time.sleep(0.01)
+        self.assertEqual(received, [("hello", "")])
+
+        # 2) Parent destroyed before background task finishes — must NOT crash or deliver
+        parent_dead = QObject()
+        gate = threading.Event()
+        worker_done = threading.Event()
+        delivered_after_destroy: list[tuple[object, str]] = []
+
+        def slow_task() -> str:
+            gate.wait(timeout=2.0)
+            worker_done.set()
+            return "too_late"
+
+        run_in_background(
+            parent_dead,
+            slow_task,
+            on_done=lambda v, e: delivered_after_destroy.append((v, e)),
+        )
+        parent_dead.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        QCoreApplication.processEvents()
+        self.assertFalse(isValid(parent_dead))
+
+        gate.set()
+        self.assertTrue(worker_done.wait(timeout=2.0))
+        time.sleep(0.05)
+        QCoreApplication.processEvents()
+        self.assertEqual(delivered_after_destroy, [])
+        self.assertEqual(len(_ACTIVE_BG_BRIDGES), 0)
 
 
 if __name__ == "__main__":

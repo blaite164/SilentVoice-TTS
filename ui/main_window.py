@@ -1049,6 +1049,8 @@ class MainWindow(QMainWindow):
     twitch_moderation_received = Signal(str, str, str)
     twitch_test_finished = Signal(bool, str)
     startup_update_found = Signal(object)
+    vbcable_progress = Signal(int)
+    vbcable_finished = Signal(bool, str)
 
     def __init__(self) -> None:
         super().__init__()
@@ -1082,6 +1084,8 @@ class MainWindow(QMainWindow):
         self._ollama_download_active = False
         self.ollama_installer_progress.connect(self._on_ollama_installer_progress)
         self.ollama_installer_finished.connect(self._on_ollama_installer_finished)
+        self.vbcable_progress.connect(lambda pct: self.live_status_label.setText(f"VB-Cable: {pct}%"))
+        self.vbcable_finished.connect(self._on_vbcable_done)
         self.setWindowTitle(tr("ui_084", "SilentVoice — Озвучення тексту для спілкування на ПК"))
         self.setWindowIcon(create_app_icon())
         saved_x = config.get("main_window_x")
@@ -1952,8 +1956,11 @@ class MainWindow(QMainWindow):
             return
         while self.local_models_layout.count():
             item = self.local_models_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+            w = item.widget() if item else None
+            if w is not None:
+                w.hide()
+                w.setParent(None)
+                w.deleteLater()
 
         for k in list(self._engine_cards_ui.keys()):
             if k in ENGINE_SPECS:
@@ -9836,11 +9843,14 @@ class MainWindow(QMainWindow):
         self.install_vb_btn.setText(tr("ui_173", "⏳ Завантаження..."))
 
         def _cb(pct: int, msg: str):
-            QTimer.singleShot(0, lambda: self.live_status_label.setText(f"VB-Cable: {pct}%"))
+            _ = msg
+            if not getattr(self, "_quit_in_progress", False):
+                self.vbcable_progress.emit(int(pct))
 
         def _work():
             ok, msg = download_and_install_vbcable(_cb)
-            QTimer.singleShot(0, lambda: self._on_vbcable_done(ok, msg))
+            if not getattr(self, "_quit_in_progress", False):
+                self.vbcable_finished.emit(bool(ok), str(msg))
 
         threading.Thread(target=_work, daemon=True).start()
 

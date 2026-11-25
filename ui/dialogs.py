@@ -14,6 +14,7 @@ import shutil
 import threading
 import time
 import traceback
+import weakref
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
@@ -3253,6 +3254,9 @@ class AISettingsDialog(QDialog):
         self.accept()
 
 
+_ACTIVE_BG_BRIDGES: dict[int, "_AsyncTaskBridge"] = {}
+
+
 class _AsyncTaskBridge(QObject):
     """Передає результат фонової задачі назад у головний потік Qt."""
 
@@ -3264,25 +3268,73 @@ def run_in_background(
     fn: Callable[[], Any],
     on_done: Callable[[Any, str], None],
 ) -> None:
-    """Запускає fn() у фоновому потоці та викликає on_done(result, error) у GUI-потоці."""
+    """
+    Запускає fn() у фоновому потоці та безпечно викликає on_done(result, error) у GUI-потоці.
+    Утримує сильне посилання на QObject-міст виключно на головному потоці (через _ACTIVE_BG_BRIDGES),
+    а у фоновий потік передає weakref — це запобігає race condition у shiboken6.abi3.dll!releaseWrapper.
+    """
+    try:
+        from shiboken6 import isValid as _qt_is_valid
+    except Exception:
+        def _qt_is_valid(_obj: Any) -> bool:
+            return True
+
     bridge = _AsyncTaskBridge(parent)
-    bridge.finished.connect(on_done)
-    # Утримуємо посилання на bridge до завершення, навіть якщо parent=None
-    setattr(bridge, "_self_ref", bridge)
+    bridge_id = id(bridge)
+    _ACTIVE_BG_BRIDGES[bridge_id] = bridge
+    state_lock = threading.Lock()
+    destroyed = False
+
+    def _on_destroyed(*_args: Any) -> None:
+        nonlocal destroyed
+        with state_lock:
+            destroyed = True
+            _removed = _ACTIVE_BG_BRIDGES.pop(bridge_id, None)
+        del _removed
 
     def _cleanup_and_deliver(res: Any, err: str) -> None:
-        if hasattr(bridge, "_self_ref"):
-            delattr(bridge, "_self_ref")
-        bridge.deleteLater()
+        try:
+            parent_ok = parent is None or _qt_is_valid(parent)
+            if not destroyed and parent_ok and _qt_is_valid(bridge):
+                on_done(res, err)
+        finally:
+            with state_lock:
+                _removed = _ACTIVE_BG_BRIDGES.pop(bridge_id, None)
+            del _removed
+            try:
+                if _qt_is_valid(bridge):
+                    bridge.deleteLater()
+            except Exception:
+                pass
 
-    bridge.finished.connect(_cleanup_and_deliver)
+    bridge.destroyed.connect(_on_destroyed)
+    if parent is not None:
+        try:
+            parent.destroyed.connect(_on_destroyed)
+        except Exception:
+            pass
+    bridge.finished.connect(_cleanup_and_deliver, Qt.ConnectionType.QueuedConnection)
+    bridge_ref = weakref.ref(bridge)
 
     def _worker() -> None:
+        res: Any = None
+        err = ""
         try:
             res = fn()
-            bridge.finished.emit(res, "")
         except Exception as exc:
-            bridge.finished.emit(None, str(exc))
+            err = str(exc)
+        with state_lock:
+            if destroyed:
+                return
+            b = bridge_ref()
+            if b is None or not _qt_is_valid(b):
+                return
+            try:
+                b.finished.emit(res, err)
+            except RuntimeError:
+                pass
+            finally:
+                b = None
 
     threading.Thread(target=_worker, daemon=True).start()
 
