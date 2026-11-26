@@ -1406,5 +1406,9 @@
   "clone.guide_btn_tip": "Коротко про клонування голосу, де взяти зразки та готові тексти",
   "omnivoice.test_btn": "🔊 Прослухати тест",
   "omnivoice.test_running": "⏳ Синтез...",
-  "omnivoice.card.clone_status": "🎤 {name} · {steps} кр.{whisper}"
+  "omnivoice.card.clone_status": "🎤 {name} · {steps} кр.{whisper}",
+  "dlg.samples.tab_clone_demo": "Приклад клонування",
+  "dlg.clone_demo.title": "Приклад клонування — {engine_title}",
+  "dlg.clone_demo.header": "🎧 Приклад клонування: {engine_title}",
+  "clone_demo.samples.empty_for_lang": "Прикладів клонування для вашої мови поки що немає.\nДодайте аудіофайли (.wav, .mp3, .ogg, .flac) у data/samples/clone_demos/{engine_id}/{lang}/."
 }

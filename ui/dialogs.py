@@ -70,6 +70,7 @@ from core.i18n import (
 )
 from core.tts_manager import (
     FFMPEG_ENGINE_ID,
+    get_clone_demo_samples,
     get_samples_for_engine,
     is_ffmpeg_installed,
     is_network_or_download_error,
@@ -654,13 +655,23 @@ class VoiceSamplesDialog(QDialog):
             if self._is_clone_engine
             else get_samples_for_engine(engine_id, gender="both")
         )
+        self._clone_demo_samples: List[Dict[str, str]] = (
+            get_clone_demo_samples(engine_id, lang=cur_lang, gender="both")
+            if self._is_clone_engine
+            else []
+        )
         self._model_samples: List[Dict[str, str]] = (
             get_samples_for_engine(engine_id, lang=cur_lang, gender="both", own_only=True)
             if engine_id in self._ENGINES_WITH_BUILTIN_AND_CLONE
             else []
         )
-        self._has_dual_tabs = bool(self._is_clone_engine and self._model_samples)
-        if self._has_dual_tabs:
+        self._has_model_tab = bool(self._is_clone_engine and self._model_samples)
+        self._has_dual_tabs = bool(self._is_clone_engine)
+        if self._has_model_tab:
+            self._active_tab_mode = "model"
+        elif self._is_clone_engine:
+            self._active_tab_mode = "clone_demo"
+        else:
             self._active_tab_mode = "model"
 
         self.setMinimumSize(520, 380)
@@ -701,8 +712,11 @@ class VoiceSamplesDialog(QDialog):
                 "QTabBar::tab:hover { background-color: #30374F; color: #FFFFFF; }"
                 "QTabBar::tab:selected { background-color: #635BFF; color: #FFFFFF; border-color: #827BFF; }"
             )
-            idx_model = self._mode_tabs.addTab(tr("dlg.samples.tab_model", "Голоси моделі"))
-            self._mode_tabs.setTabData(idx_model, "model")
+            if self._has_model_tab:
+                idx_model = self._mode_tabs.addTab(tr("dlg.samples.tab_model", "Голоси моделі"))
+                self._mode_tabs.setTabData(idx_model, "model")
+            idx_demo = self._mode_tabs.addTab(tr("dlg.samples.tab_clone_demo", "Приклад клонування"))
+            self._mode_tabs.setTabData(idx_demo, "clone_demo")
             idx_clone = self._mode_tabs.addTab(tr("dlg.samples.tab_clone", "Голоси для клонування"))
             self._mode_tabs.setTabData(idx_clone, "clone")
             self._mode_tabs.setCurrentIndex(0)
@@ -762,12 +776,20 @@ class VoiceSamplesDialog(QDialog):
 
     def _sync_header_for_active_tab(self) -> None:
         is_clone_tab = self._active_tab_mode == "clone"
+        is_demo_tab = self._active_tab_mode == "clone_demo"
         if is_clone_tab:
             self.setWindowTitle(
                 tr("dlg.clone_voices.title", "Доступні голоси для клонування — {engine_title}", engine_title=self._engine_title)
             )
             self._hdr_label.setText(
                 tr("dlg.clone_voices.header", "🎧 Доступні голоси для клонування: {engine_title}", engine_title=self._engine_title)
+            )
+        elif is_demo_tab:
+            self.setWindowTitle(
+                tr("dlg.clone_demo.title", "Приклад клонування — {engine_title}", engine_title=self._engine_title)
+            )
+            self._hdr_label.setText(
+                tr("dlg.clone_demo.header", "🎧 Приклад клонування: {engine_title}", engine_title=self._engine_title)
             )
         else:
             self.setWindowTitle(tr("dlg_f_003", "Прослухати голоси — {engine_title}", engine_title=self._engine_title))
@@ -809,7 +831,13 @@ class VoiceSamplesDialog(QDialog):
         self._install_buttons.clear()
 
         is_clone_tab = self._active_tab_mode == "clone"
-        base_samples = list(self._all_samples if (is_clone_tab or not self._is_clone_engine) else self._model_samples)
+        is_demo_tab = self._active_tab_mode == "clone_demo"
+        if is_demo_tab:
+            base_samples = list(self._clone_demo_samples)
+        elif is_clone_tab or not self._is_clone_engine:
+            base_samples = list(self._all_samples)
+        else:
+            base_samples = list(self._model_samples)
         gender_filter = str(self._gender_combo.currentData() or "both") if self._gender_combo is not None else "both"
         if gender_filter in ("female", "male"):
             samples = [s for s in base_samples if (s.get("gender") or "") in (gender_filter, "")]
@@ -817,7 +845,14 @@ class VoiceSamplesDialog(QDialog):
             samples = list(base_samples)
 
         if not samples:
-            if is_clone_tab and not base_samples:
+            if is_demo_tab and not base_samples:
+                empty_text = tr(
+                    "clone_demo.samples.empty_for_lang",
+                    "Прикладів клонування для вашої мови поки що немає.\nДодайте аудіофайли (.wav, .mp3, .ogg, .flac) у data/samples/clone_demos/{engine_id}/{lang}/.",
+                    engine_id=self._engine_id,
+                    lang=self._target_lang or "uk",
+                )
+            elif is_clone_tab and not base_samples:
                 empty_text = tr(
                     "clone.samples.empty_for_lang",
                     "Для вашої мови голосів поки що немає.\nДодайте аудіофайли (.wav, .mp3, .ogg, .flac) у data/samples/{engine_id}/{lang}/ або додайте голос через «📂 Обрати голос».\nДе взяти голоси — дивіться за кнопкою «📖 Гайд».",

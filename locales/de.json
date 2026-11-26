@@ -1406,5 +1406,9 @@
   "clone.guide_btn_tip": "Kurzanleitung zum Stimmenklonen, woher Proben kommen und fertige Texte",
   "omnivoice.test_btn": "🔊 Stimme testen",
   "omnivoice.test_running": "⏳ Synthese...",
-  "omnivoice.card.clone_status": "🎤 {name} · {steps} Schr.{whisper}"
+  "omnivoice.card.clone_status": "🎤 {name} · {steps} Schr.{whisper}",
+  "dlg.samples.tab_clone_demo": "Klon-Beispiel",
+  "dlg.clone_demo.title": "Klon-Beispiel — {engine_title}",
+  "dlg.clone_demo.header": "🎧 Klon-Beispiel: {engine_title}",
+  "clone_demo.samples.empty_for_lang": "Für Ihre Sprache gibt es noch keine Klon-Beispiele.\nFügen Sie Audiodateien (.wav, .mp3, .ogg, .flac) in data/samples/clone_demos/{engine_id}/{lang}/ hinzu."
 }

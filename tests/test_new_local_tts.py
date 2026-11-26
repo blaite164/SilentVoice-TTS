@@ -362,6 +362,12 @@ class NewLocalTtsModelsTests(unittest.TestCase):
                 samples_root = Path(tmp) / "samples"
                 (samples_root / "clone_voices" / "en").mkdir(parents=True)
                 (samples_root / "clone_voices" / "en" / "CloneVoice.mp3").write_bytes(b"c")
+                (samples_root / "clone_demos" / "omnivoice" / "en").mkdir(parents=True)
+                (samples_root / "clone_demos" / "omnivoice" / "en" / "DemoOmni.ogg").write_bytes(b"o")
+                (samples_root / "clone_demos" / "qwen3_tts" / "en").mkdir(parents=True)
+                (samples_root / "clone_demos" / "qwen3_tts" / "en" / "DemoQwen.ogg").write_bytes(b"q")
+                (samples_root / "clone_demos" / "zonos3_mini" / "en").mkdir(parents=True)
+                (samples_root / "clone_demos" / "zonos3_mini" / "en" / "DemoZonos.ogg").write_bytes(b"d")
                 (samples_root / "zonos3_mini" / "en").mkdir(parents=True)
                 (samples_root / "zonos3_mini" / "en" / "zonos3_en_savannah.ogg").write_bytes(b"z")
 
@@ -379,12 +385,23 @@ class NewLocalTtsModelsTests(unittest.TestCase):
                         )
                         self.assertTrue(dlg_clone._is_clone_engine)
                         self.assertIsNone(dlg_clone._lang_combo)
-                        self.assertIsNone(dlg_clone._mode_tabs)
+                        self.assertIsNotNone(dlg_clone._mode_tabs)
+                        assert dlg_clone._mode_tabs is not None
+                        self.assertEqual(dlg_clone._mode_tabs.count(), 2)
+                        self.assertEqual(dlg_clone._mode_tabs.currentIndex(), 0)
+                        self.assertEqual(dlg_clone._mode_tabs.tabData(0), "clone_demo")
+                        self.assertEqual(dlg_clone._mode_tabs.tabData(1), "clone")
+                        self.assertEqual(dlg_clone._active_tab_mode, "clone_demo")
+                        self.assertEqual(len(dlg_clone._clone_demo_samples), 1)
+                        self.assertEqual(len(dlg_clone._install_buttons), 0)
+                        dlg_clone._mode_tabs.setCurrentIndex(1)
+                        self.assertEqual(dlg_clone._active_tab_mode, "clone")
+                        self.assertEqual(len(dlg_clone._install_buttons), 1)
                         self.assertIsNotNone(dlg_clone._guide_btn)
                         dlg_clone.close()
                         dlg_clone.deleteLater()
 
-                    # ZONOS3-Mini with built-in model samples opens on tab 0 ("model") first, then switches to "clone"
+                    # ZONOS3-Mini: tab 0 = "model", tab 1 = "clone_demo", tab 2 = "clone"
                     dlg_z = VoiceSamplesDialog(
                         "zonos3_mini",
                         "ZONOS3-Mini",
@@ -394,15 +411,20 @@ class NewLocalTtsModelsTests(unittest.TestCase):
                     self.assertIsNone(dlg_z._lang_combo)
                     self.assertIsNotNone(dlg_z._mode_tabs)
                     assert dlg_z._mode_tabs is not None
-                    self.assertEqual(dlg_z._mode_tabs.count(), 2)
+                    self.assertEqual(dlg_z._mode_tabs.count(), 3)
                     self.assertEqual(dlg_z._mode_tabs.currentIndex(), 0)
                     self.assertEqual(dlg_z._mode_tabs.tabData(0), "model")
-                    self.assertEqual(dlg_z._mode_tabs.tabData(1), "clone")
+                    self.assertEqual(dlg_z._mode_tabs.tabData(1), "clone_demo")
+                    self.assertEqual(dlg_z._mode_tabs.tabData(2), "clone")
                     self.assertEqual(dlg_z._active_tab_mode, "model")
                     self.assertEqual(len(dlg_z._install_buttons), 0)
                     title_model = dlg_z.windowTitle()
                     hdr_model = dlg_z._hdr_label.text()
                     dlg_z._mode_tabs.setCurrentIndex(1)
+                    self.assertEqual(dlg_z._active_tab_mode, "clone_demo")
+                    self.assertEqual(len(dlg_z._clone_demo_samples), 1)
+                    self.assertEqual(len(dlg_z._install_buttons), 0)
+                    dlg_z._mode_tabs.setCurrentIndex(2)
                     self.assertEqual(dlg_z._active_tab_mode, "clone")
                     self.assertNotEqual(dlg_z.windowTitle(), title_model)
                     self.assertNotEqual(dlg_z._hdr_label.text(), hdr_model)

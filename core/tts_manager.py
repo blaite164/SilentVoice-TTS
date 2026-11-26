@@ -1593,6 +1593,98 @@ def get_samples_for_engine(
     return result
 
 
+CLONE_DEMO_SAMPLES_SUBDIR = "clone_demos"
+
+
+def get_clone_demo_samples(
+    engine_id: str,
+    lang: Optional[str] = None,
+    gender: Optional[str] = None,
+) -> List[Dict[str, str]]:
+    """
+    Повертає список демонстраційних прикладів клонування для конкретного рушія
+    з data/samples/clone_demos/<engine_id>/<lang>/*.{wav,ogg,flac,mp3}
+    (а також безпосередньо з data/samples/clone_demos/<engine_id>/).
+    """
+    target_lang = str(lang if lang is not None else (config.get("app_language", "uk") or "uk")).strip().lower()
+    if target_lang == "ua":
+        target_lang = "uk"
+    gender_filter = str(
+        gender if gender is not None else (config.get("voice_gender_filter", "both") or "both")
+    ).strip().lower()
+    known_prefixes = {
+        "ua": "uk",
+        "uk": "uk",
+        "ru": "ru",
+        "en": "en",
+        "pl": "pl",
+        "de": "de",
+        "fr": "fr",
+        "es": "es",
+    }
+
+    exts = ("*.wav", "*.ogg", "*.flac", "*.mp3")
+    candidates: List[Tuple[Path, str]] = []
+    for base_root in (SAMPLES_DIR, BASE_DIR / "samples"):
+        sub_dir = base_root / CLONE_DEMO_SAMPLES_SUBDIR / engine_id
+        if not sub_dir.exists():
+            continue
+        for child_dir in sorted((p for p in sub_dir.iterdir() if p.is_dir()), key=lambda p: p.name.lower()):
+            dir_lang = known_prefixes.get(child_dir.name.strip().lower(), "")
+            for ext in exts:
+                for p in sorted(child_dir.rglob(ext)):
+                    candidates.append((p, dir_lang))
+        for ext in exts:
+            for p in sorted(sub_dir.glob(ext)):
+                candidates.append((p, ""))
+
+    result: List[Dict[str, str]] = []
+    seen_paths = set()
+    for wav_path, folder_lang in candidates:
+        try:
+            norm = str(wav_path.resolve()).lower()
+        except OSError:
+            norm = str(wav_path).lower()
+        if norm in seen_paths or not wav_path.exists():
+            continue
+        seen_paths.add(norm)
+        raw_stem = wav_path.stem
+        if raw_stem.lower().startswith(f"{engine_id}_"):
+            raw_stem = raw_stem[len(engine_id) + 1 :]
+        sample_lang = folder_lang
+        if not sample_lang and "_" in raw_stem:
+            prefix = raw_stem.split("_", 1)[0].lower()
+            if prefix in known_prefixes:
+                sample_lang = known_prefixes[prefix]
+        if sample_lang and target_lang not in ("", "all", "multi") and sample_lang != target_lang:
+            continue
+
+        v_gender = _infer_sample_gender(wav_path, raw_stem)
+        if gender_filter in ("female", "male") and v_gender in ("female", "male") and v_gender != gender_filter:
+            continue
+
+        clean_stem = raw_stem
+        if not folder_lang and "_" in raw_stem and raw_stem.split("_", 1)[0].lower() in known_prefixes:
+            clean_stem = raw_stem.split("_", 1)[1]
+        display_name = (clean_stem or raw_stem).replace("_", " ").strip().title() or wav_path.name
+        result.append({
+            "name": display_name,
+            "file_name": wav_path.name,
+            "path": str(wav_path),
+            "gender": v_gender,
+            "lang": sample_lang,
+            "is_custom": "",
+        })
+
+    result.sort(
+        key=lambda item: (
+            0 if item.get("gender") == "female" else (1 if item.get("gender") == "male" else 2),
+            str(item.get("name", "")).lower(),
+        )
+    )
+    return result
+
+
 def split_into_sentences_punct(text: str, min_len: int = 25) -> List[str]:
     """
     Розумно розбиває текст на речення лише за кінцевими знаками пунктуації (., !, ?),
