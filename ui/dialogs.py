@@ -1399,12 +1399,12 @@ class OmniVoiceSettingsDialog(QDialog):
 
         btn_row = QHBoxLayout()
         btn_row.addStretch(1)
-        cancel_btn = QPushButton(tr("ui_180", "Скасувати"))
+        cancel_btn = QPushButton(tr("dlg_026", "Скасувати"))
         cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         cancel_btn.clicked.connect(self.reject)
         btn_row.addWidget(cancel_btn)
 
-        save_btn = QPushButton(tr("ui_179", "Зберегти"))
+        save_btn = QPushButton(tr("dlg_041", "Зберегти"))
         save_btn.setObjectName("primaryBtn")
         save_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         save_btn.clicked.connect(self._save_and_accept)
