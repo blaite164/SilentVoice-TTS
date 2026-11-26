@@ -21,7 +21,7 @@ env:
 jobs:
   build-runtime:
     name: Build OmniVoice Windows x64 (${{ matrix.backend }})
-    runs-on: windows-latest
+    runs-on: windows-2022
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -49,7 +49,7 @@ jobs:
         uses: Jimver/cuda-toolkit@v0.2.23
         with:
           cuda: '12.4.1'
-          sub-packages: '["nvcc", "cudart", "cublas", "cublas_dev"]'
+          sub-packages: '["nvcc", "cudart", "cublas", "cublas_dev", "visual_studio_integration"]'
           method: 'network'
 
       - name: Clone and patch omnivoice.cpp
