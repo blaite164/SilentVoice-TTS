@@ -2099,7 +2099,9 @@ class MainWindow(QMainWindow):
         row.addWidget(ref_lbl, 1)
 
         clear_ref_btn = QPushButton("✕")
-        clear_ref_btn.setFixedWidth(28)
+        clear_ref_btn.setProperty("class", "dangerBtn")
+        clear_ref_btn.setFixedSize(28, 28)
+        clear_ref_btn.setStyleSheet("padding: 0px; font-size: 13px; font-weight: 700;")
         clear_ref_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         clear_ref_btn.setToolTip(tr("llama_tts.clear_ref_tip", "Скинути вибраний файл і використовувати стандартний голос"))
         clear_ref_btn.clicked.connect(lambda checked=False, eid=eng_id: self._clear_clone_ref_file(eid))
@@ -10487,8 +10489,10 @@ class MainWindow(QMainWindow):
         install_btn.clicked.connect(tts_manager.install_ffmpeg)
         top_row.addWidget(install_btn)
 
-        cancel_btn = QPushButton("✖")
-        cancel_btn.setFixedWidth(30)
+        cancel_btn = QPushButton("✕")
+        cancel_btn.setProperty("class", "dangerBtn")
+        cancel_btn.setFixedSize(30, 28)
+        cancel_btn.setStyleSheet("padding: 0px; font-size: 13px; font-weight: 700;")
         cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         cancel_btn.setToolTip(tr("ui.ffmpeg.cancel_tip", "Скасувати завантаження"))
         cancel_btn.clicked.connect(lambda: tts_manager.cancel_download(FFMPEG_ENGINE_ID))
