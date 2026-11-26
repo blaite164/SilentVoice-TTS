@@ -1444,7 +1444,7 @@ class OmniVoiceSettingsDialog(QDialog):
             self.ref_file_lbl.setStyleSheet("border: none; background: transparent; color: #FBBF24;")
             missing = tr("ov.ref_missing", "⚠️ Оберіть або перетягніть аудіофайл")
             self.ref_file_lbl.setText(missing)
-            self.ref_file_lbl.setToolTip(missing)
+            self.ref_file_lbl.setToolTip("")
 
     def _pick_ref_file(self) -> None:
         start_dir = str(Path(self._ref_path).parent) if (self._ref_path and Path(self._ref_path).exists()) else ""

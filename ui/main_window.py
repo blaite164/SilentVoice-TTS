@@ -2385,7 +2385,7 @@ class MainWindow(QMainWindow):
                 ref_lbl.setStyleSheet("color: #FBBF24; font-size: 12px;")
                 missing_text = tr("ov.ref_missing", "⚠️ Оберіть або перетягніть аудіофайл")
                 ref_lbl.setText(missing_text)
-                ref_lbl.setToolTip(missing_text)
+                ref_lbl.setToolTip("")
             else:
                 ref_lbl.setStyleSheet("color: #94A3B8; font-size: 12px;")
                 default_text = tr("llama_tts.ref_default", "🎙️ Стандартний голос (без клонування)")
