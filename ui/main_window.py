@@ -908,7 +908,7 @@ def _disable_wheel_scroll(widget: QWidget) -> None:
         le.installEventFilter(flt)
 
 
-class _OpenVoiceDropCard(QFrame):
+class _VoiceDropCard(QFrame):
     """Card supporting drag-and-drop selection of a reference voice audio file."""
 
     _AUDIO_EXTS = (".wav", ".mp3", ".ogg", ".flac", ".m4a")
@@ -1976,7 +1976,6 @@ class MainWindow(QMainWindow):
             empty_lbl.setStyleSheet("color: #94A3B8; font-size: 13px; padding: 18px;")
             self.local_models_layout.addWidget(empty_lbl)
 
-        openvoice_built = False
         clone_gguf_ids = ("omnivoice", "qwen3_tts", "zonos3_mini")
         has_gpu = has_hardware_gpu()
         vram_gb = get_discrete_gpu_vram_gb() if has_gpu else None
@@ -1986,12 +1985,9 @@ class MainWindow(QMainWindow):
             is_clone_gguf = eng_id in clone_gguf_ids
             if is_clone_gguf and not installed and has_gpu and vram_gb is not None and vram_gb < 3.0:
                 continue
-            if is_clone_gguf and not openvoice_built:
-                self._build_openvoice_card()
-                openvoice_built = True
 
             card = (
-                _OpenVoiceDropCard(lambda p, eid=eng_id: self._set_clone_ref_file(eid, p))
+                _VoiceDropCard(lambda p, eid=eng_id: self._set_clone_ref_file(eid, p))
                 if is_clone_gguf
                 else QFrame()
             )
@@ -2088,9 +2084,6 @@ class MainWindow(QMainWindow):
                 self._on_model_download_progress(eng_id, pct, label)
             self.local_models_layout.addWidget(card)
 
-        if not openvoice_built:
-            self._build_openvoice_card()
-
     def _build_llama_tts_clone_opts(self, eng_id: str, eng_title: str, parent_layout: QVBoxLayout) -> Dict[str, Any]:
         """Додає панель статусу файлу клонування, кнопку додавання голосу та транскрипт (для Qwen3-TTS)."""
         opts_widget = QWidget()
@@ -2149,112 +2142,6 @@ class MainWindow(QMainWindow):
         if dlg.exec() == QDialog.DialogCode.Accepted:
             self._refresh_clone_card_ui("omnivoice")
 
-    def _build_openvoice_card(self) -> None:
-        eng_id = "openvoice"
-        installed = tts_manager.is_engine_installed(eng_id)
-
-        card = _OpenVoiceDropCard(lambda p: self._set_clone_ref_file("openvoice", p))
-        card.setProperty("class", "card")
-        c_lay = QVBoxLayout(card)
-        c_lay.setContentsMargins(14, 10, 14, 10)
-        c_lay.setSpacing(6)
-
-        top_r = QHBoxLayout()
-        top_r.setSpacing(8)
-
-        t_lbl = QLabel(tr("ov.title", "<b>OpenVoice v2 - Незграбне клонування голосу</b>"))
-        t_lbl.setStyleSheet("color: #FFFFFF; font-size: 14px;")
-        top_r.addWidget(t_lbl)
-
-        meta_lbl = QLabel(tr("tts.size.openvoice", "~193 МБ"))
-        meta_lbl.setStyleSheet("color: #94A3B8; font-size: 12px;")
-        top_r.addWidget(meta_lbl)
-        top_r.addStretch(1)
-
-        listen_btn = QPushButton(tr("ui_129", "🎧 Прослухати"))
-        listen_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        listen_btn.setToolTip(tr("ui_130", "Відкрити список доступних голосів для прослуховування"))
-        listen_btn.clicked.connect(
-            lambda checked=False: VoiceSamplesDialog(
-                "openvoice",
-                "OpenVoice v2",
-                self,
-                on_select_sample=lambda p: self._set_clone_ref_file("openvoice", p),
-                allow_install=tts_manager.is_engine_installed("openvoice"),
-                selected_sample_path=str(config.get("openvoice_ref_path", "") or ""),
-                on_delete_sample=lambda _p: self._on_clone_sample_deleted("openvoice"),
-            ).exec()
-        )
-        top_r.addWidget(listen_btn)
-
-        action_btn = QPushButton()
-        action_btn.setMinimumWidth(115)
-        action_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        action_btn.clicked.connect(lambda checked=False: self._on_local_engine_action_clicked(eng_id))
-        top_r.addWidget(action_btn)
-
-        cancel_btn = QPushButton(tr("tts.dl.cancel_btn", "✕ Скасувати"))
-        cancel_btn.setProperty("class", "dangerBtn")
-        cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        cancel_btn.setVisible(False)
-        cancel_btn.clicked.connect(lambda checked=False: self._on_cancel_model_download_clicked(eng_id))
-        top_r.addWidget(cancel_btn)
-        c_lay.addLayout(top_r)
-
-        opts_widget = QWidget()
-        opts_lay = QHBoxLayout(opts_widget)
-        opts_lay.setContentsMargins(0, 2, 0, 0)
-        opts_lay.setSpacing(10)
-
-        enabled_chk = QCheckBox(tr("ov.enable_chk", "Застосовувати до кожного TTS"))
-        enabled_chk.setChecked(bool(config.get("openvoice_enabled", False)))
-        enabled_chk.toggled.connect(self._on_openvoice_enabled_toggled)
-        opts_lay.addWidget(enabled_chk)
-
-        ref_lbl = ElidedLabel("")
-        opts_lay.addWidget(ref_lbl, 1)
-
-        choose_ref_btn = QPushButton(tr("ov.pick_file", "📂 Обрати голос"))
-        choose_ref_btn.setMinimumWidth(115)
-        choose_ref_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        choose_ref_btn.setToolTip(tr("ov.pick_file_tip", "Оберіть або перетягніть .wav/.mp3/.ogg файл зразка голосу для клонування"))
-        choose_ref_btn.clicked.connect(lambda checked=False: self._pick_clone_ref_file("openvoice"))
-        opts_lay.addWidget(choose_ref_btn)
-        c_lay.addWidget(opts_widget)
-
-        prog_bar = QProgressBar()
-        prog_bar.setRange(0, 100)
-        prog_bar.setValue(0)
-        prog_bar.setVisible(False)
-        c_lay.addWidget(prog_bar)
-
-        prog_lbl = QLabel("")
-        prog_lbl.setProperty("class", "muted")
-        prog_lbl.setWordWrap(True)
-        prog_lbl.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-        prog_lbl.setVisible(False)
-        c_lay.addWidget(prog_lbl)
-
-        self._engine_cards_ui[eng_id] = {
-            "progress": prog_bar,
-            "prog_label": prog_lbl,
-            "action_btn": action_btn,
-            "cancel_btn": cancel_btn,
-            "choose_ref_btn": choose_ref_btn,
-            "listen_btn": listen_btn,
-            "opts_widget": opts_widget,
-            "enabled_chk": enabled_chk,
-            "ref_lbl": ref_lbl,
-        }
-        self._update_engine_card_state(eng_id, installed)
-        if tts_manager.is_downloading(eng_id):
-            pct, label = self._download_ui_state.get(
-                eng_id,
-                tts_manager.get_download_progress(eng_id) or (1, tr("ui_411", "Підготовка до встановлення...")),
-            )
-            self._on_model_download_progress(eng_id, pct, label)
-        self.local_models_layout.addWidget(card)
-
     def _pick_clone_ref_file(self, engine_id: str) -> None:
         ref_key = f"{engine_id}_ref_path"
         cur = str(config.get(ref_key, "") or "").strip()
@@ -2285,23 +2172,9 @@ class MainWindow(QMainWindow):
                 config.set("omnivoice_ref_text_path", resolved if auto_txt else "")
             if str(config.get("active_engine", "") or "").strip() == "omnivoice":
                 tts_manager.schedule_smart_warmup(0.2, "omnivoice_ref_changed")
-        elif engine_id == "openvoice":
-            config.set("openvoice_enabled", True)
-            try:
-                from core.voice_cloner import voice_cloner
-                voice_cloner.clear_ref_cache()
-            except Exception:
-                pass
-            tts_manager.schedule_smart_warmup(0.2, "openvoice_ref_changed")
         self._refresh_clone_card_ui(engine_id)
 
     def _on_clone_sample_deleted(self, engine_id: str) -> None:
-        if engine_id == "openvoice":
-            try:
-                from core.voice_cloner import voice_cloner
-                voice_cloner.clear_ref_cache()
-            except Exception:
-                pass
         self._refresh_clone_card_ui(engine_id)
 
     def _clear_clone_ref_file(self, engine_id: str) -> None:
@@ -2309,19 +2182,7 @@ class MainWindow(QMainWindow):
         if engine_id == "omnivoice":
             config.set("omnivoice_ref_text", "")
             config.set("omnivoice_ref_text_path", "")
-        elif engine_id == "openvoice":
-            try:
-                from core.voice_cloner import voice_cloner
-                voice_cloner.clear_ref_cache()
-            except Exception:
-                pass
         self._refresh_clone_card_ui(engine_id)
-
-    def _on_openvoice_enabled_toggled(self, checked: bool) -> None:
-        config.set("openvoice_enabled", bool(checked))
-        self._refresh_clone_card_ui("openvoice")
-        if checked:
-            tts_manager.schedule_smart_warmup(0.2, "openvoice_enabled")
 
     def _refresh_clone_card_ui(self, engine_id: str) -> None:
         ui = self._engine_cards_ui.get(engine_id)
@@ -2330,7 +2191,7 @@ class MainWindow(QMainWindow):
         installed = tts_manager.is_engine_installed(engine_id)
         has_gpu = has_hardware_gpu()
         listen_btn = ui.get("listen_btn")
-        if isinstance(listen_btn, QPushButton) and engine_id != "openvoice":
+        if isinstance(listen_btn, QPushButton):
             listen_btn.setVisible(has_gpu)
         choose_btn = ui.get("choose_ref_btn")
         if isinstance(choose_btn, QPushButton):
@@ -2338,11 +2199,6 @@ class MainWindow(QMainWindow):
         opts_w = ui.get("opts_widget")
         if isinstance(opts_w, QWidget):
             opts_w.setVisible(installed)
-        chk = ui.get("enabled_chk")
-        if isinstance(chk, QCheckBox) and engine_id == "openvoice":
-            chk.blockSignals(True)
-            chk.setChecked(bool(config.get("openvoice_enabled", False)))
-            chk.blockSignals(False)
         ref_path = str(config.get(f"{engine_id}_ref_path", "") or "").strip()
         has_ref = bool(ref_path and os.path.isfile(ref_path))
         clear_btn = ui.get("clear_ref_btn")
@@ -2381,11 +2237,6 @@ class MainWindow(QMainWindow):
                 ref_lbl.setStyleSheet("color: #34D399; font-size: 12px;")
                 ref_lbl.setText(tr("ov.ref_selected", "🎤 {name}", name=name))
                 ref_lbl.setToolTip(ref_path)
-            elif engine_id == "openvoice":
-                ref_lbl.setStyleSheet("color: #FBBF24; font-size: 12px;")
-                missing_text = tr("ov.ref_missing", "⚠️ Оберіть або перетягніть аудіофайл")
-                ref_lbl.setText(missing_text)
-                ref_lbl.setToolTip("")
             else:
                 ref_lbl.setStyleSheet("color: #94A3B8; font-size: 12px;")
                 default_text = tr("llama_tts.ref_default", "🎙️ Стандартний голос (без клонування)")
@@ -9862,7 +9713,7 @@ class MainWindow(QMainWindow):
             btn.setToolTip(tr("ui_413", "Завантажити та встановити цей TTS на комп'ютер"))
         btn.style().unpolish(btn)
         btn.style().polish(btn)
-        if engine_id in ("openvoice", "omnivoice", "qwen3_tts", "zonos3_mini"):
+        if engine_id in ("omnivoice", "qwen3_tts", "zonos3_mini"):
             self._refresh_clone_card_ui(engine_id)
 
     def _populate_audio_devices(self, refresh_backend: bool = False) -> None:
@@ -10378,11 +10229,6 @@ class MainWindow(QMainWindow):
             shutdown_llama_tts()
         except Exception:
             pass
-        try:
-            from core.voice_cloner import voice_cloner
-            voice_cloner.shutdown()
-        except Exception:
-            pass
         stop_managed_llama_server()
         unload_saved_local_models(list(config.get("ai_items", [])))
         self.keyboard_hook.stop()
@@ -10827,7 +10673,7 @@ class MainWindow(QMainWindow):
             self._rebuild_online_cards()
         else:
             self._update_engine_card_state(engine_id, installed)
-        if installed and engine_id not in ("openvoice", FFMPEG_ENGINE_ID):
+        if installed and engine_id != FFMPEG_ENGINE_ID:
             avail_ids = {str(a.get("id", "")) for a in tts_manager.get_available_active_engines()}
             if not engine_id.startswith("online:") or engine_id in avail_ids:
                 config.set("active_engine", engine_id)

@@ -370,7 +370,7 @@ class NewLocalTtsModelsTests(unittest.TestCase):
                     patch("core.tts_manager.config.get", side_effect=lambda k, d=None: "en" if k == "app_language" else ("both" if k == "voice_gender_filter" else d)),
                     patch("ui.dialogs.config.get", side_effect=lambda k, d=None: "en" if k == "app_language" else ("both" if k == "voice_gender_filter" else d)),
                 ):
-                    for eid, title in (("openvoice", "OpenVoice v2"), ("qwen3_tts", "Qwen3-TTS 1.7B")):
+                    for eid, title in (("omnivoice", "OmniVoice"), ("qwen3_tts", "Qwen3-TTS 1.7B")):
                         dlg_clone = VoiceSamplesDialog(
                             eid,
                             title,
@@ -430,7 +430,7 @@ class NewLocalTtsModelsTests(unittest.TestCase):
                         ui = win._engine_cards_ui[eid]
                         self.assertFalse(ui["listen_btn"].isHidden())
                         self.assertNotIn("device_combo", ui)
-                    self.assertNotIn("device_combo", win._engine_cards_ui["openvoice"])
+                    self.assertNotIn("openvoice", win._engine_cards_ui)
                 finally:
                     win.close()
                     win.deleteLater()
@@ -464,7 +464,7 @@ class NewLocalTtsModelsTests(unittest.TestCase):
                     config._data["app_language"] = "en"
                     win = MainWindow()
                     try:
-                        for eid in ("zonos3_mini", "qwen3_tts", "kokoro_82m", "soprano_1_1", "openvoice"):
+                        for eid in ("zonos3_mini", "qwen3_tts", "kokoro_82m", "soprano_1_1", "omnivoice"):
                             ui = win._engine_cards_ui[eid]
                             self.assertFalse(ui["listen_btn"].isHidden())
                             self.assertNotIn("recommended_badge", ui)

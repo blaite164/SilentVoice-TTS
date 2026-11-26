@@ -613,10 +613,10 @@ class ElidedLabel(QLabel):
 class VoiceSamplesDialog(QDialog):
     """
     Вікно зі списком доступних голосів для прослуховування конкретного TTS-движка.
-    Для OpenVoice / Chatterbox / Qwen3-TTS додатково підтримує фільтр за мовами, статтю, гайд та кнопку вибору голосу.
+    Для OmniVoice / Qwen3-TTS / ZONOS3-Mini додатково підтримує фільтр за мовами, статтю, гайд та кнопку вибору голосу.
     """
 
-    _CLONE_ENGINES = ("openvoice", "omnivoice", "qwen3_tts", "zonos3_mini")
+    _CLONE_ENGINES = ("omnivoice", "qwen3_tts", "zonos3_mini")
     _ENGINES_WITH_BUILTIN_AND_CLONE = ("zonos3_mini",)
 
     def __init__(
@@ -681,10 +681,10 @@ class VoiceSamplesDialog(QDialog):
         if self._is_clone_engine:
             self._guide_btn = QPushButton(tr("ov.guide_btn", "📖 Гайд"))
             self._guide_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            self._guide_btn.setToolTip(tr("ov.guide_btn_tip", "Коротко про OpenVoice, де взяти голоси та готові тексти"))
+            self._guide_btn.setToolTip(tr("clone.guide_btn_tip", "Коротко про клонування голосу, де взяти зразки та готові тексти"))
             self._guide_btn.setStyleSheet("padding: 5px 11px; font-size: 12.5px;")
             self._guide_btn.clicked.connect(
-                lambda checked=False: OpenVoiceGuideDialog(
+                lambda checked=False: VoiceCloneGuideDialog(
                     self, engine_id=self._engine_id, engine_title=self._engine_title
                 ).exec()
             )
@@ -967,53 +967,21 @@ class VoiceSamplesDialog(QDialog):
             btn.style().polish(btn)
 
 
-OPENVOICE_SAMPLE_TEXTS: Dict[str, str] = {
-    "uk": (
-        "Сьогодні чудова, сонячна погода, і легкий вітер тихо шелестить у гіллі. "
-        "Цей живий запис чисто передає мій природний голос, щирі інтонації та спокійний ритм мовлення."
-    ),
-    "en": (
-        "The morning air feels bright and crisp today, with a gentle breeze moving through the trees. "
-        "This short recording captures my natural voice, clear rhythm, and calm tone."
-    ),
-    "ru": (
-        "Сегодня ясная, тёплая погода, и лёгкий ветер тихо шелестит в листве. "
-        "Эта живая запись чисто передаёт мой естественный голос, чёткую дикцию и спокойный темп речи."
-    ),
-    "pl": (
-        "Dzisiaj jest piękna, słoneczna pogoda, a przyjemny wiatr cicho szeleści wśród liści. "
-        "To krótkie nagranie czysto oddaje mój naturalny głos, wyraźny rytm i spokojną barwę mowy."
-    ),
-    "de": (
-        "Heute ist das Wetter wunderbar klar, und eine sanfte Brise raschelt leise durch die Bäume. "
-        "Diese kurze Aufnahme zeigt meine natürliche Stimme, deutliche Aussprache und ruhigen Klang."
-    ),
-    "fr": (
-        "Le matin est clair et lumineux aujourd'hui, avec une brise légère qui souffle doucement dans les arbres. "
-        "Ce court enregistrement capte fidèlement ma voix naturelle, mon rythme et mon ton calme."
-    ),
-    "es": (
-        "Hoy la mañana está clara y fresca, mientras una brisa suave mueve las hojas con calma. "
-        "Esta breve grabación refleja con nitidez mi voz natural, un ritmo fluido y un tono sereno."
-    ),
-}
+from core.omnivoice_tts import CLONE_GUIDE_SAMPLE_TEXTS
 
 
-class OpenVoiceGuideDialog(QDialog):
+class VoiceCloneGuideDialog(QDialog):
     """Короткий практичний гайд із клонування голосу та готові тексти під усі мови."""
 
     def __init__(
         self,
         parent: Optional[QWidget] = None,
-        engine_id: str = "openvoice",
-        engine_title: str = "OpenVoice v2",
+        engine_id: str = "omnivoice",
+        engine_title: str = "OmniVoice",
     ) -> None:
         super().__init__(parent)
-        is_ov = engine_id == "openvoice"
         self.setWindowTitle(
-            tr("ov.guide.win_title", "Гайд по клонуванню через OpenVoice")
-            if is_ov
-            else tr("clone.guide.win_title", "Гайд по клонуванню голосу — {engine_title}", engine_title=engine_title)
+            tr("clone.guide.win_title", "Гайд по клонуванню голосу — {engine_title}", engine_title=engine_title)
         )
         self.setMinimumSize(540, 470)
         self.resize(580, 520)
@@ -1024,24 +992,13 @@ class OpenVoiceGuideDialog(QDialog):
         lay.setSpacing(12)
 
         hdr = QLabel(
-            tr("ov.guide.header", "🎭 Як отримати найкращий голос через OpenVoice")
-            if is_ov
-            else tr("clone.guide.header", "🎭 Як отримати найкращий голос для {engine_title}", engine_title=engine_title)
+            tr("clone.guide.header", "🎭 Як отримати найкращий голос для {engine_title}", engine_title=engine_title)
         )
         hdr.setObjectName("dialogTitle")
         lay.addWidget(hdr)
 
         body = QLabel(
             tr(
-                "ov.guide.body",
-                "<b>Що це робить:</b> OpenVoice підміняє тембр будь-якого TTS під вибраний файл. Міняє голос слабенько, зате майже не навантажує ПК й дозволяє додати трохи індивідуальності.<br><br>"
-                "<b>Де взяти файл голосу:</b><br>"
-                "• Вирізати чистий фрагмент голосу з будь-якого відео чи запису з інтернету.<br>"
-                "• Або на <b>ElevenLabs</b>, <b>Fish Audio</b> чи схожому сервісі (дають безкоштовні кредити) обрати голос, <b>вставити текст нижче</b> й скачати файл.<br><br>"
-                "<b>Вимоги до файлу:</b> 10–25 с (ідеально ~12–18 с), один голос без музики, шуму й відлуння, рівна гучність.",
-            )
-            if is_ov
-            else tr(
                 "clone.guide.body",
                 "<b>Що це робить:</b> {engine_title} озвучує текст одразу тембром і манерою з вибраного аудіофайлу.<br><br>"
                 "<b>Де взяти файл голосу:</b><br>"
@@ -1126,7 +1083,7 @@ class OpenVoiceGuideDialog(QDialog):
 
     def _on_lang_changed(self) -> None:
         code = str(self.lang_combo.currentData() or "uk")
-        self.sample_text_edit.setPlainText(OPENVOICE_SAMPLE_TEXTS.get(code, OPENVOICE_SAMPLE_TEXTS["en"]))
+        self.sample_text_edit.setPlainText(CLONE_GUIDE_SAMPLE_TEXTS.get(code, CLONE_GUIDE_SAMPLE_TEXTS["en"]))
         self.copy_status_lbl.setText("")
 
     def _copy_text(self) -> None:
@@ -1498,7 +1455,7 @@ class OmniVoiceSettingsDialog(QDialog):
         cur_lang = detected_lang or str(config.get("app_language", "uk") or "uk").strip().lower()
         if cur_lang == "ua":
             cur_lang = "uk"
-        self.ref_text_edit.setPlainText(OPENVOICE_SAMPLE_TEXTS.get(cur_lang, OPENVOICE_SAMPLE_TEXTS["en"]))
+        self.ref_text_edit.setPlainText(CLONE_GUIDE_SAMPLE_TEXTS.get(cur_lang, CLONE_GUIDE_SAMPLE_TEXTS["en"]))
         self.asr_status_lbl.setText("")
 
     def _run_whisper_asr(self) -> None:

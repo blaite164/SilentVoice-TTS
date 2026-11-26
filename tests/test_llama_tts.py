@@ -66,7 +66,7 @@ class LlamaTtsTests(unittest.TestCase):
                 self.assertEqual(len(arr), llama_tts.QWEN3_NATIVE_SR * 20)
                 self.assertLessEqual(float(np.max(np.abs(arr))), 0.96)
 
-    def test_synthesize_qwen3_tts_sends_multipart_pcm_n_predict_and_skips_openvoice(self) -> None:
+    def test_synthesize_qwen3_tts_sends_multipart_pcm_n_predict(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             ref = root / "qwen_ref.wav"
@@ -82,8 +82,6 @@ class LlamaTtsTests(unittest.TestCase):
                 "qwen3_tts_ref_path": str(ref),
                 "qwen3_tts_ref_text": "Hello cloned voice",
                 "qwen3_tts_device": "gpu",
-                "openvoice_enabled": True,
-                "openvoice_ref_path": str(ref),
             }
             with (
                 patch.object(llama_tts, "_REF_WAV_CACHE_DIR", root / "ref_cache"),
@@ -113,13 +111,6 @@ class LlamaTtsTests(unittest.TestCase):
             self.assertEqual(ref_tuple[0], "ref.wav")
             self.assertGreater(len(ref_tuple[1]), 44)
             self.assertEqual(ref_tuple[2], "audio/wav")
-
-            dummy = np.ones(1000, dtype=np.float32) * 0.1
-            with patch("core.voice_cloner.voice_cloner.upgrade_audio") as mock_upgrade:
-                out_qw, sr_qw = tts_manager._maybe_upgrade_openvoice(dummy, 24000, engine_id="qwen3_tts")
-                mock_upgrade.assert_not_called()
-                self.assertEqual(sr_qw, 24000)
-                self.assertTrue(np.array_equal(out_qw, dummy))
 
     def test_single_qwen3_entry_uses_streaming_plan_without_fast_duplicate(self) -> None:
         with patch.object(tts_manager, "_current_lang", return_value="en"):
@@ -355,8 +346,6 @@ class LlamaTtsTests(unittest.TestCase):
                 "app_language": "uk",
                 "qwen3_tts_ref_path": str(ref1),
                 "qwen3_tts_ref_text": "hello",
-                "openvoice_enabled": True,
-                "openvoice_ref_path": str(ref2),
             }
             with patch("core.tts_manager.config.get", side_effect=lambda k, d=None: state.get(k, d)):
                 k1 = tts_manager._build_audio_cache_key("hi", "qwen3_tts", "qwen3_en")
@@ -423,7 +412,6 @@ class LlamaTtsTests(unittest.TestCase):
         with (
             patch.object(tts_manager, "_resolve_local_warmup_targets", return_value=[]),
             patch.object(tts_manager, "_resolve_online_warmup_targets", return_value=[]),
-            patch("core.voice_cloner.voice_cloner.models_present", return_value=False),
             patch("core.llama_tts.is_qwen3_server_running", return_value=True),
             patch("core.llama_tts.shutdown_llama_tts") as mock_shut,
         ):

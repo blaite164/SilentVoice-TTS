@@ -170,7 +170,7 @@ def detect_bundled_clone_sample_lang(ref_path: Optional[str | Path]) -> Optional
     parts_low = [part.lower() for part in p.parts]
     in_clone_catalog = False
     for idx, part in enumerate(parts_low[:-1]):
-        if part in ("clone_voices", "openvoice", "omnivoice", "qwen3_tts", "zonos3_mini") and (
+        if part in ("clone_voices", "omnivoice", "qwen3_tts", "zonos3_mini") and (
             idx > 0 and parts_low[idx - 1] == "samples"
         ):
             in_clone_catalog = True

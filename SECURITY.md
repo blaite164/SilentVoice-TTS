@@ -39,7 +39,7 @@ SilentVoice contains **no telemetry, analytics, or advertising SDKs**. All exter
 
 | Feature | Destination / Port | Default State | How to Disable |
 | :--- | :--- | :--- | :--- |
-| **Local TTS** (Piper, Silero, HolosTTS, TeraTTS, Qwen3-TTS, OpenVoice v2) | 100% offline after one-time model download (Hugging Face / Silero / GitHub) | Off until downloaded | Do not download or delete model in **Voice & TTS** |
+| **Local TTS** (Piper, Silero, HolosTTS, TeraTTS, OmniVoice, Qwen3-TTS, ZONOS3-Mini) | 100% offline after one-time model download (Hugging Face / Silero / GitHub) | Off until downloaded | Do not download or delete model in **Voice & TTS** |
 | **Cloud TTS** (Edge TTS, OpenAI, ElevenLabs, Google Cloud, Fish Audio, Telegram Silero) | Respective provider APIs (sends text to synthesize speech) | Opt-in (Edge TTS enabled by default if selected) | Select a local offline TTS engine |
 | **AI Orthography** | Configured cloud LLM API or local `127.0.0.1` Ollama / LM Studio / llama.cpp | **Off** | Keep **AI Orthography** unchecked |
 | **Twitch Chat Integration** | `irc.chat.twitch.tv` (TLS) | **Off** | Keep Twitch integration disabled |

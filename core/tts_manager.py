@@ -647,12 +647,6 @@ ENGINE_SPECS: Dict[str, Dict[str, Any]] = {
             {"id": "soprano_en_default", "name": "Soprano (EN, 32kHz)", "gender": "female", "lang": "en"},
         ],
     },
-    "openvoice": {
-        "id": "openvoice",
-        "title": "OpenVoice v2",
-        "size_label": "~193 МБ",
-        "voices": [],
-    },
     "omnivoice": {
         "id": "omnivoice",
         "title": "OmniVoice",
@@ -1295,7 +1289,7 @@ def _infer_sample_gender(wav_path: Path, raw_stem: str) -> str:
             return "female"
         if low_p in _SAMPLE_MALE_DIR_NAMES:
             return "male"
-        if low_p in ("samples", "openvoice", "omnivoice", "qwen3_tts", "zonos3_mini"):
+        if low_p in ("samples", "omnivoice", "qwen3_tts", "zonos3_mini"):
             break
     for text_cand in (wav_path.stem, raw_stem):
         if _SAMPLE_FEMALE_TOKEN_RE.search(text_cand):
@@ -1312,7 +1306,7 @@ def _normalize_sample_lang(lang: Optional[str]) -> str:
     return code if code in ("uk", "en", "ru", "pl", "de", "fr", "es") else "uk"
 
 
-CLONE_ENGINE_IDS = ("openvoice", "omnivoice", "qwen3_tts", "zonos3_mini")
+CLONE_ENGINE_IDS = ("omnivoice", "qwen3_tts", "zonos3_mini")
 SHARED_CLONE_SAMPLES_SUBDIR = "clone_voices"
 
 
@@ -1324,7 +1318,7 @@ def _sample_scan_keys(engine_id: str) -> Tuple[str, ...]:
     if engine_id in CLONE_ENGINE_IDS:
         # Для ZONOS3-Mini папка data/samples/zonos3_mini/ зарезервована під власні голоси моделі,
         # щоб не змішувати їх зі спільним каталогом голосів для клонування (clone_voices).
-        return (SHARED_CLONE_SAMPLES_SUBDIR, "openvoice", "qwen3_tts")
+        return (SHARED_CLONE_SAMPLES_SUBDIR, "qwen3_tts")
     return (engine_id,)
 
 
@@ -2028,7 +2022,7 @@ class TTSEngineManager(QObject):
 
     def schedule_smart_warmup(self, delay_sec: float = 2.5, reason: str = "startup", _retry: int = 0) -> None:
         """
-        Планує розумний фоновий прогрів TTS-рушіїв (локальних та онлайн), DSP-бібліотек і OpenVoice
+        Планує розумний фоновий прогрів TTS-рушіїв (локальних та онлайн) і DSP-бібліотек
         з дебаунсом: пропускає вже прогріті компоненти, високе навантаження на ПК, нестачу ОЗП
         або активний синтез/завантаження.
         """
@@ -2048,11 +2042,6 @@ class TTSEngineManager(QObject):
             t.start()
 
     def _run_smart_warmup(self, reason: str, retry: int) -> None:
-        voice_cloner = None
-        if bool(config.get("openvoice_enabled", False)):
-            from core.voice_cloner import voice_cloner as _vc
-            voice_cloner = _vc
-
         targets = self._resolve_local_warmup_targets()
         online_targets = self._resolve_online_warmup_targets()
         _llama_eids = ("qwen3_tts", "zonos3_mini", "kokoro_82m", "soprano_1_1")
@@ -2087,8 +2076,6 @@ class TTSEngineManager(QObject):
                 self._warmed_models = {item for item in self._warmed_models if item[0] != "omnivoice"}
             except Exception:
                 pass
-        ov_enabled = voice_cloner is not None and voice_cloner.models_present()
-
         pending_targets = [
             item for item in targets if (item[0], item[2]) not in self._warmed_models
         ]
@@ -2100,16 +2087,8 @@ class TTSEngineManager(QObject):
             item for item in online_targets
             if ("online", f"prov:{item[2]}") not in self._warmed_models or self._dsp_needs_prewarm(item[0], item[1])
         ]
-        ov_pending = False
-        if ov_enabled and voice_cloner is not None:
-            ov_ref = str(config.get("openvoice_ref_path", "") or "")
-            ov_sig = (
-                "gpu" if voice_cloner._use_gpu() else "cpu",
-                voice_cloner.get_ref_cache_signature(ov_ref),
-            )
-            ov_pending = getattr(voice_cloner, "_warmed_key", None) != ov_sig
 
-        if not pending_targets and not pending_dsp_local and not pending_online and not ov_pending:
+        if not pending_targets and not pending_dsp_local and not pending_online:
             return
 
         if (
@@ -2214,17 +2193,6 @@ class TTSEngineManager(QObject):
                     avail_mb, _, _ = self._get_system_resources_for_warmup()
                 except Exception as exc:
                     print(f"[TTSWarmup] Попередній прогрів {engine_id} пропущено: {exc}", file=sys.stderr, flush=True)
-
-            if ov_pending and voice_cloner is not None and avail_mb >= 768 and self._running and not self._is_synthesizing and self._active_downloads == 0:
-                emitted_status = True
-                self.status_changed.emit(tr("tts.status.warming_up", "⏳ Підготовка голосу ({title})...", title="OpenVoice v2"))
-                t0 = time.perf_counter()
-                try:
-                    voice_cloner.warmup()
-                    dt_ms = int((time.perf_counter() - t0) * 1000)
-                    print(f"[TTSWarmup] OpenVoice v2 прогрітий за {dt_ms} мс [{reason}]", flush=True)
-                except Exception as exc:
-                    print(f"[TTSWarmup] Попередній прогрів OpenVoice пропущено: {exc}", file=sys.stderr, flush=True)
         finally:
             if emitted_status and self._running and not self._is_synthesizing and self._active_downloads == 0:
                 self.status_changed.emit(tr("ui_113", "Система готова"))
@@ -2461,9 +2429,6 @@ class TTSEngineManager(QObject):
         if engine_id == "soprano_1_1":
             from core.llama_tts import is_soprano_installed
             return is_soprano_installed()
-        if engine_id == "openvoice":
-            from core.voice_cloner import voice_cloner
-            return voice_cloner.is_installed()
         if engine_id == "omnivoice":
             from core.omnivoice_tts import is_omnivoice_installed
             return is_omnivoice_installed()
@@ -2826,11 +2791,6 @@ class TTSEngineManager(QObject):
             kokoro_onnx_engine.unload()
         except Exception:
             pass
-        try:
-            from core.voice_cloner import voice_cloner
-            voice_cloner.shutdown()
-        except Exception:
-            pass
         with self._model_lock:
             self._piper_cache.clear()
             self._release_silero_cache_locked()
@@ -2881,20 +2841,6 @@ class TTSEngineManager(QObject):
                     ref_stat = ref_path_val
             ref_txt = str(config.get("qwen3_tts_ref_text", "") or "").strip() if engine_id == "qwen3_tts" else ""
             ov_sig = f"{engine_id}:{ref_stat}:{ref_txt}"
-            if engine_id != "qwen3_tts" and not ref_path_val and bool(config.get("openvoice_enabled", False)):
-                from core.voice_cloner import voice_cloner
-                if voice_cloner.models_present():
-                    ref_sig = voice_cloner.get_ref_cache_signature(str(config.get("openvoice_ref_path", "") or ""))
-                    if ref_sig:
-                        ov_dev = "gpu" if voice_cloner._use_gpu() else "cpu"
-                        ov_sig += f"|ov:{ov_dev}:{ref_sig}"
-        elif bool(config.get("openvoice_enabled", False)):
-            from core.voice_cloner import voice_cloner
-            if voice_cloner.models_present():
-                ref_sig = voice_cloner.get_ref_cache_signature(str(config.get("openvoice_ref_path", "") or ""))
-                if ref_sig:
-                    ov_dev = "gpu" if voice_cloner._use_gpu() else "cpu"
-                    ov_sig = f"ov:{ov_dev}:{ref_sig}"
         if engine_id == "kokoro_82m":
             from core.llama_tts import resolve_kokoro_device
 
@@ -2904,24 +2850,6 @@ class TTSEngineManager(QObject):
 
             ov_sig = f"{ov_sig}|dev:{resolve_soprano_device()}"
         return (synth_text, engine_id, voice_id, dsp_sig, lang, online_sig, ov_sig)
-
-    @staticmethod
-    def _maybe_upgrade_openvoice(samples: np.ndarray, sr: int, engine_id: str = "") -> Tuple[np.ndarray, int]:
-        if engine_id in ("qwen3_tts", "omnivoice"):
-            return samples, sr
-        if engine_id == "zonos3_mini":
-            own_ref = str(config.get("zonos3_mini_ref_path", "") or "").strip()
-            if own_ref and Path(own_ref).is_file():
-                return samples, sr
-        if not bool(config.get("openvoice_enabled", False)):
-            return samples, sr
-        from core.voice_cloner import voice_cloner
-        if not voice_cloner.models_present():
-            return samples, sr
-        ref_path = str(config.get("openvoice_ref_path", "") or "").strip()
-        if not ref_path or not Path(ref_path).is_file():
-            return samples, sr
-        return voice_cloner.upgrade_audio(samples, sr, ref_path)
 
     def _cache_lookup(self, key: Tuple[Any, ...]) -> Optional[Tuple[np.ndarray, int, str]]:
         return self._audio_cache.lookup(key)
@@ -2976,7 +2904,6 @@ class TTSEngineManager(QObject):
         try:
             self.status_changed.emit(tr("tts.status.synth", "Синтез ({title})...", title=primary_title))
             samples, sr = self._synthesize_dispatch(primary_id, primary_voice, synth_text, 1.0)
-            samples, sr = self._maybe_upgrade_openvoice(samples, sr, primary_id)
             samples, sr = apply_engine_dsp(samples, sr, primary_id, primary_voice)
             self._cache_store(cache_key, samples, sr, primary_title)
             return samples, sr, primary_title
@@ -2999,7 +2926,6 @@ class TTSEngineManager(QObject):
                     return fb_cached
                 self.status_changed.emit(tr("tts.status.fallback_synth", "⚡ Запасний TTS ({title})...", title=fb_title))
                 samples, sr = self._synthesize_dispatch(fb_id, resolved_fb_voice, synth_text, 1.0)
-                samples, sr = self._maybe_upgrade_openvoice(samples, sr, fb_id)
                 samples, sr = apply_engine_dsp(samples, sr, fb_id, resolved_fb_voice)
                 self._cache_store(fb_cache_key, samples, sr, fb_title)
                 return samples, sr, fb_title
@@ -3015,7 +2941,6 @@ class TTSEngineManager(QObject):
             )
             try:
                 samples, sr = self._synthesize_dispatch(primary_id, primary_voice, synth_text, 1.0)
-                samples, sr = self._maybe_upgrade_openvoice(samples, sr, primary_id)
                 samples, sr = apply_engine_dsp(samples, sr, primary_id, primary_voice)
                 self._cache_store(cache_key, samples, sr, primary_title)
                 return samples, sr, primary_title
@@ -3252,10 +3177,6 @@ class TTSEngineManager(QObject):
             own_ref = str(config.get("omnivoice_ref_path", "") or "").strip()
             if normalize_omnivoice_mode() != "clone" or not (own_ref and Path(own_ref).is_file()):
                 # Voice Design uses buffered WAV for full peak normalisation (+6..12 dB cleaner level)
-                return None
-        if primary_id == "zonos3_mini" and bool(config.get("openvoice_enabled", False)):
-            own_ref = str(config.get("zonos3_mini_ref_path", "") or "").strip()
-            if not (own_ref and Path(own_ref).is_file()):
                 return None
         voices = eng_entry.get("voices", [])
         valid_voice_ids = [v["id"] for v in voices]
@@ -5431,10 +5352,6 @@ class TTSEngineManager(QObject):
                             obj.close()
                     self._teratts_accent = None
                     self._teratts_model = None
-                elif engine_id == "openvoice":
-                    from core.voice_cloner import voice_cloner
-                    voice_cloner.shutdown()
-                    config.set("openvoice_enabled", False)
                 elif engine_id == "omnivoice":
                     from core.omnivoice_tts import shutdown_omnivoice_tts
                     shutdown_omnivoice_tts()
@@ -5644,59 +5561,6 @@ class TTSEngineManager(QObject):
                     self._teratts_model = tts_loaded
                 _check_cancel()
                 (eng_dir / "ready.marker").write_text("ok", encoding="utf-8")
-            elif engine_id == "openvoice":
-                from core.voice_cloner import (
-                    CONVERTER_FILE,
-                    CONVERTER_URL,
-                    REF_ENCODER_FILE,
-                    REF_ENCODER_URL,
-                    install_gpu_runtime,
-                    voice_cloner,
-                )
-
-                enc_dest = eng_dir / REF_ENCODER_FILE
-                if not enc_dest.is_file() or enc_dest.stat().st_size < 1_000_000:
-                    _check_cancel()
-                    self._download_url_with_progress(
-                        REF_ENCODER_URL,
-                        enc_dest,
-                        engine_id,
-                        2,
-                        8,
-                        tr("tts.dl.file_progress", "Завантаження {fname} ({idx}/{total})...", fname=REF_ENCODER_FILE, idx=1, total=4),
-                        cancel_event=cancel_evt,
-                    )
-
-                conv_dest = eng_dir / CONVERTER_FILE
-                if not conv_dest.is_file() or conv_dest.stat().st_size < 50_000_000:
-                    _check_cancel()
-                    self._download_url_with_progress(
-                        CONVERTER_URL,
-                        conv_dest,
-                        engine_id,
-                        10,
-                        50,
-                        tr("tts.dl.file_progress", "Завантаження {fname} ({idx}/{total})...", fname=CONVERTER_FILE, idx=2, total=4),
-                        cancel_event=cancel_evt,
-                    )
-
-                px_dict = self._resolve_active_proxies_dict()
-                px_env: Optional[Dict[str, str]] = None
-                if isinstance(px_dict, dict):
-                    px_url = str(px_dict.get("https") or px_dict.get("http") or "").strip()
-                    if px_url:
-                        px_env = {"HTTP_PROXY": px_url, "HTTPS_PROXY": px_url, "ALL_PROXY": px_url}
-
-                from core.win_api import has_hardware_gpu
-
-                if has_hardware_gpu():
-                    install_gpu_runtime(
-                        progress_cb=_emit_progress,
-                        download_fn=_dl_simple,
-                        cancel_check=_check_cancel,
-                        proxy_env=px_env,
-                    )
-                voice_cloner.clear_ref_cache()
             elif engine_id == "qwen3_tts":
                 from core.llama_tts import (
                     QWEN3_LEGACY_MODEL_FILES,

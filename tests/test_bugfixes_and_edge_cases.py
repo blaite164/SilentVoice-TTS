@@ -232,7 +232,6 @@ class TtsManagerQueueAndFallbackCacheTests(unittest.TestCase):
             "fallback_voice": "v_fb",
             "normalize_numbers_enabled": False,
             "app_language": "uk",
-            "openvoice_enabled": False,
         }
         dispatch_calls: list[tuple[str, str]] = []
         fake_pcm = np.full(1200, 0.2, dtype=np.float32)
@@ -520,30 +519,6 @@ class SecurityHardeningTests(unittest.TestCase):
 
         self.assertEqual(spoken, ["Hello", "Hello", "Hello"])
 
-    def test_extract_zip_bytes_blocks_zip_slip_path_traversal(self) -> None:
-        import zipfile
-        from core.voice_cloner import extract_zip_bytes
-
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            target_dir = root / "unpacked"
-            outside_file = root / "escaped.txt"
-
-            # Safe archive works
-            safe_zip = root / "safe.zip"
-            with zipfile.ZipFile(safe_zip, "w") as zf:
-                zf.writestr("subdir/ok.txt", "safe-content")
-            extract_zip_bytes(safe_zip, target_dir)
-            self.assertEqual((target_dir / "subdir" / "ok.txt").read_text(encoding="utf-8"), "safe-content")
-
-            # Malicious Zip Slip archive is blocked
-            evil_zip = root / "evil.zip"
-            with zipfile.ZipFile(evil_zip, "w") as zf:
-                zf.writestr("../escaped.txt", "pwned")
-            with self.assertRaises(RuntimeError):
-                extract_zip_bytes(evil_zip, target_dir)
-            self.assertFalse(outside_file.exists())
-
     def test_settings_transfer_prevents_cross_provider_or_remote_base_url_key_exfiltration(self) -> None:
         current = [
             {"id": "ai_openai_1", "provider": "openai", "api_key": "sk-victim-openai-secret"},
@@ -757,22 +732,18 @@ class WarmupAndDspOptimizationTests(unittest.TestCase):
             _ = TTSEngineManager._find_uk_stress_trie_path()
             self.assertNotIn("stanza", sys.modules)
 
-    def test_smart_warmup_warms_fallback_and_openvoice_when_primary_is_online(self) -> None:
+    def test_smart_warmup_warms_fallback_when_primary_is_online(self) -> None:
         state = {
             "active_engine": "online:edge_1",
             "active_voice": "uk-UA-PolinaNeural",
             "fallback_engine": "silero",
             "fallback_voice": "silero_ua_tetiana",
-            "openvoice_enabled": True,
-            "openvoice_ref_path": "",
-            "openvoice_device": "cpu",
             "app_language": "uk",
             "twitch_read_viewers": False,
         }
         orig_warmed = set(tts_manager._warmed_models)
         orig_queue_flag = tts_manager._is_synthesizing
         synth_calls: list[tuple[str, str]] = []
-        ov_warm_calls: list[str] = []
 
         def _fake_installed(eng_id: str) -> bool:
             return eng_id == "silero"
@@ -794,15 +765,11 @@ class WarmupAndDspOptimizationTests(unittest.TestCase):
                     patch.object(tts_manager, "is_engine_installed", side_effect=_fake_installed),
                     patch.object(tts_manager, "_get_system_resources_for_warmup", return_value=(8192, False, 5.0)),
                     patch.object(tts_manager, "_synthesize_dispatch", side_effect=_fake_synth),
-                    patch("core.voice_cloner.voice_cloner.models_present", return_value=True),
-                    patch("core.voice_cloner.voice_cloner._warmed_key", None),
-                    patch("core.voice_cloner.voice_cloner.warmup", side_effect=lambda: ov_warm_calls.append("ok")),
                 ):
                     targets = tts_manager._resolve_local_warmup_targets()
                     self.assertEqual([(t[0], t[1], t[3]) for t in targets], [("silero", "silero_ua_tetiana", "fallback")])
                     tts_manager._run_smart_warmup("test", 0)
                     self.assertEqual(synth_calls, [("silero", "silero_ua_tetiana")])
-                    self.assertEqual(ov_warm_calls, ["ok"])
         finally:
             tts_manager._warmed_models = orig_warmed
             tts_manager._is_synthesizing = orig_queue_flag
@@ -820,7 +787,6 @@ class WarmupAndDspOptimizationTests(unittest.TestCase):
             "active_voice": "uk-UA-PolinaNeural",
             "fallback_engine": "",
             "fallback_voice": "",
-            "openvoice_enabled": False,
             "twitch_read_viewers": False,
             "online_items": [{"id": "edge_1", "provider": "edge", "enabled": True, "installed": True}],
         }
@@ -834,7 +800,6 @@ class WarmupAndDspOptimizationTests(unittest.TestCase):
                 patch.object(tts_manager, "_prewarm_dsp_libs", side_effect=lambda e, v: dsp_calls.append((e, v))),
                 patch.object(tts_manager, "_dsp_needs_prewarm", side_effect=lambda e, v: v.endswith("::custom")),
                 patch.object(tts_manager, "_synthesize_dispatch", side_effect=lambda *a: synth_calls.append("synth")),
-                patch("core.voice_cloner.voice_cloner.models_present", return_value=False),
             ):
                 # 1. First warmup warms Edge provider once without running synthesis
                 tts_manager._run_smart_warmup("startup", 0)
@@ -1700,7 +1665,8 @@ class WarmupAndDspOptimizationTests(unittest.TestCase):
         # 3. _engine_cards_ui key partitioning between local engines and online items (e.g. edge_default)
         self.assertNotIn("edge_default", ENGINE_SPECS)
         self.assertIn("piper", ENGINE_SPECS)
-        self.assertIn("openvoice", ENGINE_SPECS)
+        self.assertNotIn("openvoice", ENGINE_SPECS)
+        self.assertIn("omnivoice", ENGINE_SPECS)
         self.assertIn("qwen3_tts", ENGINE_SPECS)
 
     def test_multistream_range_download_mirror_race_and_300kb_slow_switch(self) -> None:

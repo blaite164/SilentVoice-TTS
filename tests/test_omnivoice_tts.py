@@ -320,6 +320,8 @@ class OmniVoiceIntegrationTests(unittest.TestCase):
             with (
                 mock.patch.object(tts_manager, "_build_candidate_urls", return_value=[url]),
                 mock.patch.object(tts_manager, "_stream_download_attempt", side_effect=fake_stream),
+                mock.patch.object(tts_manager, "_has_internet_probe", return_value=True),
+                mock.patch.object(tts_manager, "_running", True),
                 mock.patch.object(tts_manager, "_get_cached_proxies", return_value=["http://1.2.3.4:8080", "http://5.6.7.8:8080"]),
                 mock.patch.object(tts_manager, "_find_working_proxies_for_url", return_value=["http://9.9.9.9:8080"]),
                 mock.patch.object(tts_manager, "_probe_range_info", return_value=(10 * 1024 * 1024, url)),
