@@ -1403,5 +1403,7 @@
   "omnivoice.whisper.enabled_status": "🤫 Fluestern (OmniVoice) aktiviert",
   "omnivoice.whisper.disabled_status": "🗣️ Fluestern (OmniVoice) deaktiviert",
   "hk.omnivoice_disabled_tip": "Nicht verfuegbar, solange OmniVoice nicht als aktive Stimme gewaehlt ist",
-  "clone.guide_btn_tip": "Kurzanleitung zum Stimmenklonen, woher Proben kommen und fertige Texte"
+  "clone.guide_btn_tip": "Kurzanleitung zum Stimmenklonen, woher Proben kommen und fertige Texte",
+  "omnivoice.test_btn": "🔊 Stimme testen",
+  "omnivoice.test_running": "⏳ Synthese..."
 }

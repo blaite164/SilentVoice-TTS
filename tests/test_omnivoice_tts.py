@@ -369,6 +369,24 @@ class OmniVoiceIntegrationTests(unittest.TestCase):
         )
         self.assertEqual(get_bundled_clone_sample_guide_text(r"C:\Users\test\Desktop\my_voice.wav"), "")
 
+    def test_ref_cache_prune_keeps_latest_entries(self) -> None:
+        import os
+        import core.omnivoice_tts as ov
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir)
+            for i in range(6):
+                wav_p = cache_dir / f"ovref_{i:04d}.wav"
+                js_p = cache_dir / f"ovref_{i:04d}.json"
+                wav_p.write_bytes(b"RIFF")
+                js_p.write_text('{"text":"hi"}', encoding="utf-8")
+                os.utime(wav_p, (1000 + i * 10, 1000 + i * 10))
+            with mock.patch.object(ov, "OMNIVOICE_REF_CACHE_DIR", cache_dir):
+                ov._prune_ref_cache(max_entries=3)
+            remaining = sorted(p.name for p in cache_dir.glob("ovref_*.wav"))
+            self.assertEqual(remaining, ["ovref_0003.wav", "ovref_0004.wav", "ovref_0005.wav"])
+            self.assertFalse((cache_dir / "ovref_0000.json").exists())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -522,15 +522,10 @@ def install_omnivoice_runtime(
         attempts.append((False, "vulkan-ok", tr("tts.dl.omnivoice_runtime_vulkan", "Завантаження рушія OmniVoice (Vulkan GPU)...")))
 
     last_err: Optional[Exception] = None
-    zip_path = OMNIVOICE_RUNTIME_DIR / "omnivoice_runtime.zip"
     for want_cuda, marker_val, dl_label in attempts:
-        # Clean stale partial files only when switching between different assets (CUDA vs Vulkan)
-        for stale in (
-            zip_path,
-            zip_path.with_suffix(zip_path.suffix + ".part"),
-            zip_path.with_suffix(zip_path.suffix + ".part.meta"),
-        ):
-            stale.unlink(missing_ok=True)
+        zip_path = OMNIVOICE_RUNTIME_DIR / (
+            "omnivoice_runtime_cuda.zip" if want_cuda else "omnivoice_runtime_vulkan.zip"
+        )
         urls = resolve_omnivoice_runtime_urls(prefer_cuda=want_cuda, proxies=proxies)
         # Primary GitHub release URL already includes GitLab Generic Package mirror in TTSManager Auto-Race;
         # only fall back to additional URLs if the primary URL is not a GitHub release URL.
@@ -549,7 +544,12 @@ def install_omnivoice_runtime(
                     except OSError:
                         pass
                 _extract_binaries_from_zip(zip_path, OMNIVOICE_RUNTIME_DIR)
-                zip_path.unlink(missing_ok=True)
+                for cleanup_p in (
+                    zip_path,
+                    zip_path.with_suffix(zip_path.suffix + ".part"),
+                    zip_path.with_suffix(zip_path.suffix + ".part.meta"),
+                ):
+                    cleanup_p.unlink(missing_ok=True)
                 if not OMNIVOICE_SERVER_EXE.is_file():
                     raise RuntimeError("Downloaded OmniVoice runtime archive does not contain tts-server.exe")
                 OMNIVOICE_RUNTIME_MARKER.write_text(marker_val, encoding="utf-8")
@@ -557,7 +557,7 @@ def install_omnivoice_runtime(
             except Exception as exc:
                 zip_path.unlink(missing_ok=True)
                 last_err = exc
-                # Propagate explicit user cancellation immediately
+                # Propagate explicit user cancellation immediately (preserve .part for resume)
                 if "cancel" in type(exc).__name__.lower():
                     raise
                 continue
@@ -763,7 +763,23 @@ def prepare_omnivoice_reference_wav(
     tmp_wav = cached_wav.with_suffix(".tmp.wav")
     sf.write(str(tmp_wav), arr, dst_sr, subtype="PCM_16")
     os.replace(tmp_wav, cached_wav)
+    _prune_ref_cache(max_entries=20)
     return cached_wav, digest
+
+
+def _prune_ref_cache(max_entries: int = 20) -> None:
+    """Keep only the most recent prepared reference WAVs and their transcript JSONs."""
+    try:
+        wavs = sorted(
+            OMNIVOICE_REF_CACHE_DIR.glob("ovref_*.wav"),
+            key=lambda p: p.stat().st_mtime_ns,
+            reverse=True,
+        )
+        for stale_wav in wavs[max(1, int(max_entries)) :]:
+            stale_wav.unlink(missing_ok=True)
+            stale_wav.with_suffix(".json").unlink(missing_ok=True)
+    except OSError:
+        pass
 
 
 def _transcript_cache_path(digest: str) -> Path:
@@ -1372,6 +1388,7 @@ class _OmniVoiceServerManager:
                     json=payload,
                     headers=self._auth_headers(),
                     timeout=180.0,
+                    stream=True,
                 )
             except Exception as exc:
                 if self._is_cancelled(my_gen):
@@ -1382,9 +1399,30 @@ class _OmniVoiceServerManager:
                 self._active_responses[tid] = (resp, is_warmup)
             if self._is_cancelled(my_gen):
                 raise OmniVoiceSynthesisCancelledError("OmniVoice synthesis cancelled")
-            if resp.status_code != 200 or not resp.content.startswith(b"RIFF"):
+            if resp.status_code != 200:
                 raise RuntimeError(f"OmniVoice tts-server error ({resp.status_code}): {resp.text[:300]}")
-            return _read_wav_bytes(resp.content)
+
+            chunks: List[bytes] = []
+            try:
+                if hasattr(resp, "iter_content"):
+                    for part in resp.iter_content(chunk_size=32768):
+                        if self._is_cancelled(my_gen):
+                            raise OmniVoiceSynthesisCancelledError("OmniVoice synthesis cancelled")
+                        if part:
+                            chunks.append(part)
+                    raw_bytes = b"".join(chunks)
+                else:
+                    raw_bytes = resp.content
+            except OmniVoiceSynthesisCancelledError:
+                raise
+            except Exception as exc:
+                if self._is_cancelled(my_gen):
+                    raise OmniVoiceSynthesisCancelledError("OmniVoice synthesis cancelled") from exc
+                raise
+
+            if not raw_bytes.startswith(b"RIFF"):
+                raise RuntimeError(f"OmniVoice tts-server error ({resp.status_code}): {raw_bytes[:300]!r}")
+            return _read_wav_bytes(raw_bytes)
         finally:
             self._req_local.active = False
             self._req_local.is_warmup = False

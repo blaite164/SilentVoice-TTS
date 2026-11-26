@@ -1104,6 +1104,7 @@ class OmniVoiceSettingsDialog(QDialog):
     """Налаштування OmniVoice: Клонування (+ Whisper ASR), Конструктор голосу (Voice Design), кроки та шепіт."""
 
     _whisper_finished = Signal(str, str)
+    _test_finished = Signal(str)
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
@@ -1118,6 +1119,7 @@ class OmniVoiceSettingsDialog(QDialog):
             OMNIVOICE_GENDERS,
             OMNIVOICE_PITCHES,
             get_active_omnivoice_seed,
+            is_omnivoice_installed,
             is_omnivoice_whisper_installed,
             normalize_omnivoice_mode,
             normalize_omnivoice_steps,
@@ -1125,7 +1127,9 @@ class OmniVoiceSettingsDialog(QDialog):
 
         self._ref_path: str = str(config.get("omnivoice_ref_path", "") or "").strip()
         self._whisper_running: bool = False
+        self._test_running: bool = False
         self._whisper_finished.connect(self._on_whisper_done)
+        self._test_finished.connect(self._on_test_done)
 
         lay = QVBoxLayout(self)
         lay.setContentsMargins(20, 18, 20, 16)
@@ -1364,7 +1368,18 @@ class OmniVoiceSettingsDialog(QDialog):
         lay.addStretch(1)
 
         btn_row = QHBoxLayout()
-        btn_row.addStretch(1)
+        btn_row.setSpacing(8)
+        self.test_btn = QPushButton(tr("omnivoice.test_btn", "🔊 Прослухати тест"))
+        self.test_btn.setAutoDefault(False)
+        self.test_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.test_btn.setEnabled(is_omnivoice_installed())
+        self.test_btn.clicked.connect(self._run_voice_test)
+        btn_row.addWidget(self.test_btn)
+
+        self.test_status_lbl = QLabel("")
+        self.test_status_lbl.setStyleSheet("color: #94A3B8; font-size: 12px;")
+        btn_row.addWidget(self.test_status_lbl, 1)
+
         cancel_btn = QPushButton(tr("dlg_026", "Скасувати"))
         cancel_btn.setAutoDefault(False)
         cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -1494,8 +1509,110 @@ class OmniVoiceSettingsDialog(QDialog):
         self.asr_status_lbl.setStyleSheet("border: none; background: transparent; color: #34D399; font-size: 12px;")
         self.asr_status_lbl.setText(tr("omnivoice.whisper.done", "✓ Текст розпізнано!"))
 
+    def _run_voice_test(self) -> None:
+        if self._test_running:
+            return
+        self.seed_spin.interpretText()
+        mode = "design" if self.radio_design.isChecked() else "clone"
+        ref_path = self._ref_path
+        ref_txt = self.ref_text_edit.toPlainText().strip()
+        steps = int(self.steps_combo.currentData() or 16)
+        whisper = bool(self.whisper_chk.isChecked())
+        denoise = bool(self.denoise_chk.isChecked())
+        gender = str(self.gender_combo.currentData() or "")
+        age = str(self.age_combo.currentData() or "")
+        pitch = str(self.pitch_combo.currentData() or "")
+        accent = str(self.accent_combo.currentData() or "")
+        seed = int(self.seed_spin.value())
+
+        cur_lang = str(config.get("app_language", "uk") or "uk").strip().lower()
+        if cur_lang == "ua":
+            cur_lang = "uk"
+        test_phrases = {
+            "uk": "Привіт! Це перевірка голосу.",
+            "en": "Hello! This is a voice test.",
+            "ru": "Привет! Это проверка голоса.",
+            "pl": "Cześć! To jest test głosu.",
+            "de": "Hallo! Das ist ein Stimmtest.",
+            "fr": "Bonjour ! Ceci est un test de voix.",
+            "es": "¡Hola! Esta es una prueba de voz.",
+        }
+        sample_phrase = test_phrases.get(cur_lang, test_phrases["en"])
+
+        self._test_running = True
+        self.test_btn.setEnabled(False)
+        self.test_status_lbl.setStyleSheet("color: #94A3B8; font-size: 12px;")
+        self.test_status_lbl.setText(tr("omnivoice.test_running", "⏳ Синтез..."))
+
+        def _job() -> None:
+            try:
+                from core.audio_router import audio_router
+                from core.omnivoice_tts import (
+                    _omnivoice_server,
+                    build_omnivoice_design_instruct,
+                    normalize_omnivoice_lang_label,
+                    prepare_omnivoice_reference_wav,
+                    resolve_omnivoice_ref_text,
+                )
+
+                lang_label = normalize_omnivoice_lang_label(cur_lang)
+                ref_wav: Optional[Path] = None
+                ref_digest = ""
+                eff_ref_txt = ""
+                instruct = ""
+                eff_seed: Optional[int] = None
+
+                if mode == "clone" and ref_path and Path(ref_path).is_file():
+                    if ref_txt:
+                        ref_wav, ref_digest = prepare_omnivoice_reference_wav(Path(ref_path))
+                        eff_ref_txt = ref_txt
+                    else:
+                        ref_wav, ref_digest, eff_ref_txt = resolve_omnivoice_ref_text(Path(ref_path), lang="auto")
+                    instruct = "whisper" if whisper else ""
+                else:
+                    instruct = (
+                        build_omnivoice_design_instruct(
+                            gender=gender,
+                            age=age,
+                            pitch=pitch,
+                            accent=accent,
+                            whisper=whisper,
+                        )
+                        or "female, young adult, moderate pitch"
+                    )
+                    eff_seed = seed
+
+                samples, sr = _omnivoice_server.synthesize(
+                    text=sample_phrase,
+                    lang_label=lang_label,
+                    ref_wav=ref_wav,
+                    ref_digest=ref_digest,
+                    ref_text=eff_ref_txt,
+                    instruct=instruct,
+                    seed=eff_seed,
+                    steps=steps,
+                    denoise=denoise,
+                )
+                audio_router.play_preview(samples, sr)
+                self._test_finished.emit("")
+            except Exception as exc:
+                self._test_finished.emit(str(exc))
+
+        threading.Thread(target=_job, daemon=True).start()
+
+    def _on_test_done(self, err: str) -> None:
+        self._test_running = False
+        self.test_btn.setEnabled(True)
+        if err:
+            self.test_status_lbl.setStyleSheet("color: #F87171; font-size: 12px;")
+            self.test_status_lbl.setText(err[:90])
+        else:
+            self.test_status_lbl.setText("")
+
     def _save_and_accept(self) -> None:
         self.seed_spin.interpretText()
+        prev_ref = str(config.get("omnivoice_ref_path", "") or "").strip()
+        prev_ref_txt = str(config.get("omnivoice_ref_text", "") or "").strip()
         mode = "design" if self.radio_design.isChecked() else "clone"
         config.set("omnivoice_mode", mode)
         config.set("omnivoice_ref_path", self._ref_path)
@@ -1512,7 +1629,11 @@ class OmniVoiceSettingsDialog(QDialog):
         config.set("omnivoice_design_seed", int(self.seed_spin.value()))
 
         if str(config.get("active_engine", "") or "").strip() == "omnivoice":
-            tts_manager.schedule_smart_warmup(0.3, "omnivoice_settings_changed")
+            from core.omnivoice_tts import is_omnivoice_server_running
+
+            ref_changed = (prev_ref != self._ref_path) or (prev_ref_txt != ref_txt)
+            if not is_omnivoice_server_running() or ref_changed:
+                tts_manager.schedule_smart_warmup(0.3, "omnivoice_settings_changed")
         self.accept()
 
     def showEvent(self, event) -> None:

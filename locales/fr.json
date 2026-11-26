@@ -1403,5 +1403,7 @@
   "omnivoice.whisper.enabled_status": "🤫 Chuchotement (OmniVoice) active",
   "omnivoice.whisper.disabled_status": "🗣️ Chuchotement (OmniVoice) desactive",
   "hk.omnivoice_disabled_tip": "Indisponible tant qu'OmniVoice n'est pas selectionne comme voix active",
-  "clone.guide_btn_tip": "Guide rapide sur le clonage vocal, où trouver des échantillons et textes prêts"
+  "clone.guide_btn_tip": "Guide rapide sur le clonage vocal, où trouver des échantillons et textes prêts",
+  "omnivoice.test_btn": "🔊 Tester la voix",
+  "omnivoice.test_running": "⏳ Synthèse..."
 }

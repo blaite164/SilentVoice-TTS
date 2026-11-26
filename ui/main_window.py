@@ -4704,6 +4704,8 @@ class MainWindow(QMainWindow):
         new_state = not bool(config.get("omnivoice_whisper", False))
         config.set("omnivoice_whisper", new_state)
         self._refresh_clone_card_ui("omnivoice")
+        if hasattr(self, "overlay") and self.overlay.isVisible():
+            self.overlay.update()
         audio_router.play_feedback_beep("start" if new_state else "cancel")
         if hasattr(self, "live_status_label"):
             msg = (

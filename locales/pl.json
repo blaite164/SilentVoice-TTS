@@ -1403,5 +1403,7 @@
   "omnivoice.whisper.enabled_status": "🤫 Szept (OmniVoice) wlaczony",
   "omnivoice.whisper.disabled_status": "🗣️ Szept (OmniVoice) wylaczony",
   "hk.omnivoice_disabled_tip": "Niedostepne, dopoki OmniVoice nie zostanie wybrany jako aktywny glos",
-  "clone.guide_btn_tip": "Krótki przewodnik po klonowaniu głosu, skąd wziąć próbki i gotowe teksty"
+  "clone.guide_btn_tip": "Krótki przewodnik po klonowaniu głosu, skąd wziąć próbki i gotowe teksty",
+  "omnivoice.test_btn": "🔊 Przetestuj głos",
+  "omnivoice.test_running": "⏳ Synteza..."
 }

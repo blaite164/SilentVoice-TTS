@@ -1403,5 +1403,7 @@
   "omnivoice.whisper.enabled_status": "🤫 Susurro (OmniVoice) activado",
   "omnivoice.whisper.disabled_status": "🗣️ Susurro (OmniVoice) desactivado",
   "hk.omnivoice_disabled_tip": "No disponible hasta que OmniVoice sea seleccionado como voz activa",
-  "clone.guide_btn_tip": "Guía breve sobre clonación de voz, dónde conseguir muestras y textos listos"
+  "clone.guide_btn_tip": "Guía breve sobre clonación de voz, dónde conseguir muestras y textos listos",
+  "omnivoice.test_btn": "🔊 Probar voz",
+  "omnivoice.test_running": "⏳ Sintetizando..."
 }

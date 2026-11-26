@@ -481,6 +481,13 @@ class ScreenOverlayWindow(QWidget):
             if 0 <= sp < 60:
                 tail = tail[sp + 1 :]
             display_text = "… " + tail
+        if (
+            self._mode == "typing"
+            and display_text
+            and str(config.get("active_engine", "") or "").strip() == "omnivoice"
+            and bool(config.get("omnivoice_whisper", False))
+        ):
+            display_text = f"🤫 {display_text}"
 
         font = QFont(font_family, font_size, QFont.Weight.Bold)
         painter.setFont(font)

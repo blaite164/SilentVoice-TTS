@@ -1403,5 +1403,7 @@
   "omnivoice.whisper.enabled_status": "🤫 Whisper (OmniVoice) enabled",
   "omnivoice.whisper.disabled_status": "🗣️ Whisper (OmniVoice) disabled",
   "hk.omnivoice_disabled_tip": "Unavailable until OmniVoice is selected as the active voice",
-  "clone.guide_btn_tip": "Quick guide to voice cloning, where to get samples, and ready-made texts"
+  "clone.guide_btn_tip": "Quick guide to voice cloning, where to get samples, and ready-made texts",
+  "omnivoice.test_btn": "🔊 Test voice",
+  "omnivoice.test_running": "⏳ Synthesizing..."
 }

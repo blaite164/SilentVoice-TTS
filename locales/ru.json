@@ -1403,5 +1403,7 @@
   "omnivoice.whisper.enabled_status": "🤫 Шёпот (OmniVoice) включён",
   "omnivoice.whisper.disabled_status": "🗣️ Шёпот (OmniVoice) выключен",
   "hk.omnivoice_disabled_tip": "Недоступно, пока активным голосом не выбран OmniVoice",
-  "clone.guide_btn_tip": "Кратко о клонировании голоса, где взять образцы и готовые тексты"
+  "clone.guide_btn_tip": "Кратко о клонировании голоса, где взять образцы и готовые тексты",
+  "omnivoice.test_btn": "🔊 Прослушать тест",
+  "omnivoice.test_running": "⏳ Синтез..."
 }
