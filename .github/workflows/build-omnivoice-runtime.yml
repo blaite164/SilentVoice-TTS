@@ -39,10 +39,19 @@ jobs:
 
       - name: Install Vulkan SDK (Vulkan leg)
         if: matrix.backend == 'vulkan'
-        uses: jakoch/install-vulkan-sdk-action@v1.8.1
-        with:
-          vulkan_version: 1.4.309.0
-          cache: true
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $vulkanVer = "1.4.357.0"
+          $installer = Join-Path $env:RUNNER_TEMP "VulkanSDK-Installer.exe"
+          curl.exe -fsSL -o $installer "https://sdk.lunarg.com/sdk/download/$vulkanVer/windows/vulkansdk-windows-X64-$vulkanVer.exe"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $installer --accept-licenses --default-answer --confirm-command install
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $sdkDir = "C:\VulkanSDK\$vulkanVer"
+          if (-not (Test-Path $sdkDir)) { throw "Vulkan SDK directory not found: $sdkDir" }
+          "VULKAN_SDK=$sdkDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "$sdkDir\Bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Install CUDA Toolkit 12.4 (CUDA leg)
         if: matrix.backend == 'cuda'
@@ -89,7 +98,8 @@ jobs:
           cmake @cmakeArgs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-          cmake --build $buildDir --config Release --target tts-server --parallel
+          # Build ALL targets so GGML_BACKEND_DL MODULE_LIBRARY backends (ggml-vulkan, ggml-cuda, ggml-cpu-*) are compiled
+          cmake --build $buildDir --config Release --parallel
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Stage, smoke-test & zip runtime (${{ matrix.backend }})
@@ -141,7 +151,10 @@ jobs:
           }
 
           # Smoke-test patched --help output (verifies DLL loading + 'steps' & '--api-key' patch)
+          $prevEap = $ErrorActionPreference
+          $ErrorActionPreference = "Continue"
           $helpOut = & (Join-Path $stageDir "tts-server.exe") --help 2>&1 | Out-String
+          $ErrorActionPreference = $prevEap
           Write-Host $helpOut
           if ($helpOut -notmatch "supports 'steps'" -or $helpOut -notmatch "--api-key") {
             throw "Patched flags missing from tts-server.exe --help!"
@@ -215,18 +228,16 @@ jobs:
             echo "GITLAB_TOKEN not configured — skipping GitLab mirror."
             exit 0
           fi
-          python3 - <<'PY'
-          import os, pathlib, requests
-          tok = os.environ["GITLAB_TOKEN"].strip()
-          tag = os.environ["RELEASE_TAG"].strip()
-          ver = tag.replace("omnivoice-runtime-", "").lstrip("vV") or "1"
-          proj = "blaite164%2Fsilentvoice-tts"
-          headers = {"PRIVATE-TOKEN": tok}
-          base_pkg = f"https://gitlab.com/api/v4/projects/{proj}/packages/generic/omnivoice-runtime/{ver}"
-          for fname in ("omnivoice-runtime-win-vulkan-x64.zip", "omnivoice-runtime-win-cuda-x64.zip", "SHA256SUMS.txt"):
-              p = pathlib.Path("release_assets") / fname
-              with open(p, "rb") as f:
-                  r = requests.put(f"{base_pkg}/{fname}", headers=headers, data=f, timeout=(30, 600))
-                  r.raise_for_status()
-              print("Uploaded to GitLab:", fname)
-          PY
+          ver="${RELEASE_TAG#omnivoice-runtime-}"
+          ver="${ver#v}"
+          ver="${ver#V}"
+          ver="${ver:-1}"
+          base_pkg="https://gitlab.com/api/v4/projects/blaite164%2Fsilentvoice-tts/packages/generic/omnivoice-runtime/${ver}"
+          for fname in omnivoice-runtime-win-vulkan-x64.zip omnivoice-runtime-win-cuda-x64.zip SHA256SUMS.txt; do
+            echo "Uploading $fname to GitLab Generic Packages (v${ver})..."
+            curl -fsSL --retry 3 --retry-delay 5 \
+              -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
+              --upload-file "release_assets/${fname}" \
+              "${base_pkg}/${fname}"
+            echo ""
+          done
