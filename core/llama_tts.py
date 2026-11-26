@@ -421,15 +421,21 @@ def install_llama_tts_runtime(
     LLAMA_TTS_READY_MARKER.write_text(marker_value, encoding="utf-8")
 
 
-def prepare_reference_wav(audio_path: Path, *, target_sr: int = QWEN3_NATIVE_SR) -> Path:
-    """Ensure any reference audio (.wav/.mp3/.ogg/.flac) is stored as mono 16-bit WAV <= 20s at target_sr."""
+def prepare_reference_wav(
+    audio_path: Path,
+    *,
+    target_sr: int = QWEN3_NATIVE_SR,
+    max_sec: float = 10.0,
+) -> Path:
+    """Ensure any reference audio (.wav/.mp3/.ogg/.flac) is stored as mono 16-bit WAV <= 10s (pause-aware) at target_sr."""
     if not audio_path.is_file():
         raise FileNotFoundError(f"Reference audio not found: {audio_path}")
     dst_sr = max(8000, int(target_sr))
+    clamped_max_s = max(3.0, min(15.0, float(max_sec)))
     sr_tag = f"{dst_sr // 1000}k" if dst_sr % 1000 == 0 else str(dst_sr)
     st = audio_path.stat()
     digest = hashlib.sha256(
-        f"{audio_path.resolve()}|{st.st_mtime_ns}|{st.st_size}|20s|{sr_tag}".encode("utf-8")
+        f"{audio_path.resolve()}|{st.st_mtime_ns}|{st.st_size}|smart_{clamped_max_s:.1f}s|{sr_tag}".encode("utf-8")
     ).hexdigest()[:16]
     _REF_WAV_CACHE_DIR.mkdir(parents=True, exist_ok=True)
     cached_wav = _REF_WAV_CACHE_DIR / f"ref_{digest}.wav"
@@ -441,9 +447,29 @@ def prepare_reference_wav(audio_path: Path, *, target_sr: int = QWEN3_NATIVE_SR)
     if arr.ndim == 2:
         arr = arr.mean(axis=1)
     src_sr = max(1, int(sr))
-    max_samples = int(src_sr * 20)
+    max_samples = int(src_sr * clamped_max_s)
     if len(arr) > max_samples:
-        arr = arr[:max_samples]
+        # Pause-aware trim within [max_sec - 3s, max_sec] so we avoid cutting mid-word
+        win = max(1, int(src_sr * 0.08))
+        hop = max(1, int(src_sr * 0.01))
+        lo_i = max(int(src_sr * 2.5), int(src_sr * (clamped_max_s - 3.0)))
+        hi_i = min(len(arr) - win, max_samples - win)
+        cut_idx = max_samples
+        if hi_i > lo_i:
+            best_rms = float("inf")
+            best_pos = max_samples
+            for pos in range(lo_i, hi_i, hop):
+                seg = arr[pos : pos + win]
+                rms = float(np.sqrt(np.mean(seg * seg)))
+                if rms < best_rms - 1e-6:
+                    best_rms = rms
+                    best_pos = pos + win // 2
+            cut_idx = best_pos
+        arr = arr[:cut_idx]
+        fade_n = min(len(arr), int(src_sr * 0.03))
+        if fade_n > 1:
+            arr = arr.copy()
+            arr[-fade_n:] *= np.linspace(1.0, 0.0, fade_n, dtype=np.float32)
     out_sr = src_sr
     if src_sr != dst_sr and len(arr) > 0:
         from scipy.signal import resample_poly
