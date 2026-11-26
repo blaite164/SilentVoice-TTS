@@ -2258,9 +2258,23 @@ def _detect_dxgi_nvidia_gpu() -> Optional[bool]:
             pass
 
 
+def _read_test_nvidia_override() -> Optional[bool]:
+    raw = str(os.environ.get("SILENTVOICE_TEST_NVIDIA", "") or "").strip().lower()
+    if not raw:
+        return None
+    if raw in ("1", "true", "yes", "on"):
+        return True
+    if raw in ("0", "false", "no", "off"):
+        return False
+    return None
+
+
 def has_nvidia_gpu(force_refresh: bool = False) -> bool:
     """Визначає наявність дискретної відеокарти NVIDIA через DXGI (з fallback на EnumDisplayDevicesW)."""
     global _NVIDIA_GPU_DETECT_CACHE
+    nv_override = _read_test_nvidia_override()
+    if nv_override is not None:
+        return nv_override
     if _NVIDIA_GPU_DETECT_CACHE is not None and not force_refresh:
         return _NVIDIA_GPU_DETECT_CACHE
     if sys.platform != "win32":
