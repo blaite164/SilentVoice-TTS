@@ -2119,7 +2119,7 @@ class MainWindow(QMainWindow):
             settings_btn = QPushButton(tr("omnivoice.settings_btn", "⚙ Налаштування"))
             settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             settings_btn.setToolTip(
-                tr("omnivoice.settings_btn_tip", "Режим клонування / Voice Design, текст референсу, кроки (16/32) та шепіт")
+                tr("omnivoice.settings_btn_tip", "Режим клонування / конструктора голосу, текст референсу, кроки (16/32) та шепіт")
             )
             settings_btn.clicked.connect(self._open_omnivoice_settings_dialog)
             row.addWidget(settings_btn)
