@@ -1414,5 +1414,9 @@
   "tts.dl.omnivoice_extract": "Extrayendo motor OmniVoice...",
   "tts.dl.omnivoice_whisper_bin": "Descargando whisper.cpp para transcripcion automatica...",
   "tts.dl.omnivoice_whisper_extract": "Extrayendo whisper.cpp...",
-  "tts.dl.omnivoice_whisper_model": "Descargando Whisper Small (~190 MB) para transcribir la referencia..."
+  "tts.dl.omnivoice_whisper_model": "Descargando Whisper Small (~190 MB) para transcribir la referencia...",
+  "hk.toggle_omnivoice_whisper": "Activar / desactivar susurro (OmniVoice):",
+  "hk.toggle_omnivoice_whisper_help": "<b>Cambio rapido de susurro de OmniVoice.</b><br>Activa o desactiva al instante el estilo susurro para las siguientes frases. Disponible solo cuando OmniVoice esta activo.",
+  "omnivoice.whisper.enabled_status": "🤫 Susurro (OmniVoice) activado",
+  "omnivoice.whisper.disabled_status": "🗣️ Susurro (OmniVoice) desactivado"
 }

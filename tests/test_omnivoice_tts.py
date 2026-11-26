@@ -252,6 +252,27 @@ class OmniVoiceIntegrationTests(unittest.TestCase):
             for k, v in old_vals.items():
                 config.set(k, v)
 
+    def test_omnivoice_whisper_hotkey_only_active_with_omnivoice(self) -> None:
+        from core.settings_transfer import CATEGORY_KEYS
+        from core.win_api import KeyboardHookManager
+
+        self.assertIn("hotkey_toggle_omnivoice_whisper", CATEGORY_KEYS["hotkeys"])
+
+        hook = KeyboardHookManager()
+        hook.update_from_config({
+            "active_engine": "piper",
+            "hotkey_toggle_omnivoice_whisper": "Ctrl+Shift+W",
+        })
+        self.assertFalse(hook._omnivoice_active)
+        self.assertIsNotNone(hook._hk_toggle_omnivoice_whisper)
+
+        hook.update_from_config({
+            "active_engine": "omnivoice",
+            "hotkey_toggle_omnivoice_whisper": "Ctrl+Shift+W",
+        })
+        self.assertTrue(hook._omnivoice_active)
+        self.assertIsNotNone(hook._hk_toggle_omnivoice_whisper)
+
 
 if __name__ == "__main__":
     unittest.main()

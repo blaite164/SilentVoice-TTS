@@ -1414,5 +1414,9 @@
   "tts.dl.omnivoice_extract": "Rozpakowywanie silnika OmniVoice...",
   "tts.dl.omnivoice_whisper_bin": "Pobieranie whisper.cpp do automatycznego rozpoznawania mowy...",
   "tts.dl.omnivoice_whisper_extract": "Rozpakowywanie whisper.cpp...",
-  "tts.dl.omnivoice_whisper_model": "Pobieranie Whisper Small (~190 MB) do rozpoznawania referencji..."
+  "tts.dl.omnivoice_whisper_model": "Pobieranie Whisper Small (~190 MB) do rozpoznawania referencji...",
+  "hk.toggle_omnivoice_whisper": "Wlacz / wylacz szept (OmniVoice):",
+  "hk.toggle_omnivoice_whisper_help": "<b>Szybkie przelaczanie szeptu OmniVoice.</b><br>Natychmiast wlacza lub wylacza styl szeptu dla kolejnych fraz. Dostepne tylko wtedy, gdy aktywnym silnikiem jest OmniVoice.",
+  "omnivoice.whisper.enabled_status": "🤫 Szept (OmniVoice) wlaczony",
+  "omnivoice.whisper.disabled_status": "🗣️ Szept (OmniVoice) wylaczony"
 }

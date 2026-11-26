@@ -1414,5 +1414,9 @@
   "tts.dl.omnivoice_extract": "OmniVoice-Engine wird entpackt...",
   "tts.dl.omnivoice_whisper_bin": "whisper.cpp fuer automatische Spracherkennung wird heruntergeladen...",
   "tts.dl.omnivoice_whisper_extract": "whisper.cpp wird entpackt...",
-  "tts.dl.omnivoice_whisper_model": "Whisper Small (~190 MB) fuer Referenzerkennung wird heruntergeladen..."
+  "tts.dl.omnivoice_whisper_model": "Whisper Small (~190 MB) fuer Referenzerkennung wird heruntergeladen...",
+  "hk.toggle_omnivoice_whisper": "Fluestermodus umschalten (OmniVoice):",
+  "hk.toggle_omnivoice_whisper_help": "<b>Schnelles Umschalten von OmniVoice-Fluestern.</b><br>Aktiviert oder deaktiviert den Fluesterstil sofort fuer die naechsten Saetze. Nur verfuegbar, wenn OmniVoice aktiv ist.",
+  "omnivoice.whisper.enabled_status": "🤫 Fluestern (OmniVoice) aktiviert",
+  "omnivoice.whisper.disabled_status": "🗣️ Fluestern (OmniVoice) deaktiviert"
 }

@@ -1414,5 +1414,9 @@
   "tts.dl.omnivoice_extract": "Extracting OmniVoice engine...",
   "tts.dl.omnivoice_whisper_bin": "Downloading whisper.cpp for automatic voice transcription...",
   "tts.dl.omnivoice_whisper_extract": "Extracting whisper.cpp...",
-  "tts.dl.omnivoice_whisper_model": "Downloading Whisper Small (~190 MB) for reference transcription..."
+  "tts.dl.omnivoice_whisper_model": "Downloading Whisper Small (~190 MB) for reference transcription...",
+  "hk.toggle_omnivoice_whisper": "Toggle Whisper mode (OmniVoice):",
+  "hk.toggle_omnivoice_whisper_help": "<b>Quick OmniVoice whisper toggle.</b><br>Instantly turns whisper style on or off for upcoming phrases. Available only when OmniVoice is the active engine.",
+  "omnivoice.whisper.enabled_status": "🤫 Whisper (OmniVoice) enabled",
+  "omnivoice.whisper.disabled_status": "🗣️ Whisper (OmniVoice) disabled"
 }

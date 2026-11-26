@@ -344,6 +344,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "hotkey_toggle_game_mode": "Ctrl+Shift+G",
     "hotkey_stop_chat_tts": "",
     "hotkey_toggle_chat_tts": "",
+    "hotkey_toggle_omnivoice_whisper": "",
     "sound_feedback": True,
     "cancel_sound_enabled": True,
     "sound_feedback_volume": 100,

@@ -1414,5 +1414,9 @@
   "tts.dl.omnivoice_extract": "Розпакування рушія OmniVoice...",
   "tts.dl.omnivoice_whisper_bin": "Завантаження whisper.cpp для авторозпізнавання голосу...",
   "tts.dl.omnivoice_whisper_extract": "Розпакування whisper.cpp...",
-  "tts.dl.omnivoice_whisper_model": "Завантаження Whisper Small (~190 МБ) для розпізнавання референсу..."
+  "tts.dl.omnivoice_whisper_model": "Завантаження Whisper Small (~190 МБ) для розпізнавання референсу...",
+  "hk.toggle_omnivoice_whisper": "Увімкнути / вимкнути шепіт (OmniVoice):",
+  "hk.toggle_omnivoice_whisper_help": "<b>Швидке перемикання шепоту OmniVoice.</b><br>Миттєво вмикає або вимикає стиль шепоту (whisper) для наступних фраз. Доступно, коли активним голосом обрано OmniVoice.",
+  "omnivoice.whisper.enabled_status": "🤫 Шепіт (OmniVoice) увімкнено",
+  "omnivoice.whisper.disabled_status": "🗣️ Шепіт (OmniVoice) вимкнено"
 }

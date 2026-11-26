@@ -4424,6 +4424,9 @@ class MainWindow(QMainWindow):
         self._update_twitch_allowed_row()
         self._update_twitch_command_row()
         self._refresh_twitch_chat_voice_selectors()
+        self._refresh_omnivoice_whisper_hotkey_availability()
+        if hasattr(self, "keyboard_hook"):
+            self.keyboard_hook.update_from_config(config.data)
         self._rebuild_twitch_voice_rules()
         self.twitch_read_viewers_chk.toggled.connect(lambda _c: self._save_twitch_settings("chat_tab"))
         self.twitch_chat_intercept_chk.toggled.connect(lambda _c: self._save_twitch_settings("chat_tab"))
@@ -4838,6 +4841,21 @@ class MainWindow(QMainWindow):
                 tr("game_mode.enabled_status", "🛡️ Ігровий режим увімкнено")
                 if new_state
                 else tr("game_mode.disabled_status", "🛡️ Ігровий режим вимкнено")
+            )
+            self.live_status_label.setText(msg)
+
+    def _on_toggle_omnivoice_whisper_hotkey(self) -> None:
+        if str(config.get("active_engine", "") or "").strip() != "omnivoice":
+            return
+        new_state = not bool(config.get("omnivoice_whisper", False))
+        config.set("omnivoice_whisper", new_state)
+        self._refresh_clone_card_ui("omnivoice")
+        audio_router.play_feedback_beep("start" if new_state else "cancel")
+        if hasattr(self, "live_status_label"):
+            msg = (
+                tr("omnivoice.whisper.enabled_status", "🤫 Шепіт (OmniVoice) увімкнено")
+                if new_state
+                else tr("omnivoice.whisper.disabled_status", "🗣️ Шепіт (OmniVoice) вимкнено")
             )
             self.live_status_label.setText(msg)
 
@@ -6844,10 +6862,18 @@ class MainWindow(QMainWindow):
                 "",
                 tr("hk.toggle_chat_tts_help", "<b>Швидке вимкнення озвучки чату.</b><br>Тимчасово ставить озвучку глядачів на паузу або знову вмикає її. Доступно, коли увімкнено «Читати чат»."),
             ),
+            (
+                "hotkey_toggle_omnivoice_whisper",
+                tr("hk.toggle_omnivoice_whisper", "Увімкнути / вимкнути шепіт (OmniVoice):"),
+                "",
+                tr("hk.toggle_omnivoice_whisper_help", "<b>Швидке перемикання шепоту OmniVoice.</b><br>Миттєво вмикає або вимикає стиль шепоту (whisper) для наступних фраз. Доступно, коли активним голосом обрано OmniVoice."),
+            ),
         ]
         self._chat_hotkey_widgets: List[QWidget] = []
+        self._omnivoice_hotkey_widgets: List[QWidget] = []
         for row_i, (cfg_key, label_text, default_hk, help_txt) in enumerate(hk_specs):
             is_chat_hk = cfg_key in ("hotkey_stop_chat_tts", "hotkey_toggle_chat_tts")
+            is_ov_hk = cfg_key == "hotkey_toggle_omnivoice_whisper"
             lbl_wrap = QHBoxLayout()
             lbl_wrap.setSpacing(6)
             lbl_w = QLabel(label_text)
@@ -6868,7 +6894,7 @@ class MainWindow(QMainWindow):
             edit.setReadOnly(True)
             edit.setFixedWidth(150)
             edit.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            if is_chat_hk or cfg_key == "hotkey_toggle_game_mode":
+            if is_chat_hk or is_ov_hk or cfg_key == "hotkey_toggle_game_mode":
                 edit.setPlaceholderText(tr("hk.not_set", "Не призначено"))
             edit.setStyleSheet("font-weight: 700; color: #C7D2FE;")
             self._hk_edits[cfg_key] = edit
@@ -6881,6 +6907,8 @@ class MainWindow(QMainWindow):
 
             if is_chat_hk:
                 self._chat_hotkey_widgets.extend([lbl_w, help_w, rst_btn, edit, rec_btn])
+            elif is_ov_hk:
+                self._omnivoice_hotkey_widgets.extend([lbl_w, help_w, rst_btn, edit, rec_btn])
 
         hk_lay.addLayout(hk_grid)
         self.chat_hk_disabled_hint = QLabel(
@@ -6893,6 +6921,7 @@ class MainWindow(QMainWindow):
         self.chat_hk_disabled_hint.setProperty("class", "muted")
         hk_lay.addWidget(self.chat_hk_disabled_hint)
         self._refresh_chat_hotkey_availability()
+        self._refresh_omnivoice_whisper_hotkey_availability()
         lay.addWidget(hk_card)
 
         # Режим роботи клавіатури + звуковий сигнал
@@ -7178,6 +7207,12 @@ class MainWindow(QMainWindow):
             w.setToolTip(tip)
         if hasattr(self, "chat_hk_disabled_hint"):
             self.chat_hk_disabled_hint.setVisible(not enabled)
+
+    def _refresh_omnivoice_whisper_hotkey_availability(self) -> None:
+        enabled = str(config.get("active_engine", "") or "").strip() == "omnivoice"
+        for w in getattr(self, "_omnivoice_hotkey_widgets", []):
+            w.setVisible(enabled)
+            w.setEnabled(enabled)
 
     def _record_config_hotkey(self, cfg_key: str, label_text: str) -> None:
         cur = str(config.get(cfg_key, ""))
@@ -9605,6 +9640,9 @@ class MainWindow(QMainWindow):
                 self.all_fb_voice_combo.setVisible(False)
             self._rebuild_dsp_settings_cards()
             self._refresh_twitch_chat_voice_selectors()
+            self._refresh_omnivoice_whisper_hotkey_availability()
+            if hasattr(self, "keyboard_hook"):
+                self.keyboard_hook.update_from_config(config.data)
             return
 
         cur_eng = str(config.get("active_engine", ""))
@@ -9687,6 +9725,9 @@ class MainWindow(QMainWindow):
             self._rebuild_dsp_settings_cards()
 
         self._refresh_twitch_chat_voice_selectors()
+        self._refresh_omnivoice_whisper_hotkey_availability()
+        if hasattr(self, "keyboard_hook"):
+            self.keyboard_hook.update_from_config(config.data)
 
     def _on_tts_page_engine_changed(self) -> None:
         eng_id = str(self.tts_engine_combo.currentData() or "")
@@ -10374,6 +10415,7 @@ class MainWindow(QMainWindow):
         self.keyboard_hook.stop_chat_tts_triggered.connect(tts_manager.stop_chat_tts)
         self.keyboard_hook.toggle_chat_tts_triggered.connect(self._on_toggle_chat_tts_hotkey)
         self.keyboard_hook.toggle_game_mode_triggered.connect(self._on_toggle_game_mode_hotkey)
+        self.keyboard_hook.toggle_omnivoice_whisper_triggered.connect(self._on_toggle_omnivoice_whisper_hotkey)
         self.keyboard_hook.quick_phrase_triggered.connect(self._trigger_quick_phrase_hotkey)
 
         self.overlay.position_changed.connect(self._on_overlay_dragged)

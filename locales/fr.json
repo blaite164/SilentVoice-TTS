@@ -1414,5 +1414,9 @@
   "tts.dl.omnivoice_extract": "Extraction du moteur OmniVoice...",
   "tts.dl.omnivoice_whisper_bin": "Telechargement de whisper.cpp pour la transcription automatique...",
   "tts.dl.omnivoice_whisper_extract": "Extraction de whisper.cpp...",
-  "tts.dl.omnivoice_whisper_model": "Telechargement de Whisper Small (~190 Mo) pour la transcription..."
+  "tts.dl.omnivoice_whisper_model": "Telechargement de Whisper Small (~190 Mo) pour la transcription...",
+  "hk.toggle_omnivoice_whisper": "Activer / desactiver le chuchotement (OmniVoice) :",
+  "hk.toggle_omnivoice_whisper_help": "<b>Bascule rapide du chuchotement OmniVoice.</b><br>Active ou desactive instantanement le mode chuchotement pour les phrases suivantes. Disponible uniquement lorsque OmniVoice est actif.",
+  "omnivoice.whisper.enabled_status": "🤫 Chuchotement (OmniVoice) active",
+  "omnivoice.whisper.disabled_status": "🗣️ Chuchotement (OmniVoice) desactive"
 }

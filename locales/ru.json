@@ -1414,5 +1414,9 @@
   "tts.dl.omnivoice_extract": "Распаковка движка OmniVoice...",
   "tts.dl.omnivoice_whisper_bin": "Загрузка whisper.cpp для авто-распознавания голоса...",
   "tts.dl.omnivoice_whisper_extract": "Распаковка whisper.cpp...",
-  "tts.dl.omnivoice_whisper_model": "Загрузка Whisper Small (~190 МБ) для распознавания референса..."
+  "tts.dl.omnivoice_whisper_model": "Загрузка Whisper Small (~190 МБ) для распознавания референса...",
+  "hk.toggle_omnivoice_whisper": "Включить / выключить шёпот (OmniVoice):",
+  "hk.toggle_omnivoice_whisper_help": "<b>Быстрое переключение шёпота OmniVoice.</b><br>Мгновенно включает или выключает стиль шёпота (whisper) для следующих фраз. Доступно, когда активным голосом выбран OmniVoice.",
+  "omnivoice.whisper.enabled_status": "🤫 Шёпот (OmniVoice) включён",
+  "omnivoice.whisper.disabled_status": "🗣️ Шёпот (OmniVoice) выключен"
 }
