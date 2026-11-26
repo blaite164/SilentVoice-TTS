@@ -1125,7 +1125,8 @@ class OmniVoiceSettingsDialog(QDialog):
             normalize_omnivoice_steps,
         )
 
-        self._ref_path: str = str(config.get("omnivoice_ref_path", "") or "").strip()
+        raw_ref = str(config.get("omnivoice_ref_path", "") or "").strip()
+        self._ref_path: str = raw_ref if (raw_ref and Path(raw_ref).is_file()) else ""
         self._whisper_running: bool = False
         self._test_running: bool = False
         self._whisper_finished.connect(self._on_whisper_done)
@@ -1193,11 +1194,13 @@ class OmniVoiceSettingsDialog(QDialog):
                 "Введіть текст із файлу або залиште порожнім — при озвучуванні спрацює авторозпізнавання Whisper",
             )
         )
-        initial_ref_txt = str(config.get("omnivoice_ref_text", "") or "").strip()
-        if not initial_ref_txt and self._ref_path:
-            from core.omnivoice_tts import get_default_omnivoice_ref_text
+        initial_ref_txt = ""
+        if self._ref_path:
+            initial_ref_txt = str(config.get("omnivoice_ref_text", "") or "").strip()
+            if not initial_ref_txt:
+                from core.omnivoice_tts import get_default_omnivoice_ref_text
 
-            initial_ref_txt = get_default_omnivoice_ref_text(self._ref_path)
+                initial_ref_txt = get_default_omnivoice_ref_text(self._ref_path)
         self.ref_text_edit.setPlainText(initial_ref_txt)
         self.ref_text_edit.setStyleSheet(
             "QTextEdit { background-color: #1B2030; border: 1px solid #38415C; border-radius: 8px; color: #F8FAFC; padding: 6px; font-size: 12.5px; }"
