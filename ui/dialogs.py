@@ -965,32 +965,32 @@ class VoiceSamplesDialog(QDialog):
 
 OPENVOICE_SAMPLE_TEXTS: Dict[str, str] = {
     "uk": (
-        "Привіт! Сьогодні надворі чудова погода, і цей запис допоможе точно передати мій природний голос, ритм та інтонацію. "
-        "Чуєш, як чисто звучать голосні, шиплячі та м'які приголосні? Продовжуймо говорити спокійно й виразно, без поспіху, щоб кожна фраза звучала максимально живо й реалістично."
+        "Сьогодні чудова, сонячна погода, і легкий вітер тихо шелестить у гіллі. "
+        "Цей живий запис чисто передає мій природний голос, щирі інтонації та спокійний ритм мовлення."
     ),
     "en": (
-        "Hello! The weather outside is bright and crisp today, and this short recording captures my natural tone, rhythm, and pacing clearly. "
-        "Can you hear how balanced the vowels, soft pauses, and sharp consonants sound together? Let's keep speaking at a calm, steady volume so every cloned sentence sounds vivid and natural."
+        "The morning air feels bright and crisp today, with a gentle breeze moving through the trees. "
+        "This short recording captures my natural voice, clear rhythm, and calm tone."
     ),
     "ru": (
-        "Привет! Сегодня на улице прекрасная погода, и эта короткая запись поможет точно передать мой естественный тембр, ритм и живую интонацию. "
-        "Слышишь, как чётко звучат гласные, шипящие и звонкие согласные? Давай говорить спокойно, ровно и выразительно, чтобы каждая фраза потом звучала максимально живо."
+        "Сегодня ясная, тёплая погода, и лёгкий ветер тихо шелестит в листве. "
+        "Эта живая запись чисто передаёт мой естественный голос, чёткую дикцию и спокойный темп речи."
     ),
     "pl": (
-        "Cześć! Dzisiaj na zewnątrz jest piękna pogoda, a to krótkie nagranie dokładnie odda moją naturalną barwę głosu, rytm oraz spokojną intonację. "
-        "Słyszysz, jak wyraźnie brzmią samogłoski i szeleszczące spółgłoski? Mówmy dalej równym, czystym głosem bez pośpiechu, aby każde kolejne zdanie brzmiało zupełnie naturalnie."
+        "Dzisiaj jest piękna, słoneczna pogoda, a przyjemny wiatr cicho szeleści wśród liści. "
+        "To krótkie nagranie czysto oddaje mój naturalny głos, wyraźny rytm i spokojną barwę mowy."
     ),
     "de": (
-        "Hallo! Draußen ist heute wunderbares Wetter, und diese kurze Aufnahme fängt meine natürliche Stimmfarbe, meinen Rhythmus und klare Pausen genau ein. "
-        "Hörst du, wie deutlich Vokale, Zischlaute und weiche Konsonanten klingen? Sprechen wir ruhig und gleichmäßig weiter, damit jeder Satz lebendig und authentisch wirkt."
+        "Heute ist das Wetter wunderbar klar, und eine sanfte Brise raschelt leise durch die Bäume. "
+        "Diese kurze Aufnahme zeigt meine natürliche Stimme, deutliche Aussprache und ruhigen Klang."
     ),
     "fr": (
-        "Bonjour ! Il fait un temps magnifique dehors aujourd'hui, et ce court enregistrement capture fidèlement mon timbre naturel, mon rythme et mon intonation. "
-        "Entends-tu la clarté des voyelles, des liaisons et des consonnes douces ? Continuons à parler calmement et distinctement pour que chaque phrase reste vivante et naturelle."
+        "Le matin est clair et lumineux aujourd'hui, avec une brise légère qui souffle doucement dans les arbres. "
+        "Ce court enregistrement capte fidèlement ma voix naturelle, mon rythme et mon ton calme."
     ),
     "es": (
-        "¡Hola! Hoy hace un tiempo estupendo ahí fuera, y esta breve grabación recoge con precisión mi timbre natural, mi ritmo y mi entonación habitual. "
-        "¿Notas qué claras suenan las vocales, las pausas y las consonantes? Sigamos hablando con calma y un volumen estable para que cada frase clonada suene muy real."
+        "Hoy la mañana está clara y fresca, mientras una brisa suave mueve las hojas con calma. "
+        "Esta breve grabación refleja con nitidez mi voz natural, un ritmo fluido y un tono sereno."
     ),
 }
 
@@ -1044,7 +1044,7 @@ class OpenVoiceGuideDialog(QDialog):
                 "• Вирізати чистий фрагмент голосу з будь-якого відео чи запису з інтернету.<br>"
                 "• Або зареєструватися на <b>ElevenLabs</b>, <b>Fish Audio</b> чи іншому схожому сервісі (дають безкоштовні кредити), обрати там голос, <b>вставити текст нижче</b> й скачати готовий файл.<br><br>"
                 "<b>Як отримати найкращу якість файлу:</b><br>"
-                "• <b>Тривалість:</b> 6–20 секунд (ідеально ~8–15 с).<br>"
+                "• <b>Тривалість:</b> 6–15 секунд (ідеально ~8–10 с).<br>"
                 "• <b>Чистота:</b> один диктор, без музики, звуків гри, шуму чи відлуння.<br>"
                 "• <b>Подача:</b> рівна природна гучність без шепоту, крику й перевантаження, із короткими паузами та різною інтонацією.",
                 engine_title=engine_title,
