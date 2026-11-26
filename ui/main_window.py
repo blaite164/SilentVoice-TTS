@@ -1300,7 +1300,7 @@ class MainWindow(QMainWindow):
                 "<b>Привіт! Це SilentVoice — твій текстовий голос</b><br>"
                 "Не можеш або не хочеш говорити в мікрофон? Просто друкуй, а програма озвучить усе за тебе — у дзвінках, іграх чи на стрімі. Чудово виручає і тих, кому складно або неможливо говорити голосом, і тих, хто просто хоче спілкуватися текстом.<br><br>"
                 "<b>Налаштування за хвилинку:</b><br>"
-                "1. <b>Обери, чим озвучувати.</b> Зазирни в <b>«🎙️ Голос та Озвучка»</b> та встанови будь-який TTS-рушій: офлайн у <b>«📦 Завантажити на ПК»</b> або онлайн у <b>«☁️ Онлайн-голоси»</b> (найпростіше почати з безкоштовного <b>Edge-TTS</b>).<br>"
+                "1. <b>Обери, чим озвучувати.</b> Зазирни в <b>«🎙️ Голос та Озвучка»</b> та встанови будь-який TTS-рушій: офлайн у <b>«💻 Завантажити на ПК»</b> або онлайн у <b>«🌐 Онлайн-голоси»</b> (найпростіше почати з безкоштовного <b>Edge-TTS</b>).<br>"
                 "2. <b>Підбери голос.</b> У самому верху в <b>«Ваш активний голос»</b> вибери диктора до смаку й перевір звучання.<br>"
                 "3. <b>Користуйся де завгодно.</b> Натисни <b>{hk_toggle}</b> поверх будь-якої програми, набери повідомлення й відправ через <b>{hk_send}</b> — і тебе почують!<br><br>"
                 "<i>💡 Порада: щоб звук йшов у Discord чи гру, увімкни <b>VB-Cable</b> у вкладці <b>«🔊 Звук та Система»</b>.</i>",
@@ -1865,8 +1865,8 @@ class MainWindow(QMainWindow):
 
         # Нижня частина: 5 вкладок (Завантажити на ПК / Онлайн-голоси / Усі налаштування / AI Орфографія / Чат Twitch)
         self.tts_tabs = QTabWidget()
-        self.tts_tabs.addTab(self._build_tts_tab_models(), tr("ui_123", "📦 Завантажити на ПК"))
-        self.tts_tabs.addTab(self._build_tts_tab_online(), tr("ui_124", "☁️ Онлайн-голоси"))
+        self.tts_tabs.addTab(self._build_tts_tab_models(), tr("ui_123", "💻 Завантажити на ПК"))
+        self.tts_tabs.addTab(self._build_tts_tab_online(), tr("ui_124", "🌐 Онлайн-голоси"))
         self.tts_tabs.addTab(self._build_tts_tab_all_settings(), tr("ui_125", "⚙️ Усі налаштування"))
         self.tts_tabs.addTab(self._build_tts_tab_ai_spellcheck(), tr("ui_126", "🪄 AI Орфографія"))
         self.tts_tabs.addTab(self._build_tts_tab_twitch_chat(), tr("ui_tts_tab_twitch", "💬 Чат Twitch"))
@@ -1970,7 +1970,7 @@ class MainWindow(QMainWindow):
         visible_engines = tts_manager.get_visible_local_engines()
         if not visible_engines:
             empty_lbl = QLabel(
-                tr("ui_128", "Для обраної мови локальні моделі не передбачені — скористайтеся вкладкою «☁️ Онлайн-голоси» (Microsoft Edge-TTS, Google, ElevenLabs або OpenAI).")
+                tr("ui_128", "Для обраної мови локальні моделі не передбачені — скористайтеся вкладкою «🌐 Онлайн-голоси» (Microsoft Edge-TTS, Google, ElevenLabs або OpenAI).")
             )
             empty_lbl.setWordWrap(True)
             empty_lbl.setStyleSheet("color: #94A3B8; font-size: 13px; padding: 18px;")
