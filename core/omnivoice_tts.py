@@ -324,6 +324,49 @@ def get_active_omnivoice_design_instruct() -> str:
     )
 
 
+def format_omnivoice_design_summary_localized() -> str:
+    """Return localized human-readable summary of active Voice Design attributes for the UI card."""
+    g = str(config.get("omnivoice_design_gender", "female") or "").strip().lower()
+    a = str(config.get("omnivoice_design_age", "young adult") or "").strip().lower()
+    p = str(config.get("omnivoice_design_pitch", "moderate pitch") or "").strip().lower()
+    acc = str(config.get("omnivoice_design_accent", "") or "").strip().lower()
+    whisper = bool(config.get("omnivoice_whisper", False))
+
+    gender_map = {
+        "female": tr("omnivoice.gender.female", "Жіночий"),
+        "male": tr("omnivoice.gender.male", "Чоловічий"),
+    }
+    age_map = {
+        "child": tr("omnivoice.age.child", "Дитина"),
+        "teenager": tr("omnivoice.age.teenager", "Підліток"),
+        "young adult": tr("omnivoice.age.young_adult", "Молодий"),
+        "middle-aged": tr("omnivoice.age.middle_aged", "Середній"),
+        "elderly": tr("omnivoice.age.elderly", "Літній"),
+    }
+    pitch_map = {
+        "very low pitch": tr("omnivoice.pitch.very_low", "Дуже низький"),
+        "low pitch": tr("omnivoice.pitch.low", "Низький"),
+        "moderate pitch": tr("omnivoice.pitch.moderate", "Середній"),
+        "high pitch": tr("omnivoice.pitch.high", "Високий"),
+        "very high pitch": tr("omnivoice.pitch.very_high", "Дуже високий"),
+    }
+
+    parts: List[str] = []
+    if g in gender_map:
+        parts.append(gender_map[g])
+    if a in age_map:
+        parts.append(age_map[a])
+    if p in pitch_map:
+        parts.append(pitch_map[p])
+    if acc in OMNIVOICE_ACCENTS and acc:
+        parts.append(acc.replace(" accent", "").title())
+    if whisper:
+        parts.append("🤫")
+    if not parts:
+        return ", ".join((gender_map["female"], age_map["young adult"], pitch_map["moderate pitch"]))
+    return ", ".join(parts)
+
+
 def get_active_omnivoice_seed() -> int:
     raw = config.get("omnivoice_design_seed", 42)
     try:

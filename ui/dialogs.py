@@ -1549,7 +1549,7 @@ class OmniVoiceSettingsDialog(QDialog):
                 from core.audio_router import audio_router
                 from core.omnivoice_tts import (
                     _omnivoice_server,
-                    build_omnivoice_design_instruct,
+                    build_omnivoice_instruct,
                     normalize_omnivoice_lang_label,
                     prepare_omnivoice_reference_wav,
                     resolve_omnivoice_ref_text,
@@ -1571,7 +1571,7 @@ class OmniVoiceSettingsDialog(QDialog):
                     instruct = "whisper" if whisper else ""
                 else:
                     instruct = (
-                        build_omnivoice_design_instruct(
+                        build_omnivoice_instruct(
                             gender=gender,
                             age=age,
                             pitch=pitch,

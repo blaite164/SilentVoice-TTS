@@ -2208,7 +2208,7 @@ class MainWindow(QMainWindow):
         if isinstance(ref_lbl, QLabel):
             if engine_id == "omnivoice":
                 from core.omnivoice_tts import (
-                    get_active_omnivoice_design_instruct,
+                    format_omnivoice_design_summary_localized,
                     normalize_omnivoice_mode,
                     normalize_omnivoice_steps,
                 )
@@ -2219,15 +2219,23 @@ class MainWindow(QMainWindow):
                 if ov_mode == "clone" and has_ref:
                     name = os.path.basename(ref_path)
                     ref_lbl.setStyleSheet("color: #34D399; font-size: 12px;")
-                    ref_lbl.setText(f"🎤 {name} · {ov_steps}st{ov_whisper}")
+                    ref_lbl.setText(
+                        tr(
+                            "omnivoice.card.clone_status",
+                            "🎤 {name} · {steps} кр.{whisper}",
+                            name=name,
+                            steps=ov_steps,
+                            whisper=ov_whisper,
+                        )
+                    )
                     ref_lbl.setToolTip(ref_path)
                 else:
-                    instruct = get_active_omnivoice_design_instruct() or "female, young adult, moderate pitch"
+                    instruct_loc = format_omnivoice_design_summary_localized()
                     ref_lbl.setStyleSheet("color: #60A5FA; font-size: 12px;")
                     design_txt = tr(
                         "omnivoice.card.design_status",
-                        "✨ Voice Design ({instruct}) · {steps}st",
-                        instruct=instruct,
+                        "✨ Конструктор голосу ({instruct}) · {steps} кр.",
+                        instruct=instruct_loc,
                         steps=ov_steps,
                     )
                     ref_lbl.setText(design_txt)

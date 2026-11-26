@@ -1347,7 +1347,7 @@
   "tts.size.omnivoice": "~1.2 GB",
   "omnivoice.settings_btn": "⚙ Ajustes",
   "omnivoice.settings_btn_tip": "Modo clonacion / Voice Design, texto de referencia, pasos (16/32) y susurro",
-  "omnivoice.card.design_status": "✨ Voice Design ({instruct}) · {steps}st",
+  "omnivoice.card.design_status": "✨ Diseño de voz ({instruct}) · {steps} pasos",
   "omnivoice.dlg.title": "Ajustes de OmniVoice",
   "omnivoice.dlg.header": "🎛️ Ajustes de OmniVoice",
   "omnivoice.mode.clone": "🎤 Clonacion de voz (desde archivo)",
@@ -1405,5 +1405,6 @@
   "hk.omnivoice_disabled_tip": "No disponible hasta que OmniVoice sea seleccionado como voz activa",
   "clone.guide_btn_tip": "Guía breve sobre clonación de voz, dónde conseguir muestras y textos listos",
   "omnivoice.test_btn": "🔊 Probar voz",
-  "omnivoice.test_running": "⏳ Sintetizando..."
+  "omnivoice.test_running": "⏳ Sintetizando...",
+  "omnivoice.card.clone_status": "🎤 {name} · {steps} pasos{whisper}"
 }

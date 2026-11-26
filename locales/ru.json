@@ -1347,7 +1347,7 @@
   "tts.size.omnivoice": "~1.2 ГБ",
   "omnivoice.settings_btn": "⚙ Настройки",
   "omnivoice.settings_btn_tip": "Режим клонирования / Voice Design, текст референса, шаги (16/32) и шёпот",
-  "omnivoice.card.design_status": "✨ Voice Design ({instruct}) · {steps}st",
+  "omnivoice.card.design_status": "✨ Конструктор голоса ({instruct}) · {steps} ш.",
   "omnivoice.dlg.title": "Настройки OmniVoice",
   "omnivoice.dlg.header": "🎛️ Настройки OmniVoice",
   "omnivoice.mode.clone": "🎤 Клонирование голоса (из файла)",
@@ -1405,5 +1405,6 @@
   "hk.omnivoice_disabled_tip": "Недоступно, пока активным голосом не выбран OmniVoice",
   "clone.guide_btn_tip": "Кратко о клонировании голоса, где взять образцы и готовые тексты",
   "omnivoice.test_btn": "🔊 Прослушать тест",
-  "omnivoice.test_running": "⏳ Синтез..."
+  "omnivoice.test_running": "⏳ Синтез...",
+  "omnivoice.card.clone_status": "🎤 {name} · {steps} ш.{whisper}"
 }
