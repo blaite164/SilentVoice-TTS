@@ -16,13 +16,13 @@ from core.tts_manager import ENGINE_SPECS, tts_manager
 class NewLocalTtsModelsTests(unittest.TestCase):
     def test_visible_local_engines_include_new_models_for_supported_languages(self) -> None:
         expected_by_lang = {
-            "en": {"piper", "silero", "kokoro_82m", "soprano_1_1", "zonos3_mini", "qwen3_tts"},
-            "uk": {"piper", "silero", "holos", "zonos3_mini"},
-            "ru": {"piper", "silero", "teratts", "zonos3_mini", "qwen3_tts"},
-            "de": {"piper", "silero", "zonos3_mini", "qwen3_tts"},
-            "es": {"piper", "silero", "zonos3_mini", "qwen3_tts"},
-            "fr": {"piper", "silero", "zonos3_mini", "qwen3_tts"},
-            "pl": {"piper", "zonos3_mini"},
+            "en": {"piper", "silero", "kokoro_82m", "soprano_1_1", "omnivoice", "zonos3_mini", "qwen3_tts"},
+            "uk": {"piper", "silero", "holos", "omnivoice", "zonos3_mini"},
+            "ru": {"piper", "silero", "teratts", "omnivoice", "zonos3_mini", "qwen3_tts"},
+            "de": {"piper", "silero", "omnivoice", "zonos3_mini", "qwen3_tts"},
+            "es": {"piper", "silero", "omnivoice", "zonos3_mini", "qwen3_tts"},
+            "fr": {"piper", "silero", "omnivoice", "zonos3_mini", "qwen3_tts"},
+            "pl": {"piper", "omnivoice", "zonos3_mini"},
         }
         for lang, expected in expected_by_lang.items():
             with patch.object(tts_manager, "_current_lang", return_value=lang):

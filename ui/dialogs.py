@@ -10,6 +10,7 @@ ui/dialogs.py — Модальні вікна, підказки (!) та діа�
 from __future__ import annotations
 
 import copy
+import random
 import shutil
 import threading
 import time
@@ -30,6 +31,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QFormLayout,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -39,6 +41,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSizePolicy,
     QSlider,
+    QSpinBox,
     QStackedWidget,
     QTabBar,
     QTextEdit,
@@ -612,7 +615,7 @@ class VoiceSamplesDialog(QDialog):
     Для OpenVoice / Chatterbox / Qwen3-TTS додатково підтримує фільтр за мовами, статтю, гайд та кнопку вибору голосу.
     """
 
-    _CLONE_ENGINES = ("openvoice", "qwen3_tts", "zonos3_mini")
+    _CLONE_ENGINES = ("openvoice", "omnivoice", "qwen3_tts", "zonos3_mini")
     _ENGINES_WITH_BUILTIN_AND_CLONE = ("zonos3_mini",)
 
     def __init__(
@@ -1130,6 +1133,407 @@ class OpenVoiceGuideDialog(QDialog):
         if cb is not None:
             cb.setText(self.sample_text_edit.toPlainText())
         self.copy_status_lbl.setText(tr("ov.guide.copied", "✓ Скопійовано в буфер обміну!"))
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        center_dialog_on_screen(self)
+        if not getattr(self, "_sv_centered_once", False):
+            self._sv_centered_once = True
+            QTimer.singleShot(0, lambda: center_dialog_on_screen(self))
+
+
+class OmniVoiceSettingsDialog(QDialog):
+    """Налаштування OmniVoice: Клонування (+ Whisper ASR), Конструктор голосу (Voice Design), кроки та шепіт."""
+
+    _whisper_finished = Signal(str, str)
+
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle(tr("omnivoice.dlg.title", "Налаштування OmniVoice"))
+        self.setMinimumSize(560, 520)
+        self.resize(600, 560)
+        self.setStyleSheet(DIALOG_STYLESHEET)
+
+        from core.omnivoice_tts import (
+            OMNIVOICE_ACCENTS,
+            OMNIVOICE_AGES,
+            OMNIVOICE_GENDERS,
+            OMNIVOICE_PITCHES,
+            get_active_omnivoice_seed,
+            is_omnivoice_whisper_installed,
+            normalize_omnivoice_mode,
+            normalize_omnivoice_steps,
+        )
+
+        self._ref_path: str = str(config.get("omnivoice_ref_path", "") or "").strip()
+        self._whisper_running: bool = False
+        self._whisper_finished.connect(self._on_whisper_done)
+
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(20, 18, 20, 16)
+        lay.setSpacing(12)
+
+        hdr = QLabel(tr("omnivoice.dlg.header", "🎛️ Налаштування OmniVoice"))
+        hdr.setObjectName("dialogTitle")
+        lay.addWidget(hdr)
+
+        # --- 1. Режим голосу: Clone vs Voice Design ---
+        mode_card = QFrame()
+        mode_card.setStyleSheet("QFrame { background-color: #252B3D; border: 1px solid #38415C; border-radius: 10px; }")
+        m_lay = QHBoxLayout(mode_card)
+        m_lay.setContentsMargins(14, 10, 14, 10)
+        m_lay.setSpacing(16)
+
+        self.radio_clone = QRadioButton(tr("omnivoice.mode.clone", "🎤 Клонування голосу (з файлу)"))
+        self.radio_design = QRadioButton(tr("omnivoice.mode.design", "✨ Конструктор голосу (без файлу)"))
+        self._mode_group = QButtonGroup(self)
+        self._mode_group.addButton(self.radio_clone)
+        self._mode_group.addButton(self.radio_design)
+        cur_mode = normalize_omnivoice_mode()
+        if cur_mode == "design":
+            self.radio_design.setChecked(True)
+        else:
+            self.radio_clone.setChecked(True)
+        self.radio_clone.toggled.connect(self._sync_mode_visibility)
+        m_lay.addWidget(self.radio_clone)
+        m_lay.addWidget(self.radio_design)
+        m_lay.addStretch(1)
+        lay.addWidget(mode_card)
+
+        # --- 2. Панель клонування голосу ---
+        self.clone_card = QFrame()
+        self.clone_card.setStyleSheet("QFrame { background-color: #252B3D; border: 1px solid #38415C; border-radius: 10px; }")
+        cl_lay = QVBoxLayout(self.clone_card)
+        cl_lay.setContentsMargins(14, 12, 14, 12)
+        cl_lay.setSpacing(8)
+
+        file_row = QHBoxLayout()
+        file_row.setSpacing(8)
+        self.ref_file_lbl = ElidedLabel("")
+        self.ref_file_lbl.setStyleSheet("border: none; background: transparent;")
+        file_row.addWidget(self.ref_file_lbl, 1)
+
+        pick_btn = QPushButton(tr("ov.pick_file", "📂 Обрати голос"))
+        pick_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        pick_btn.clicked.connect(self._pick_ref_file)
+        file_row.addWidget(pick_btn)
+        cl_lay.addLayout(file_row)
+
+        ref_txt_lbl = QLabel(tr("omnivoice.ref_text.label", "Текст того, що сказано у файлі (обов'язково для клонування):"))
+        ref_txt_lbl.setStyleSheet("border: none; background: transparent; color: #CBD5E1; font-size: 12.5px;")
+        cl_lay.addWidget(ref_txt_lbl)
+
+        self.ref_text_edit = QTextEdit()
+        self.ref_text_edit.setFixedHeight(78)
+        self.ref_text_edit.setPlaceholderText(
+            tr(
+                "omnivoice.ref_text.ph",
+                "Введіть текст із файлу або залиште порожнім — при озвучуванні спрацює авторозпізнавання Whisper",
+            )
+        )
+        self.ref_text_edit.setPlainText(str(config.get("omnivoice_ref_text", "") or ""))
+        self.ref_text_edit.setStyleSheet(
+            "QTextEdit { background-color: #1B2030; border: 1px solid #38415C; border-radius: 8px; color: #F8FAFC; padding: 6px; font-size: 12.5px; }"
+        )
+        cl_lay.addWidget(self.ref_text_edit)
+
+        asr_row = QHBoxLayout()
+        asr_row.setSpacing(8)
+        self.whisper_btn = QPushButton(tr("omnivoice.whisper.btn", "✨ Розпізнати (Whisper)"))
+        self.whisper_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.whisper_btn.setEnabled(is_omnivoice_whisper_installed())
+        self.whisper_btn.clicked.connect(self._run_whisper_asr)
+        asr_row.addWidget(self.whisper_btn)
+
+        guide_txt_btn = QPushButton(tr("omnivoice.insert_guide_btn", "📋 Текст із гайду"))
+        guide_txt_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        guide_txt_btn.clicked.connect(self._insert_guide_sample_text)
+        asr_row.addWidget(guide_txt_btn)
+
+        self.asr_status_lbl = QLabel("")
+        self.asr_status_lbl.setStyleSheet("border: none; background: transparent; color: #94A3B8; font-size: 12px;")
+        asr_row.addWidget(self.asr_status_lbl, 1)
+        cl_lay.addLayout(asr_row)
+        lay.addWidget(self.clone_card)
+
+        # --- 3. Панель конструктора голосу (Voice Design) ---
+        self.design_card = QFrame()
+        self.design_card.setStyleSheet("QFrame { background-color: #252B3D; border: 1px solid #38415C; border-radius: 10px; }")
+        dg_lay = QVBoxLayout(self.design_card)
+        dg_lay.setContentsMargins(14, 12, 14, 12)
+        dg_lay.setSpacing(10)
+
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(12)
+        grid.setVerticalSpacing(8)
+
+        gender_labels = {
+            "": tr("omnivoice.opt.auto", "Авто"),
+            "female": tr("omnivoice.gender.female", "Жіночий"),
+            "male": tr("omnivoice.gender.male", "Чоловічий"),
+        }
+        age_labels = {
+            "": tr("omnivoice.opt.auto", "Авто"),
+            "child": tr("omnivoice.age.child", "Дитина"),
+            "teenager": tr("omnivoice.age.teenager", "Підліток"),
+            "young adult": tr("omnivoice.age.young_adult", "Молодий"),
+            "middle-aged": tr("omnivoice.age.middle_aged", "Середній"),
+            "elderly": tr("omnivoice.age.elderly", "Літній"),
+        }
+        pitch_labels = {
+            "": tr("omnivoice.opt.auto", "Авто"),
+            "very low pitch": tr("omnivoice.pitch.very_low", "Дуже низький"),
+            "low pitch": tr("omnivoice.pitch.low", "Низький"),
+            "moderate pitch": tr("omnivoice.pitch.moderate", "Середній"),
+            "high pitch": tr("omnivoice.pitch.high", "Високий"),
+            "very high pitch": tr("omnivoice.pitch.very_high", "Дуже високий"),
+        }
+        accent_labels = {
+            "": tr("omnivoice.accent.none", "Без акценту"),
+            "american accent": "American (US)",
+            "british accent": "British (UK)",
+            "australian accent": "Australian",
+            "canadian accent": "Canadian",
+            "indian accent": "Indian",
+            "chinese accent": "Chinese",
+            "japanese accent": "Japanese",
+            "korean accent": "Korean",
+            "portuguese accent": "Portuguese",
+            "russian accent": "Russian",
+        }
+
+        def _make_lbl(text: str) -> QLabel:
+            lbl = QLabel(text)
+            lbl.setStyleSheet("border: none; background: transparent; color: #CBD5E1; font-weight: 600;")
+            return lbl
+
+        self.gender_combo = DialogComboBox()
+        for val in OMNIVOICE_GENDERS:
+            self.gender_combo.addItem(gender_labels.get(val, val), val)
+        self._select_combo_data(self.gender_combo, str(config.get("omnivoice_design_gender", "female") or ""))
+
+        self.age_combo = DialogComboBox()
+        for val in OMNIVOICE_AGES:
+            self.age_combo.addItem(age_labels.get(val, val), val)
+        self._select_combo_data(self.age_combo, str(config.get("omnivoice_design_age", "young adult") or ""))
+
+        self.pitch_combo = DialogComboBox()
+        for val in OMNIVOICE_PITCHES:
+            self.pitch_combo.addItem(pitch_labels.get(val, val), val)
+        self._select_combo_data(self.pitch_combo, str(config.get("omnivoice_design_pitch", "moderate pitch") or ""))
+
+        self.accent_combo = DialogComboBox()
+        for val in OMNIVOICE_ACCENTS:
+            self.accent_combo.addItem(accent_labels.get(val, val), val)
+        self._select_combo_data(self.accent_combo, str(config.get("omnivoice_design_accent", "") or ""))
+
+        grid.addWidget(_make_lbl(tr("omnivoice.design.gender", "Стать:")), 0, 0)
+        grid.addWidget(self.gender_combo, 0, 1)
+        grid.addWidget(_make_lbl(tr("omnivoice.design.age", "Вік:")), 0, 2)
+        grid.addWidget(self.age_combo, 0, 3)
+        grid.addWidget(_make_lbl(tr("omnivoice.design.pitch", "Тембр:")), 1, 0)
+        grid.addWidget(self.pitch_combo, 1, 1)
+        grid.addWidget(_make_lbl(tr("omnivoice.design.accent", "Акцент (EN):")), 1, 2)
+        grid.addWidget(self.accent_combo, 1, 3)
+        grid.setColumnStretch(1, 1)
+        grid.setColumnStretch(3, 1)
+        dg_lay.addLayout(grid)
+
+        seed_row = QHBoxLayout()
+        seed_row.setSpacing(8)
+        seed_row.addWidget(_make_lbl(tr("omnivoice.design.seed", "Seed голосу:")))
+        self.seed_spin = QSpinBox()
+        self.seed_spin.setRange(0, 999999)
+        self.seed_spin.setValue(get_active_omnivoice_seed())
+        self.seed_spin.setMinimumWidth(110)
+        seed_row.addWidget(self.seed_spin)
+
+        rand_seed_btn = QPushButton(tr("omnivoice.design.new_seed", "🎲 Новий голос"))
+        rand_seed_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        rand_seed_btn.clicked.connect(lambda checked=False: self.seed_spin.setValue(random.randint(1, 999999)))
+        seed_row.addWidget(rand_seed_btn)
+        seed_row.addStretch(1)
+        dg_lay.addLayout(seed_row)
+        lay.addWidget(self.design_card)
+
+        # --- 4. Швидкість / Якість (кроки MaskGIT) + Шепіт + Denoise ---
+        perf_card = QFrame()
+        perf_card.setStyleSheet("QFrame { background-color: #252B3D; border: 1px solid #38415C; border-radius: 10px; }")
+        pf_lay = QVBoxLayout(perf_card)
+        pf_lay.setContentsMargins(14, 12, 14, 12)
+        pf_lay.setSpacing(8)
+
+        steps_row = QHBoxLayout()
+        steps_row.setSpacing(10)
+        steps_row.addWidget(_make_lbl(tr("omnivoice.steps.label", "Якість / швидкість (кроки):")))
+        self.steps_combo = DialogComboBox()
+        self.steps_combo.addItem(tr("omnivoice.steps.16", "⚡ Швидко — 16 кроків (рекомендовано)"), 16)
+        self.steps_combo.addItem(tr("omnivoice.steps.24", "⚖️ Баланс — 24 кроки"), 24)
+        self.steps_combo.addItem(tr("omnivoice.steps.32", "🎯 Макс. якість — 32 кроки"), 32)
+        self.steps_combo.addItem(tr("omnivoice.steps.8", "🚀 Ультра-швидко — 8 кроків"), 8)
+        cur_steps = normalize_omnivoice_steps()
+        s_idx = self.steps_combo.findData(cur_steps)
+        self.steps_combo.setCurrentIndex(s_idx if s_idx >= 0 else 0)
+        steps_row.addWidget(self.steps_combo, 1)
+        pf_lay.addLayout(steps_row)
+
+        flags_row = QHBoxLayout()
+        flags_row.setSpacing(16)
+        self.whisper_chk = QCheckBox(tr("omnivoice.flag.whisper", "🤫 Шепіт (whisper)"))
+        self.whisper_chk.setChecked(bool(config.get("omnivoice_whisper", False)))
+        flags_row.addWidget(self.whisper_chk)
+
+        self.denoise_chk = QCheckBox(tr("omnivoice.flag.denoise", "🔇 Очищення шуму (denoise)"))
+        self.denoise_chk.setChecked(bool(config.get("omnivoice_denoise", True)))
+        flags_row.addWidget(self.denoise_chk)
+        flags_row.addStretch(1)
+        pf_lay.addLayout(flags_row)
+
+        hint_lbl = QLabel(tr("omnivoice.tags.hint", "💡 Теги реакцій прямо в тексті: [laughter] — сміх, [sigh] — зітхання"))
+        hint_lbl.setWordWrap(True)
+        hint_lbl.setStyleSheet("border: none; background: transparent; color: #94A3B8; font-size: 12px;")
+        pf_lay.addWidget(hint_lbl)
+        lay.addWidget(perf_card)
+
+        lay.addStretch(1)
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch(1)
+        cancel_btn = QPushButton(tr("ui_180", "Скасувати"))
+        cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        cancel_btn.clicked.connect(self.reject)
+        btn_row.addWidget(cancel_btn)
+
+        save_btn = QPushButton(tr("ui_179", "Зберегти"))
+        save_btn.setObjectName("primaryBtn")
+        save_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        save_btn.clicked.connect(self._save_and_accept)
+        btn_row.addWidget(save_btn)
+        lay.addLayout(btn_row)
+
+        self._refresh_ref_label()
+        self._sync_mode_visibility()
+
+    @staticmethod
+    def _select_combo_data(combo: QComboBox, value: str) -> None:
+        idx = combo.findData(value)
+        combo.setCurrentIndex(idx if idx >= 0 else 0)
+
+    def _sync_mode_visibility(self) -> None:
+        is_clone = self.radio_clone.isChecked()
+        self.clone_card.setVisible(is_clone)
+        self.design_card.setVisible(not is_clone)
+
+    def _refresh_ref_label(self) -> None:
+        if self._ref_path and Path(self._ref_path).is_file():
+            self.ref_file_lbl.setStyleSheet("border: none; background: transparent; color: #34D399; font-weight: 600;")
+            self.ref_file_lbl.setText(tr("ov.ref_selected", "🎤 {name}", name=Path(self._ref_path).name))
+            self.ref_file_lbl.setToolTip(self._ref_path)
+        else:
+            self.ref_file_lbl.setStyleSheet("border: none; background: transparent; color: #FBBF24;")
+            missing = tr("ov.ref_missing", "⚠️ Оберіть або перетягніть аудіофайл")
+            self.ref_file_lbl.setText(missing)
+            self.ref_file_lbl.setToolTip(missing)
+
+    def _pick_ref_file(self) -> None:
+        start_dir = str(Path(self._ref_path).parent) if (self._ref_path and Path(self._ref_path).exists()) else ""
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            tr("ov.pick_dlg_title", "Оберіть файл голосу для клонування"),
+            start_dir,
+            tr("ov.pick_dlg_filter", "Аудіофайли (*.wav *.mp3 *.ogg *.flac *.m4a);;Усі файли (*.*)"),
+        )
+        if not path or not Path(path).is_file():
+            return
+        from core.tts_manager import register_custom_clone_sample
+
+        resolved = register_custom_clone_sample("omnivoice", path) or path
+        self._ref_path = resolved
+        self._refresh_ref_label()
+        self.asr_status_lbl.setText("")
+
+        # Auto-load cached transcript or sidecar .txt if available
+        try:
+            from core.omnivoice_tts import load_cached_ref_transcript, prepare_omnivoice_reference_wav
+
+            _wav, digest = prepare_omnivoice_reference_wav(Path(resolved))
+            cached = load_cached_ref_transcript(digest)
+            if cached:
+                self.ref_text_edit.setPlainText(cached)
+                self.asr_status_lbl.setText(tr("omnivoice.whisper.cached", "✓ Текст завантажено з кешу"))
+                return
+            sidecar = Path(resolved).with_suffix(".txt")
+            if sidecar.is_file():
+                stxt = sidecar.read_text(encoding="utf-8", errors="ignore").strip()
+                if stxt:
+                    self.ref_text_edit.setPlainText(stxt)
+                    return
+        except Exception:
+            pass
+        self.ref_text_edit.clear()
+
+    def _insert_guide_sample_text(self) -> None:
+        cur_lang = str(config.get("app_language", "uk") or "uk").strip().lower()
+        if cur_lang == "ua":
+            cur_lang = "uk"
+        self.ref_text_edit.setPlainText(OPENVOICE_SAMPLE_TEXTS.get(cur_lang, OPENVOICE_SAMPLE_TEXTS["en"]))
+        self.asr_status_lbl.setText("")
+
+    def _run_whisper_asr(self) -> None:
+        if self._whisper_running:
+            return
+        if not self._ref_path or not Path(self._ref_path).is_file():
+            self.asr_status_lbl.setStyleSheet("border: none; background: transparent; color: #FBBF24; font-size: 12px;")
+            self.asr_status_lbl.setText(tr("ov.ref_missing", "⚠️ Оберіть або перетягніть аудіофайл"))
+            return
+
+        self._whisper_running = True
+        self.whisper_btn.setEnabled(False)
+        self.asr_status_lbl.setStyleSheet("border: none; background: transparent; color: #94A3B8; font-size: 12px;")
+        self.asr_status_lbl.setText(tr("omnivoice.whisper.running", "⏳ Розпізнавання голосу..."))
+        ref_file = Path(self._ref_path)
+
+        def _job() -> None:
+            try:
+                from core.omnivoice_tts import resolve_omnivoice_ref_text
+
+                _wav, _digest, text = resolve_omnivoice_ref_text(ref_file, lang="auto", force_whisper=True)
+                self._whisper_finished.emit(text, "")
+            except Exception as exc:
+                self._whisper_finished.emit("", str(exc))
+
+        threading.Thread(target=_job, daemon=True).start()
+
+    def _on_whisper_done(self, text: str, err: str) -> None:
+        self._whisper_running = False
+        self.whisper_btn.setEnabled(True)
+        if err:
+            self.asr_status_lbl.setStyleSheet("border: none; background: transparent; color: #F87171; font-size: 12px;")
+            self.asr_status_lbl.setText(err[:120])
+            return
+        self.ref_text_edit.setPlainText(text)
+        self.asr_status_lbl.setStyleSheet("border: none; background: transparent; color: #34D399; font-size: 12px;")
+        self.asr_status_lbl.setText(tr("omnivoice.whisper.done", "✓ Текст розпізнано!"))
+
+    def _save_and_accept(self) -> None:
+        mode = "design" if self.radio_design.isChecked() else "clone"
+        config.set("omnivoice_mode", mode)
+        config.set("omnivoice_ref_path", self._ref_path)
+        ref_txt = self.ref_text_edit.toPlainText().strip()
+        config.set("omnivoice_ref_text", ref_txt)
+        config.set("omnivoice_ref_text_path", self._ref_path if ref_txt else "")
+        config.set("omnivoice_steps", int(self.steps_combo.currentData() or 16))
+        config.set("omnivoice_whisper", bool(self.whisper_chk.isChecked()))
+        config.set("omnivoice_denoise", bool(self.denoise_chk.isChecked()))
+        config.set("omnivoice_design_gender", str(self.gender_combo.currentData() or ""))
+        config.set("omnivoice_design_age", str(self.age_combo.currentData() or ""))
+        config.set("omnivoice_design_pitch", str(self.pitch_combo.currentData() or ""))
+        config.set("omnivoice_design_accent", str(self.accent_combo.currentData() or ""))
+        config.set("omnivoice_design_seed", int(self.seed_spin.value()))
+
+        if str(config.get("active_engine", "") or "").strip() == "omnivoice":
+            tts_manager.schedule_smart_warmup(0.3, "omnivoice_settings_changed")
+        self.accept()
 
     def showEvent(self, event) -> None:
         super().showEvent(event)

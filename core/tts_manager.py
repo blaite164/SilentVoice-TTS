@@ -653,6 +653,20 @@ ENGINE_SPECS: Dict[str, Dict[str, Any]] = {
         "size_label": "~193 МБ",
         "voices": [],
     },
+    "omnivoice": {
+        "id": "omnivoice",
+        "title": "OmniVoice",
+        "size_label": "~1.2 ГБ",
+        "voices": [
+            {"id": "omnivoice_uk", "name": "OmniVoice (UK / Clone & Design)", "gender": None, "lang": "uk"},
+            {"id": "omnivoice_en", "name": "OmniVoice (EN / Clone & Design)", "gender": None, "lang": "en"},
+            {"id": "omnivoice_ru", "name": "OmniVoice (RU / Clone & Design)", "gender": None, "lang": "ru"},
+            {"id": "omnivoice_pl", "name": "OmniVoice (PL / Clone & Design)", "gender": None, "lang": "pl"},
+            {"id": "omnivoice_de", "name": "OmniVoice (DE / Clone & Design)", "gender": None, "lang": "de"},
+            {"id": "omnivoice_fr", "name": "OmniVoice (FR / Clone & Design)", "gender": None, "lang": "fr"},
+            {"id": "omnivoice_es", "name": "OmniVoice (ES / Clone & Design)", "gender": None, "lang": "es"},
+        ],
+    },
     "zonos3_mini": {
         "id": "zonos3_mini",
         "title": "ZONOS3-Mini",
@@ -1281,7 +1295,7 @@ def _infer_sample_gender(wav_path: Path, raw_stem: str) -> str:
             return "female"
         if low_p in _SAMPLE_MALE_DIR_NAMES:
             return "male"
-        if low_p in ("samples", "openvoice", "qwen3_tts", "zonos3_mini"):
+        if low_p in ("samples", "openvoice", "omnivoice", "qwen3_tts", "zonos3_mini"):
             break
     for text_cand in (wav_path.stem, raw_stem):
         if _SAMPLE_FEMALE_TOKEN_RE.search(text_cand):
@@ -1298,7 +1312,7 @@ def _normalize_sample_lang(lang: Optional[str]) -> str:
     return code if code in ("uk", "en", "ru", "pl", "de", "fr", "es") else "uk"
 
 
-CLONE_ENGINE_IDS = ("openvoice", "qwen3_tts", "zonos3_mini")
+CLONE_ENGINE_IDS = ("openvoice", "omnivoice", "qwen3_tts", "zonos3_mini")
 SHARED_CLONE_SAMPLES_SUBDIR = "clone_voices"
 
 
@@ -1778,7 +1792,7 @@ class TTSEngineManager(QObject):
 
     def _resolve_local_target_for(self, engine_id: str, voice_id: str) -> Optional[Tuple[str, str, str]]:
         eng = str(engine_id or "").strip()
-        if eng not in ("piper", "silero", "holos", "teratts", "kokoro_82m", "soprano_1_1", "zonos3_mini", "qwen3_tts"):
+        if eng not in ("piper", "silero", "holos", "teratts", "kokoro_82m", "soprano_1_1", "omnivoice", "zonos3_mini", "qwen3_tts"):
             return None
         if not self.is_engine_installed(eng):
             return None
@@ -2064,6 +2078,15 @@ class TTSEngineManager(QObject):
                 }
             except Exception:
                 pass
+        if not any(item[0] == "omnivoice" for item in targets):
+            try:
+                from core.omnivoice_tts import is_omnivoice_server_running, shutdown_omnivoice_tts
+
+                if is_omnivoice_server_running():
+                    shutdown_omnivoice_tts()
+                self._warmed_models = {item for item in self._warmed_models if item[0] != "omnivoice"}
+            except Exception:
+                pass
         ov_enabled = voice_cloner is not None and voice_cloner.models_present()
 
         pending_targets = [
@@ -2151,8 +2174,8 @@ class TTSEngineManager(QObject):
                         self.schedule_smart_warmup(delay_sec=5.0, reason=f"{reason}:busy", _retry=retry + 1)
                     return
 
-                is_heavy = engine_id in ("silero", "holos", "teratts", "qwen3_tts", "zonos3_mini")
-                min_ram_mb = 2048 if engine_id in ("qwen3_tts", "zonos3_mini") else (1024 if is_heavy else 350)
+                is_heavy = engine_id in ("silero", "holos", "teratts", "omnivoice", "qwen3_tts", "zonos3_mini")
+                min_ram_mb = 2048 if engine_id in ("omnivoice", "qwen3_tts", "zonos3_mini") else (1024 if is_heavy else 350)
                 req_ram = min_ram_mb if role == "primary" else (min_ram_mb + 1024)
                 if role != "primary" and low_power:
                     continue
@@ -2170,6 +2193,9 @@ class TTSEngineManager(QObject):
                     if engine_id == "qwen3_tts":
                         from core.llama_tts import warmup_qwen3_tts
                         warmup_qwen3_tts()
+                    elif engine_id == "omnivoice":
+                        from core.omnivoice_tts import warmup_omnivoice_tts
+                        warmup_omnivoice_tts(lang=self._current_lang())
                     elif engine_id in ("zonos3_mini", "soprano_1_1") or (engine_id == "kokoro_82m" and not _kokoro_uses_cpu):
                         from core.llama_tts import warmup_llama_tts
                         voices = ENGINE_SPECS.get(engine_id, {}).get("voices", [])
@@ -2438,6 +2464,9 @@ class TTSEngineManager(QObject):
         if engine_id == "openvoice":
             from core.voice_cloner import voice_cloner
             return voice_cloner.is_installed()
+        if engine_id == "omnivoice":
+            from core.omnivoice_tts import is_omnivoice_installed
+            return is_omnivoice_installed()
         eng_dir = ENGINES_DIR / engine_id
         if not eng_dir.exists():
             return False
@@ -2788,6 +2817,11 @@ class TTSEngineManager(QObject):
         except Exception:
             pass
         try:
+            from core.omnivoice_tts import shutdown_omnivoice_tts
+            shutdown_omnivoice_tts()
+        except Exception:
+            pass
+        try:
             from core.kokoro_onnx_tts import kokoro_onnx_engine
             kokoro_onnx_engine.unload()
         except Exception:
@@ -2832,7 +2866,11 @@ class TTSEngineManager(QObject):
                         online_sig = json.dumps(safe_item, sort_keys=True, ensure_ascii=False, default=str)
                         break
         ov_sig = ""
-        if engine_id in ("qwen3_tts", "zonos3_mini"):
+        if engine_id == "omnivoice":
+            from core.omnivoice_tts import get_omnivoice_cache_signature
+
+            ov_sig = get_omnivoice_cache_signature()
+        elif engine_id in ("qwen3_tts", "zonos3_mini"):
             ref_path_val = str(config.get(f"{engine_id}_ref_path", "") or "").strip()
             ref_stat = ""
             if ref_path_val:
@@ -2869,7 +2907,7 @@ class TTSEngineManager(QObject):
 
     @staticmethod
     def _maybe_upgrade_openvoice(samples: np.ndarray, sr: int, engine_id: str = "") -> Tuple[np.ndarray, int]:
-        if engine_id == "qwen3_tts":
+        if engine_id in ("qwen3_tts", "omnivoice"):
             return samples, sr
         if engine_id == "zonos3_mini":
             own_ref = str(config.get("zonos3_mini_ref_path", "") or "").strip()
@@ -2944,9 +2982,10 @@ class TTSEngineManager(QObject):
             return samples, sr, primary_title
         except Exception as primary_exc:
             from core.llama_tts import Qwen3SynthesisCancelledError
+            from core.omnivoice_tts import OmniVoiceSynthesisCancelledError
             from core.telegram_silero import SynthesisCancelledError
 
-            if self._cancel_batch or isinstance(primary_exc, (SynthesisCancelledError, Qwen3SynthesisCancelledError)):
+            if self._cancel_batch or isinstance(primary_exc, (SynthesisCancelledError, Qwen3SynthesisCancelledError, OmniVoiceSynthesisCancelledError)):
                 raise
             if has_fallback and fb_entry:
                 fb_title = fb_entry["title"]
@@ -2981,7 +3020,7 @@ class TTSEngineManager(QObject):
                 self._cache_store(cache_key, samples, sr, primary_title)
                 return samples, sr, primary_title
             except Exception as retry_exc:
-                if self._cancel_batch or isinstance(retry_exc, (SynthesisCancelledError, Qwen3SynthesisCancelledError)):
+                if self._cancel_batch or isinstance(retry_exc, (SynthesisCancelledError, Qwen3SynthesisCancelledError, OmniVoiceSynthesisCancelledError)):
                     raise
                 print(
                     f"[TTSManager] Повторна спроба через {primary_title} також завершилась помилкою: {retry_exc}",
@@ -3041,6 +3080,12 @@ class TTSEngineManager(QObject):
             cancel_qwen3_synthesis()
         except Exception:
             pass
+        try:
+            from core.omnivoice_tts import cancel_omnivoice_synthesis
+
+            cancel_omnivoice_synthesis()
+        except Exception:
+            pass
         audio_router.stop()
         obs_server.broadcast_clear()
         self.status_changed.emit(tr("tts.status.stopped", "Зупинено"))
@@ -3057,6 +3102,12 @@ class TTSEngineManager(QObject):
             from core.llama_tts import cancel_qwen3_synthesis
 
             cancel_qwen3_synthesis()
+        except Exception:
+            pass
+        try:
+            from core.omnivoice_tts import cancel_omnivoice_synthesis
+
+            cancel_omnivoice_synthesis()
         except Exception:
             pass
         audio_router.stop()
@@ -3193,8 +3244,15 @@ class TTSEngineManager(QObject):
             return None
         eng_entry = next((a for a in available if a["id"] == engine_id), available[0])
         primary_id = eng_entry["id"]
-        if primary_id not in ("qwen3_tts", "zonos3_mini"):
+        if primary_id not in ("qwen3_tts", "zonos3_mini", "omnivoice"):
             return None
+        if primary_id == "omnivoice":
+            from core.omnivoice_tts import normalize_omnivoice_mode
+
+            own_ref = str(config.get("omnivoice_ref_path", "") or "").strip()
+            if normalize_omnivoice_mode() != "clone" or not (own_ref and Path(own_ref).is_file()):
+                # Voice Design uses buffered WAV for full peak normalisation (+6..12 dB cleaner level)
+                return None
         if primary_id == "zonos3_mini" and bool(config.get("openvoice_enabled", False)):
             own_ref = str(config.get("zonos3_mini_ref_path", "") or "").strip()
             if not (own_ref and Path(own_ref).is_file()):
@@ -3256,6 +3314,7 @@ class TTSEngineManager(QObject):
         Повертає False, якщо сталася помилка ДО першого звуку (щоб викликач міг відпрацювати fallback/retry).
         """
         from core.llama_tts import Qwen3SynthesisCancelledError, synthesize_llama_tts_stream, synthesize_qwen3_tts_stream
+        from core.omnivoice_tts import OmniVoiceSynthesisCancelledError, synthesize_omnivoice_tts_stream
         from core.telegram_silero import SynthesisCancelledError
 
         primary_id = plan["primary_id"]
@@ -3272,11 +3331,12 @@ class TTSEngineManager(QObject):
         first_ms = 0
 
         def _dsp_chunks():
-            stream_iter = (
-                synthesize_qwen3_tts_stream(synth_text, lang=lang, speed=1.0)
-                if primary_id == "qwen3_tts"
-                else synthesize_llama_tts_stream(primary_id, synth_text, lang=lang, voice=speaker, speed=1.0)
-            )
+            if primary_id == "qwen3_tts":
+                stream_iter = synthesize_qwen3_tts_stream(synth_text, lang=lang, speed=1.0)
+            elif primary_id == "omnivoice":
+                stream_iter = synthesize_omnivoice_tts_stream(synth_text, lang=lang, speed=1.0)
+            else:
+                stream_iter = synthesize_llama_tts_stream(primary_id, synth_text, lang=lang, voice=speaker, speed=1.0)
             for raw_chunk, sr in stream_iter:
                 if self._cancel_batch or not self._running:
                     raise Qwen3SynthesisCancelledError("Qwen3-TTS synthesis cancelled")
@@ -3319,7 +3379,7 @@ class TTSEngineManager(QObject):
                 on_first_chunk=_on_first_chunk,
                 on_generation_done=_on_generation_done,
             )
-        except (Qwen3SynthesisCancelledError, SynthesisCancelledError):
+        except (Qwen3SynthesisCancelledError, OmniVoiceSynthesisCancelledError, SynthesisCancelledError):
             if first_chunk_played:
                 self.speech_finished.emit(chunk_text)
             raise
@@ -3567,9 +3627,10 @@ class TTSEngineManager(QObject):
                             raise RuntimeError(tr("tts.err.empty_audio", "TTS-модель не повернула звук для цього тексту."))
             except Exception as exc:
                 from core.llama_tts import Qwen3SynthesisCancelledError
+                from core.omnivoice_tts import OmniVoiceSynthesisCancelledError
                 from core.telegram_silero import SynthesisCancelledError
 
-                if self._cancel_batch or isinstance(exc, (SynthesisCancelledError, Qwen3SynthesisCancelledError)):
+                if self._cancel_batch or isinstance(exc, (SynthesisCancelledError, Qwen3SynthesisCancelledError, OmniVoiceSynthesisCancelledError)):
                     self.status_changed.emit(tr("tts.status.stopped", "Зупинено"))
                     continue
                 raw_err = format_exception_message(exc)
@@ -3649,6 +3710,13 @@ class TTSEngineManager(QObject):
             voice_entry = next((v for v in voices if str(v.get("id")) == voice_id), None)
             lang = str((voice_entry or {}).get("lang") or (voice_id.rsplit("_", 1)[-1] if "_" in voice_id else "en") or "en")
             return synthesize_qwen3_tts(format_stress_marks(text, "strip"), lang=lang, speed=speed)
+        if engine_id == "omnivoice":
+            from core.omnivoice_tts import synthesize_omnivoice_tts
+
+            voices = ENGINE_SPECS.get(engine_id, {}).get("voices", [])
+            voice_entry = next((v for v in voices if str(v.get("id")) == voice_id), None)
+            lang = str((voice_entry or {}).get("lang") or self._current_lang() or "uk")
+            return synthesize_omnivoice_tts(format_stress_marks(text, "strip"), lang=lang, speed=speed)
         if engine_id.startswith("online:"):
             return self._synth_online_item(engine_id, voice_id, text, speed)
         raise RuntimeError(tr("tts.err.select_active_voice", "Оберіть активний голос у розділі «Голос та Озвучка»."))
@@ -5367,6 +5435,9 @@ class TTSEngineManager(QObject):
                     from core.voice_cloner import voice_cloner
                     voice_cloner.shutdown()
                     config.set("openvoice_enabled", False)
+                elif engine_id == "omnivoice":
+                    from core.omnivoice_tts import shutdown_omnivoice_tts
+                    shutdown_omnivoice_tts()
                 elif engine_id in ("qwen3_tts", "zonos3_mini", "kokoro_82m", "soprano_1_1"):
                     from core.llama_tts import shutdown_llama_tts
                     shutdown_llama_tts()
@@ -5395,6 +5466,11 @@ class TTSEngineManager(QObject):
                 from core.llama_tts import LLAMA_TTS_DIR, is_any_llama_tts_installed
                 if not is_any_llama_tts_installed() and LLAMA_TTS_DIR.exists():
                     shutil.rmtree(LLAMA_TTS_DIR, ignore_errors=True)
+            elif engine_id == "omnivoice":
+                from core.omnivoice_tts import OMNIVOICE_RUNTIME_DIR, OMNIVOICE_WHISPER_DIR
+                for extra_dir in (OMNIVOICE_RUNTIME_DIR, OMNIVOICE_WHISPER_DIR):
+                    if extra_dir.exists():
+                        shutil.rmtree(extra_dir, ignore_errors=True)
 
             if self.is_engine_installed(engine_id):
                 self.model_status_changed.emit(engine_id, True)
@@ -5774,6 +5850,63 @@ class TTSEngineManager(QObject):
                         )
                 if str(config.get("active_engine", "") or "").strip() == engine_id:
                     warmup_llama_tts(engine_id, lang=self._current_lang())
+            elif engine_id == "omnivoice":
+                from core.omnivoice_tts import (
+                    OMNIVOICE_QUANT_SPECS,
+                    get_omnivoice_quant_spec,
+                    get_omnivoice_weight_downloads,
+                    install_omnivoice_runtime,
+                    install_omnivoice_whisper,
+                    warmup_omnivoice_tts,
+                )
+
+                px_dict = self._resolve_active_proxies_dict()
+                q_spec = get_omnivoice_quant_spec()
+                keep_files = {q_spec["base_file"], q_spec["codec_file"]}
+                for spec_item in OMNIVOICE_QUANT_SPECS.values():
+                    for fname_key in ("base_file", "codec_file"):
+                        old_f = spec_item[fname_key]
+                        if old_f not in keep_files:
+                            try:
+                                (eng_dir / old_f).unlink(missing_ok=True)
+                            except OSError:
+                                pass
+
+                install_omnivoice_runtime(
+                    engine_id=engine_id,
+                    progress_cb=_emit_progress,
+                    download_fn=_dl_simple,
+                    cancel_check=_check_cancel,
+                    proxies=px_dict,
+                )
+                install_omnivoice_whisper(
+                    engine_id=engine_id,
+                    progress_cb=_emit_progress,
+                    download_fn=_dl_simple,
+                    cancel_check=_check_cancel,
+                    proxies=px_dict,
+                )
+                downloads = get_omnivoice_weight_downloads()
+                for idx, (url, dest_f, fname, bpct, spct) in enumerate(downloads, start=1):
+                    _check_cancel()
+                    dest_f.parent.mkdir(parents=True, exist_ok=True)
+                    if not dest_f.exists() or dest_f.stat().st_size == 0:
+                        _dl_simple(
+                            url,
+                            dest_f,
+                            engine_id,
+                            bpct,
+                            spct,
+                            tr(
+                                "tts.dl.file_progress",
+                                "Завантаження {fname} ({idx}/{total})...",
+                                fname=fname,
+                                idx=idx,
+                                total=len(downloads),
+                            ),
+                        )
+                if str(config.get("active_engine", "") or "").strip() == "omnivoice":
+                    warmup_omnivoice_tts(lang=self._current_lang())
 
             _emit_progress(100, tr("tts.dl.installed", "Встановлено!"))
             self.model_status_changed.emit(

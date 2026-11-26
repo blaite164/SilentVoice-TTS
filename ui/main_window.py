@@ -148,6 +148,7 @@ from ui.dialogs import (
     LocalModelsDialog,
     LanguageConfirmDialog,
     ObsAnimationSettingsDialog,
+    OmniVoiceSettingsDialog,
     ProxySettingsDialog,
     QuickPhraseDialog,
     Qwen3QuantChoiceDialog,
@@ -1976,7 +1977,7 @@ class MainWindow(QMainWindow):
             self.local_models_layout.addWidget(empty_lbl)
 
         openvoice_built = False
-        clone_gguf_ids = ("qwen3_tts", "zonos3_mini")
+        clone_gguf_ids = ("omnivoice", "qwen3_tts", "zonos3_mini")
         has_gpu = has_hardware_gpu()
         vram_gb = get_discrete_gpu_vram_gb() if has_gpu else None
         for spec in visible_engines:
@@ -2119,6 +2120,17 @@ class MainWindow(QMainWindow):
         )
         choose_ref_btn.clicked.connect(lambda checked=False, eid=eng_id: self._pick_clone_ref_file(eid))
         row.addWidget(choose_ref_btn)
+
+        settings_btn: Optional[QPushButton] = None
+        if eng_id == "omnivoice":
+            settings_btn = QPushButton(tr("omnivoice.settings_btn", "⚙ Налаштування"))
+            settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            settings_btn.setToolTip(
+                tr("omnivoice.settings_btn_tip", "Режим клонування / Voice Design, текст референсу, кроки (16/32) та шепіт")
+            )
+            settings_btn.clicked.connect(self._open_omnivoice_settings_dialog)
+            row.addWidget(settings_btn)
+
         opts_v.addLayout(row)
 
         parent_layout.addWidget(opts_widget)
@@ -2128,7 +2140,14 @@ class MainWindow(QMainWindow):
             "clear_ref_btn": clear_ref_btn,
             "choose_ref_btn": choose_ref_btn,
         }
+        if settings_btn is not None:
+            res["settings_btn"] = settings_btn
         return res
+
+    def _open_omnivoice_settings_dialog(self) -> None:
+        dlg = OmniVoiceSettingsDialog(self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            self._refresh_clone_card_ui("omnivoice")
 
     def _build_openvoice_card(self) -> None:
         eng_id = "openvoice"
@@ -2253,9 +2272,17 @@ class MainWindow(QMainWindow):
         clean = str(path or "").strip()
         if not clean or not os.path.isfile(clean):
             return
+        prev_ref = str(config.get(f"{engine_id}_ref_path", "") or "").strip()
         resolved = register_custom_clone_sample(engine_id, clean) or clean
         config.set(f"{engine_id}_ref_path", resolved)
-        if engine_id == "openvoice":
+        if engine_id == "omnivoice":
+            config.set("omnivoice_mode", "clone")
+            if prev_ref != resolved:
+                config.set("omnivoice_ref_text", "")
+                config.set("omnivoice_ref_text_path", "")
+            if str(config.get("active_engine", "") or "").strip() == "omnivoice":
+                tts_manager.schedule_smart_warmup(0.2, "omnivoice_ref_changed")
+        elif engine_id == "openvoice":
             config.set("openvoice_enabled", True)
             try:
                 from core.voice_cloner import voice_cloner
@@ -2276,7 +2303,10 @@ class MainWindow(QMainWindow):
 
     def _clear_clone_ref_file(self, engine_id: str) -> None:
         config.set(f"{engine_id}_ref_path", "")
-        if engine_id == "openvoice":
+        if engine_id == "omnivoice":
+            config.set("omnivoice_ref_text", "")
+            config.set("omnivoice_ref_text_path", "")
+        elif engine_id == "openvoice":
             try:
                 from core.voice_cloner import voice_cloner
                 voice_cloner.clear_ref_cache()
@@ -2317,7 +2347,33 @@ class MainWindow(QMainWindow):
             clear_btn.setVisible(installed and has_ref)
         ref_lbl = ui.get("ref_lbl")
         if isinstance(ref_lbl, QLabel):
-            if has_ref:
+            if engine_id == "omnivoice":
+                from core.omnivoice_tts import (
+                    get_active_omnivoice_design_instruct,
+                    normalize_omnivoice_mode,
+                    normalize_omnivoice_steps,
+                )
+
+                ov_mode = normalize_omnivoice_mode()
+                ov_steps = normalize_omnivoice_steps()
+                ov_whisper = " · 🤫" if bool(config.get("omnivoice_whisper", False)) else ""
+                if ov_mode == "clone" and has_ref:
+                    name = os.path.basename(ref_path)
+                    ref_lbl.setStyleSheet("color: #34D399; font-size: 12px;")
+                    ref_lbl.setText(f"🎤 {name} · {ov_steps}st{ov_whisper}")
+                    ref_lbl.setToolTip(ref_path)
+                else:
+                    instruct = get_active_omnivoice_design_instruct() or "female, young adult, moderate pitch"
+                    ref_lbl.setStyleSheet("color: #60A5FA; font-size: 12px;")
+                    design_txt = tr(
+                        "omnivoice.card.design_status",
+                        "✨ Voice Design ({instruct}) · {steps}st",
+                        instruct=instruct,
+                        steps=ov_steps,
+                    )
+                    ref_lbl.setText(design_txt)
+                    ref_lbl.setToolTip(design_txt)
+            elif has_ref:
                 name = os.path.basename(ref_path)
                 ref_lbl.setStyleSheet("color: #34D399; font-size: 12px;")
                 ref_lbl.setText(tr("ov.ref_selected", "🎤 {name}", name=name))
@@ -9739,7 +9795,7 @@ class MainWindow(QMainWindow):
             btn.setText(tr("ui_137", "Видалити"))
             btn.setProperty("class", "dangerBtn")
             btn.setToolTip(tr("ui_412", "Видалити цей TTS з комп'ютера"))
-        elif engine_id in ("qwen3_tts", "zonos3_mini") and not has_hardware_gpu():
+        elif engine_id in ("omnivoice", "qwen3_tts", "zonos3_mini") and not has_hardware_gpu():
             btn.setEnabled(False)
             btn.setText(tr("tts.no_gpu_btn", "Немає відеокарти"))
             btn.setProperty("class", "")
@@ -9751,7 +9807,7 @@ class MainWindow(QMainWindow):
             btn.setToolTip(tr("ui_413", "Завантажити та встановити цей TTS на комп'ютер"))
         btn.style().unpolish(btn)
         btn.style().polish(btn)
-        if engine_id in ("openvoice", "qwen3_tts", "zonos3_mini"):
+        if engine_id in ("openvoice", "omnivoice", "qwen3_tts", "zonos3_mini"):
             self._refresh_clone_card_ui(engine_id)
 
     def _populate_audio_devices(self, refresh_backend: bool = False) -> None:

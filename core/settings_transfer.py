@@ -35,6 +35,11 @@ CATEGORY_KEYS: Dict[str, tuple[str, ...]] = {
         "active_engine", "active_voice", "fallback_engine", "fallback_voice",
         "speech_speed", "split_sentences_enabled", "normalize_numbers_enabled",
         "engine_dsp_settings",
+        "omnivoice_quant", "omnivoice_steps", "omnivoice_mode",
+        "omnivoice_denoise", "omnivoice_whisper",
+        "omnivoice_design_gender", "omnivoice_design_age",
+        "omnivoice_design_pitch", "omnivoice_design_accent",
+        "omnivoice_design_seed",
     ),
     "input": (
         "input_mode",
