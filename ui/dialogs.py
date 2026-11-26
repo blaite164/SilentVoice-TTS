@@ -1232,7 +1232,12 @@ class OmniVoiceSettingsDialog(QDialog):
                 "Введіть текст із файлу або залиште порожнім — при озвучуванні спрацює авторозпізнавання Whisper",
             )
         )
-        self.ref_text_edit.setPlainText(str(config.get("omnivoice_ref_text", "") or ""))
+        initial_ref_txt = str(config.get("omnivoice_ref_text", "") or "").strip()
+        if not initial_ref_txt and self._ref_path:
+            from core.omnivoice_tts import get_default_omnivoice_ref_text
+
+            initial_ref_txt = get_default_omnivoice_ref_text(self._ref_path)
+        self.ref_text_edit.setPlainText(initial_ref_txt)
         self.ref_text_edit.setStyleSheet(
             "QTextEdit { background-color: #1B2030; border: 1px solid #38415C; border-radius: 8px; color: #F8FAFC; padding: 6px; font-size: 12.5px; }"
         )
@@ -1455,9 +1460,13 @@ class OmniVoiceSettingsDialog(QDialog):
         self._refresh_ref_label()
         self.asr_status_lbl.setText("")
 
-        # Auto-load cached transcript or sidecar .txt if available
+        # Auto-load cached transcript, sidecar .txt, or bundled guide text if available
         try:
-            from core.omnivoice_tts import load_cached_ref_transcript, prepare_omnivoice_reference_wav
+            from core.omnivoice_tts import (
+                get_bundled_clone_sample_guide_text,
+                load_cached_ref_transcript,
+                prepare_omnivoice_reference_wav,
+            )
 
             _wav, digest = prepare_omnivoice_reference_wav(Path(resolved))
             cached = load_cached_ref_transcript(digest)
@@ -1471,12 +1480,19 @@ class OmniVoiceSettingsDialog(QDialog):
                 if stxt:
                     self.ref_text_edit.setPlainText(stxt)
                     return
+            guide_txt = get_bundled_clone_sample_guide_text(resolved)
+            if guide_txt:
+                self.ref_text_edit.setPlainText(guide_txt)
+                return
         except Exception:
             pass
         self.ref_text_edit.clear()
 
     def _insert_guide_sample_text(self) -> None:
-        cur_lang = str(config.get("app_language", "uk") or "uk").strip().lower()
+        from core.omnivoice_tts import detect_bundled_clone_sample_lang
+
+        detected_lang = detect_bundled_clone_sample_lang(self._ref_path)
+        cur_lang = detected_lang or str(config.get("app_language", "uk") or "uk").strip().lower()
         if cur_lang == "ua":
             cur_lang = "uk"
         self.ref_text_edit.setPlainText(OPENVOICE_SAMPLE_TEXTS.get(cur_lang, OPENVOICE_SAMPLE_TEXTS["en"]))

@@ -2278,8 +2278,11 @@ class MainWindow(QMainWindow):
         if engine_id == "omnivoice":
             config.set("omnivoice_mode", "clone")
             if prev_ref != resolved:
-                config.set("omnivoice_ref_text", "")
-                config.set("omnivoice_ref_text_path", "")
+                from core.omnivoice_tts import get_default_omnivoice_ref_text
+
+                auto_txt = get_default_omnivoice_ref_text(resolved)
+                config.set("omnivoice_ref_text", auto_txt)
+                config.set("omnivoice_ref_text_path", resolved if auto_txt else "")
             if str(config.get("active_engine", "") or "").strip() == "omnivoice":
                 tts_manager.schedule_smart_warmup(0.2, "omnivoice_ref_changed")
         elif engine_id == "openvoice":

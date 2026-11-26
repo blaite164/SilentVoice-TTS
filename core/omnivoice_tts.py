@@ -118,6 +118,99 @@ OMNIVOICE_LANG_LABELS: Dict[str, str] = {
     "auto": "None",
 }
 
+CLONE_GUIDE_SAMPLE_TEXTS: Dict[str, str] = {
+    "uk": (
+        "Сьогодні чудова, сонячна погода, і легкий вітер тихо шелестить у гіллі. "
+        "Цей живий запис чисто передає мій природний голос, щирі інтонації та спокійний ритм мовлення."
+    ),
+    "en": (
+        "The morning air feels bright and crisp today, with a gentle breeze moving through the trees. "
+        "This short recording captures my natural voice, clear rhythm, and calm tone."
+    ),
+    "ru": (
+        "Сегодня ясная, тёплая погода, и лёгкий ветер тихо шелестит в листве. "
+        "Эта живая запись чисто передаёт мой естественный голос, чёткую дикцию и спокойный темп речи."
+    ),
+    "pl": (
+        "Dzisiaj jest piękna, słoneczna pogoda, a przyjemny wiatr cicho szeleści wśród liści. "
+        "To krótkie nagranie czysto oddaje mój naturalny głos, wyraźny rytm i spokojną barwę mowy."
+    ),
+    "de": (
+        "Heute ist das Wetter wunderbar klar, und eine sanfte Brise raschelt leise durch die Bäume. "
+        "Diese kurze Aufnahme zeigt meine natürliche Stimme, deutliche Aussprache und ruhigen Klang."
+    ),
+    "fr": (
+        "Le matin est clair et lumineux aujourd'hui, avec une brise légère qui souffle doucement dans les arbres. "
+        "Ce court enregistrement capte fidèlement ma voix naturelle, mon rythme et mon ton calme."
+    ),
+    "es": (
+        "Hoy la mañana está clara y fresca, mientras una brisa suave mueve las hojas con calma. "
+        "Esta breve grabación refleja con nitidez mi voz natural, un ritmo fluido y un tono sereno."
+    ),
+}
+
+_CLONE_SAMPLE_LANG_ALIASES: Dict[str, str] = {
+    "ua": "uk",
+    "uk": "uk",
+    "en": "en",
+    "ru": "ru",
+    "pl": "pl",
+    "de": "de",
+    "fr": "fr",
+    "es": "es",
+}
+
+
+def detect_bundled_clone_sample_lang(ref_path: Optional[str | Path]) -> Optional[str]:
+    """Detect language code if ref_path is one of the bundled clone voice samples."""
+    raw = str(ref_path or "").strip()
+    if not raw:
+        return None
+    p = Path(raw)
+    parts_low = [part.lower() for part in p.parts]
+    in_clone_catalog = False
+    for idx, part in enumerate(parts_low[:-1]):
+        if part in ("clone_voices", "openvoice", "omnivoice", "qwen3_tts", "zonos3_mini") and (
+            idx > 0 and parts_low[idx - 1] == "samples"
+        ):
+            in_clone_catalog = True
+            if idx + 1 < len(parts_low) - 1:
+                lang_dir = _CLONE_SAMPLE_LANG_ALIASES.get(parts_low[idx + 1])
+                if lang_dir:
+                    return lang_dir
+            break
+    if in_clone_catalog and "_" in p.stem:
+        prefix = p.stem.split("_", 1)[0].lower()
+        lang_pref = _CLONE_SAMPLE_LANG_ALIASES.get(prefix)
+        if lang_pref:
+            return lang_pref
+    return None
+
+
+def get_bundled_clone_sample_guide_text(ref_path: Optional[str | Path]) -> str:
+    """Return matching guide sample text if ref_path belongs to bundled clone samples."""
+    lang = detect_bundled_clone_sample_lang(ref_path)
+    if not lang:
+        return ""
+    return CLONE_GUIDE_SAMPLE_TEXTS.get(lang, "")
+
+
+def get_default_omnivoice_ref_text(ref_path: Optional[str | Path]) -> str:
+    """Return sidecar .txt transcript if present, otherwise bundled guide text for known clone samples."""
+    raw = str(ref_path or "").strip()
+    if not raw:
+        return ""
+    p = Path(raw)
+    sidecar = p.with_suffix(".txt")
+    if sidecar.is_file():
+        try:
+            stxt = sidecar.read_text(encoding="utf-8", errors="ignore").strip()
+            if stxt:
+                return stxt
+        except OSError:
+            pass
+    return get_bundled_clone_sample_guide_text(p)
+
 OMNIVOICE_STEPS_CHOICES: Tuple[int, ...] = (8, 16, 24, 32)
 OMNIVOICE_DEFAULT_STEPS = 16
 

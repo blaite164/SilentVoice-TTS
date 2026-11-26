@@ -336,6 +336,37 @@ class OmniVoiceIntegrationTests(unittest.TestCase):
             self.assertIsNone(last_call["proxy_pool"])
             self.assertFalse(last_call["abort_if_slow"])
 
+    def test_bundled_clone_sample_auto_guide_text(self) -> None:
+        from core.omnivoice_tts import (
+            CLONE_GUIDE_SAMPLE_TEXTS,
+            detect_bundled_clone_sample_lang,
+            get_bundled_clone_sample_guide_text,
+        )
+
+        self.assertEqual(
+            detect_bundled_clone_sample_lang(r"C:\Mia\123\TTS\data\samples\clone_voices\uk\Alexandra Ж.mp3"),
+            "uk",
+        )
+        self.assertEqual(
+            detect_bundled_clone_sample_lang(r"C:\Mia\123\TTS\data\samples\clone_voices\ru\Dmitry Ч.mp3"),
+            "ru",
+        )
+        self.assertEqual(
+            detect_bundled_clone_sample_lang(r"C:\Mia\123\TTS\data\samples\clone_voices\en\Selene.mp3"),
+            "en",
+        )
+        self.assertIsNone(detect_bundled_clone_sample_lang(r"C:\Users\test\Desktop\my_voice.wav"))
+
+        self.assertEqual(
+            get_bundled_clone_sample_guide_text(r"C:\Mia\123\TTS\data\samples\clone_voices\uk\Alexandra Ж.mp3"),
+            CLONE_GUIDE_SAMPLE_TEXTS["uk"],
+        )
+        self.assertEqual(
+            get_bundled_clone_sample_guide_text(r"C:\Mia\123\TTS\data\samples\clone_voices\ru\Dmitry Ч.mp3"),
+            CLONE_GUIDE_SAMPLE_TEXTS["ru"],
+        )
+        self.assertEqual(get_bundled_clone_sample_guide_text(r"C:\Users\test\Desktop\my_voice.wav"), "")
+
 
 if __name__ == "__main__":
     unittest.main()
