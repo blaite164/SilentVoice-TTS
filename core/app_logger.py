@@ -498,10 +498,13 @@ def _extract_real_native_crash_summary(delta_text: str) -> str | None:
     """
     Перевіряє новий фрагмент crash.log на наявність справжнього фатального крашу.
     Ігнорує нефатальні оброблені Windows COM/RPC/debug first-chance винятки
-    (наприклад, 0x8001010d RPC_E_CANTCALLOUT_ININPUTSYNCCALL у модальних діалогах Qt),
-    які Python faulthandler записує через VEH навіть коли програма не падає.
+    (наприклад, 0x8001010d RPC_E_CANTCALLOUT_ININPUTSYNCCALL у модальних діалогах Qt)
+    та хибні VEH first-chance винятки сторонніх нативних потоків Windows без Python-фреймів
+    (``<no Python frame>`` від аудіо-енхансерів, оверлеїв чи COM-драйверів).
     """
-    for raw_line in delta_text.splitlines():
+    lines = delta_text.splitlines()
+    n = len(lines)
+    for idx, raw_line in enumerate(lines):
         line = raw_line.strip()
         if not line:
             continue
@@ -513,8 +516,27 @@ def _extract_real_native_crash_summary(delta_text: str) -> str | None:
                 code_hex = m.group(1).lower()
                 # NTSTATUS фатальні коди Windows завжди починаються з 0xc... (0xc0000005, 0xc0000409 тощо);
                 # 0x8001xxxx (COM/RPC) та 0x400xxxxx / 0x406d1388 (debug/thread name) — оброблені, не фатальні.
-                if code_hex.startswith("c"):
-                    return line[:300]
+                if not code_hex.startswith("c"):
+                    continue
+            # Перевіряємо найближчий заголовок Current thread: якщо там "<no Python frame>",
+            # це чужий нативний C-потік Windows (драйвер/оверлей/COM first-chance VEH), не лякаємо користувача.
+            is_foreign_no_frame = False
+            for j in range(idx + 1, min(n, idx + 8)):
+                nxt = lines[j].strip()
+                if not nxt:
+                    continue
+                if nxt.startswith(("Windows fatal exception:", "Fatal Python error:")):
+                    break
+                if nxt.startswith("Current thread "):
+                    for k in range(j + 1, min(n, j + 4)):
+                        frame_ln = lines[k].strip()
+                        if not frame_ln:
+                            continue
+                        if frame_ln == "<no Python frame>":
+                            is_foreign_no_frame = True
+                        break
+                    break
+            if is_foreign_no_frame:
                 continue
             return line[:300]
         if "[ERROR]" in line or "[Qt FATAL]" in line or "[UI FREEZE]" in line:

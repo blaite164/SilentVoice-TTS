@@ -234,14 +234,26 @@ class AppLoggerTests(unittest.TestCase):
                 fh.write("Windows fatal exception: code 0x8001010d\n\nCurrent thread 0x1:\n  File main.py\n")
             self.assertIsNone(consume_pending_crash_report(data_dir, crash_log, logs_dir))
 
-            # 3c. Справжній NTSTATUS краш 0xc0000409 / access violation — повинен показати діалог
+            # 3c. Справжній NTSTATUS краш 0xc0000409 / access violation у потоці з Python-фреймом — повинен показати діалог
             mark_session_started(data_dir, "app_3c.log", crash_log)
             with open(crash_log, "a", encoding="utf-8") as fh:
-                fh.write("Windows fatal exception: access violation\n")
+                fh.write("Windows fatal exception: access violation\n\nCurrent thread 0x1 (most recent call first):\n  File main.py, line 10\n")
             av = consume_pending_crash_report(data_dir, crash_log, logs_dir)
             self.assertIsNotNone(av)
             assert av is not None
             self.assertIn("access violation", av["summary"])
+
+            # 3d. Сторонній нативний потік Windows без Python-фрейму (<no Python frame>, напр. драйвер/оверлей VEH) — НЕ повинен лякати діалогом
+            mark_session_started(data_dir, "app_3d.log", crash_log)
+            with open(crash_log, "a", encoding="utf-8") as fh:
+                fh.write(
+                    "Windows fatal exception: access violation\n\n"
+                    "Current thread 0x6830 (most recent call first):\n"
+                    "  <no Python frame>\n\n"
+                    "Thread 0x2030 (most recent call first):\n"
+                    '  File "main.py", line 648 in main\n'
+                )
+            self.assertIsNone(consume_pending_crash_report(data_dir, crash_log, logs_dir))
 
             # 4. Коректне завершення — не показує діалог
             mark_session_started(data_dir, "app_4.log", crash_log)

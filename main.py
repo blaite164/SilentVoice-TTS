@@ -656,6 +656,10 @@ def main() -> int:
         except Exception:
             pass
         mark_session_clean_exit(DATA_DIR)
+        try:
+            faulthandler.disable()
+        except Exception:
+            pass
         print("[SilentVoice] Завершення роботи...", flush=True)
         try:
             window.force_quit_app()
