@@ -431,8 +431,18 @@ def install_omnivoice_runtime(
     last_err: Optional[Exception] = None
     zip_path = OMNIVOICE_RUNTIME_DIR / "omnivoice_runtime.zip"
     for want_cuda, marker_val, dl_label in attempts:
+        # Clean stale partial files only when switching between different assets (CUDA vs Vulkan)
+        for stale in (
+            zip_path,
+            zip_path.with_suffix(zip_path.suffix + ".part"),
+            zip_path.with_suffix(zip_path.suffix + ".part.meta"),
+        ):
+            stale.unlink(missing_ok=True)
         urls = resolve_omnivoice_runtime_urls(prefer_cuda=want_cuda, proxies=proxies)
-        for url in urls:
+        # Primary GitHub release URL already includes GitLab Generic Package mirror in TTSManager Auto-Race;
+        # only fall back to additional URLs if the primary URL is not a GitHub release URL.
+        primary_urls = urls[:1] if (urls and "github.com/" in urls[0] and "/releases/download/" in urls[0]) else urls
+        for url in primary_urls:
             cancel_check()
             try:
                 zip_path.unlink(missing_ok=True)

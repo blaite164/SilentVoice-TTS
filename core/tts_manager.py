@@ -7685,7 +7685,13 @@ class TTSEngineManager(QObject):
         host_key = urllib.parse.urlparse(url).netloc.lower()
         tried_proxies: set = set()
         carry_alive_proxies: List[str] = []
-        for search_round in range(3):
+        has_direct_slow_fallback = (
+            slow_fallback_route is not None
+            and slow_fallback_route[1] is None
+            and slow_fallback_route[2] is None
+        )
+        max_proxy_rounds = 1 if has_direct_slow_fallback else 3
+        for search_round in range(max_proxy_rounds):
             if cancel_event is not None and cancel_event.is_set():
                 raise self._DownloadCancelledError("Cancelled by user")
             cur_saved_pct = _saved_progress_pct()
@@ -7743,7 +7749,7 @@ class TTSEngineManager(QObject):
                                 known_total, known_resolved = tot_c, res_c
                                 break
 
-            has_more_rounds = search_round < 2
+            has_more_rounds = (search_round + 1) < max_proxy_rounds
 
             # Якщо файл >= 2 МБ і сервер підтримує Range — запускаємо Multi-Proxy Swarm одразу по всіх топ-проксі!
             if known_total >= self._MULTISTREAM_MIN_SIZE_BYTES and int(self._MULTISTREAM_WORKERS) > 1:
