@@ -9809,12 +9809,14 @@ class MainWindow(QMainWindow):
             ui["prog_label"].setVisible(True)
             ui["prog_label"].setText(tr("ui_411", "Підготовка до встановлення..."))
             btn: QPushButton = ui["action_btn"]  # type: ignore
-            btn.setEnabled(False)
-            btn.setText(tr("ui_173", "⏳ Завантаження..."))
             c_btn = ui.get("cancel_btn")
             if isinstance(c_btn, QPushButton):
+                btn.setVisible(False)
                 c_btn.setEnabled(True)
                 c_btn.setVisible(True)
+            else:
+                btn.setEnabled(False)
+                btn.setText(tr("ui_173", "⏳ Завантаження..."))
         tts_manager.download_engine_model(engine_id)
 
     def _on_cancel_model_download_clicked(self, engine_id: str) -> None:
@@ -9839,6 +9841,7 @@ class MainWindow(QMainWindow):
             c_btn.setVisible(False)
             c_btn.setEnabled(True)
         btn: QPushButton = ui["action_btn"]  # type: ignore
+        btn.setVisible(True)
         if installed:
             btn.setEnabled(True)
             btn.setText(tr("ui_137", "Видалити"))
@@ -10696,8 +10699,7 @@ class MainWindow(QMainWindow):
 
         if downloading:
             pct, msg = progress or tts_manager.get_download_progress(FFMPEG_ENGINE_ID) or (1, tr("tts.dl.ffmpeg_preparing", "Підготовка до встановлення FFmpeg..."))
-            install_btn.setEnabled(False)
-            install_btn.setText(tr("ui_173", "⏳ Завантаження..."))
+            install_btn.setVisible(False)
             cancel_btn.setVisible(True)
             cancel_btn.setEnabled(True)
             prog_bar.setVisible(True)
@@ -10744,11 +10746,13 @@ class MainWindow(QMainWindow):
             ui["progress"].setValue(pct)
             if tts_manager.is_downloading(engine_id):
                 btn: QPushButton = ui["action_btn"]  # type: ignore
-                btn.setEnabled(False)
-                btn.setText(tr("ui_173", "⏳ Завантаження..."))
                 c_btn = ui.get("cancel_btn")
                 if isinstance(c_btn, QPushButton):
+                    btn.setVisible(False)
                     c_btn.setVisible(True)
+                else:
+                    btn.setEnabled(False)
+                    btn.setText(tr("ui_173", "⏳ Завантаження..."))
             lbl_w: QLabel = ui["prog_label"]  # type: ignore
             lbl_w.setStyleSheet("color: #CBD5E1; font-size: 12px;")
             lbl_w.setVisible(True)
@@ -10772,6 +10776,7 @@ class MainWindow(QMainWindow):
             lbl_w.setVisible(True)
             lbl_w.setText(wrap_long_tokens(err_msg))
             btn: QPushButton = ui["action_btn"]  # type: ignore
+            btn.setVisible(True)
             btn.setEnabled(True)
             btn.setText(tr("ui_134", "Встановити"))
             btn.setProperty("class", "primaryBtn")
@@ -10796,6 +10801,7 @@ class MainWindow(QMainWindow):
             lbl_w.setVisible(True)
             lbl_w.setText(tr("tts.dl.cancelled", "Завантаження скасовано"))
             btn: QPushButton = ui["action_btn"]  # type: ignore
+            btn.setVisible(True)
             btn.setEnabled(True)
             btn.setText(tr("ui_134", "Встановити"))
             btn.setProperty("class", "primaryBtn")
