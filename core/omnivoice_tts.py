@@ -444,6 +444,54 @@ def is_omnivoice_installed() -> bool:
 # ----------------------------------------------------------------------
 
 
+def _sanitize_stale_msvc_runtime_dlls(target_dir: Path) -> None:
+    """
+    Remove bundled legacy VS 2019 msvcp140.dll (< 14.40) when Windows System32 has a newer
+    MSVC runtime, preventing 0xC0000005 (_Mtx_lock ABI mismatch) crashes in VS 2022 binaries.
+    """
+    if os.name != "nt":
+        return
+    msvcp_local = target_dir / "msvcp140.dll"
+    if not msvcp_local.is_file():
+        return
+    try:
+        # Quick heuristic: VS 2019 14.29 msvcp140.dll is ~565 KB; VS 2022 14.40+ is ~580+ KB,
+        # or inspect FileVersion via ctypes GetFileVersionInfoW.
+        import ctypes
+
+        def _get_file_ver_tuple(p: Path) -> Optional[Tuple[int, int, int, int]]:
+            ver_dll = ctypes.windll.version
+            path_s = str(p)
+            handle = ctypes.c_uint32(0)
+            sz = ver_dll.GetFileVersionInfoSizeW(path_s, ctypes.byref(handle))
+            if not sz:
+                return None
+            buf = ctypes.create_string_buffer(sz)
+            if not ver_dll.GetFileVersionInfoW(path_s, 0, sz, buf):
+                return None
+            lp = ctypes.c_void_p()
+            ln = ctypes.c_uint32(0)
+            if not ver_dll.VerQueryValueW(buf, "\\", ctypes.byref(lp), ctypes.byref(ln)) or not lp.value:
+                return None
+            # VS_FIXEDFILEINFO: dwFileVersionMS at offset 8, dwFileVersionLS at offset 12
+            ms = ctypes.c_uint32.from_address(lp.value + 8).value
+            ls = ctypes.c_uint32.from_address(lp.value + 12).value
+            return (ms >> 16, ms & 0xFFFF, ls >> 16, ls & 0xFFFF)
+
+        local_ver = _get_file_ver_tuple(msvcp_local)
+        if local_ver is not None and local_ver < (14, 40, 0, 0):
+            sys32 = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "msvcp140.dll"
+            sys_ver = _get_file_ver_tuple(sys32) if sys32.is_file() else None
+            if sys_ver is not None and sys_ver >= (14, 40, 0, 0):
+                for dll_name in ("msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll", "vcomp140.dll"):
+                    try:
+                        (target_dir / dll_name).unlink(missing_ok=True)
+                    except OSError:
+                        pass
+    except Exception:
+        pass
+
+
 def _extract_binaries_from_zip(zip_path: Path, target_dir: Path) -> None:
     target_dir.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(zip_path, "r") as zf:
@@ -456,6 +504,7 @@ def _extract_binaries_from_zip(zip_path: Path, target_dir: Path) -> None:
             dest = target_dir / base_name
             with zf.open(member, "r") as src, open(dest, "wb") as dst:
                 shutil.copyfileobj(src, dst)
+    _sanitize_stale_msvc_runtime_dlls(target_dir)
 
 
 def resolve_omnivoice_runtime_urls(
@@ -1219,6 +1268,7 @@ class _OmniVoiceServerManager:
                     pass
 
     def _spawn_and_wait(self, base_gguf: Path, codec_gguf: Path, *, force_cpu: bool) -> int:
+        _sanitize_stale_msvc_runtime_dlls(OMNIVOICE_RUNTIME_DIR)
         supports_steps, supports_api_key = self._probe_binary_capabilities()
         port = _pick_free_port()
         api_key = secrets.token_urlsafe(24) if supports_api_key else ""

@@ -1410,5 +1410,7 @@
   "dlg.samples.tab_clone_demo": "Пример клонирования",
   "dlg.clone_demo.title": "Пример клонирования — {engine_title}",
   "dlg.clone_demo.header": "🎧 Пример клонирования: {engine_title}",
-  "clone_demo.samples.empty_for_lang": "Примеров клонирования для вашего языка пока нет.\nДобавьте аудиофайлы (.wav, .mp3, .ogg, .flac) в data/samples/clone_demos/{engine_id}/{lang}/."
+  "clone_demo.samples.empty_for_lang": "Примеров клонирования для вашего языка пока нет.\nДобавьте аудиофайлы (.wav, .mp3, .ogg, .flac) в data/samples/clone_demos/{engine_id}/{lang}/.",
+  "dlg.clone_demo.play_ref": "▶ Референс (оригинал)",
+  "dlg.clone_demo.play_result": "▶ Результат клонирования"
 }

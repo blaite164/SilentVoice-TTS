@@ -1638,9 +1638,31 @@ def get_clone_demo_samples(
             for p in sorted(sub_dir.glob(ext)):
                 candidates.append((p, ""))
 
+    # Build lookup map of reference clips in clone_voices/<lang>/<stem>.* for automatic pairing
+    ref_lookup: Dict[Tuple[str, str], Path] = {}
+    ref_lookup_any: Dict[str, Path] = {}
+    for base_root in (SAMPLES_DIR, BASE_DIR / "samples"):
+        cv_dir = base_root / SHARED_CLONE_SAMPLES_SUBDIR
+        if not cv_dir.exists():
+            continue
+        for child_dir in sorted((p for p in cv_dir.iterdir() if p.is_dir()), key=lambda p: p.name.lower()):
+            rlang = known_prefixes.get(child_dir.name.strip().lower(), "")
+            for ext in exts:
+                for rp in sorted(child_dir.rglob(ext)):
+                    key_stem = rp.stem.strip().lower()
+                    if rlang:
+                        ref_lookup.setdefault((rlang, key_stem), rp)
+                    ref_lookup_any.setdefault(key_stem, rp)
+        for ext in exts:
+            for rp in sorted(cv_dir.glob(ext)):
+                ref_lookup_any.setdefault(rp.stem.strip().lower(), rp)
+
     result: List[Dict[str, str]] = []
     seen_paths = set()
     for wav_path, folder_lang in candidates:
+        # Skip explicit companion *_ref.* files (they are paired with the main result clip)
+        if wav_path.stem.lower().endswith("_ref"):
+            continue
         try:
             norm = str(wav_path.resolve()).lower()
         except OSError:
@@ -1663,6 +1685,21 @@ def get_clone_demo_samples(
         if gender_filter in ("female", "male") and v_gender in ("female", "male") and v_gender != gender_filter:
             continue
 
+        # Pair with companion <stem>_ref.* in the same folder first, then matching clone_voices/<lang>/<stem>.*
+        ref_path_str = ""
+        for ext in (".ogg", ".mp3", ".wav", ".flac"):
+            local_ref = wav_path.with_name(f"{wav_path.stem}_ref{ext}")
+            if local_ref.is_file():
+                ref_path_str = str(local_ref)
+                break
+        if not ref_path_str:
+            stem_key = wav_path.stem.strip().lower()
+            matched_ref = ref_lookup.get((sample_lang, stem_key)) if sample_lang else None
+            if matched_ref is None:
+                matched_ref = ref_lookup_any.get(stem_key)
+            if matched_ref is not None and matched_ref.is_file():
+                ref_path_str = str(matched_ref)
+
         clean_stem = raw_stem
         if not folder_lang and "_" in raw_stem and raw_stem.split("_", 1)[0].lower() in known_prefixes:
             clean_stem = raw_stem.split("_", 1)[1]
@@ -1671,6 +1708,7 @@ def get_clone_demo_samples(
             "name": display_name,
             "file_name": wav_path.name,
             "path": str(wav_path),
+            "ref_path": ref_path_str,
             "gender": v_gender,
             "lang": sample_lang,
             "is_custom": "",

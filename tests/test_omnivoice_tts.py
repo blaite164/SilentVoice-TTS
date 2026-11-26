@@ -387,6 +387,41 @@ class OmniVoiceIntegrationTests(unittest.TestCase):
             self.assertEqual(remaining, ["ovref_0003.wav", "ovref_0004.wav", "ovref_0005.wav"])
             self.assertFalse((cache_dir / "ovref_0000.json").exists())
 
+    def test_cold_start_synthesize_does_not_self_cancel(self) -> None:
+        import io
+        import core.omnivoice_tts as ov
+
+        buf = io.BytesIO()
+        sr = 24000
+        sf.write(buf, np.zeros(sr // 10, dtype=np.float32), sr, format="WAV", subtype="PCM_16")
+        wav_bytes = buf.getvalue()
+
+        class _FakeResp:
+            status_code = 200
+            content = wav_bytes
+            text = ""
+
+            def iter_content(self, chunk_size: int = 32768):
+                yield wav_bytes
+
+            def close(self) -> None:
+                pass
+
+        mgr = ov._OmniVoiceServerManager()
+        with (
+            mock.patch.object(ov, "is_omnivoice_runtime_installed", return_value=True),
+            mock.patch.object(
+                ov,
+                "find_installed_omnivoice_weights",
+                return_value=(Path("base.gguf"), Path("codec.gguf"), "Q8_0"),
+            ),
+            mock.patch.object(mgr, "_spawn_and_wait", return_value=18999),
+            mock.patch.object(mgr._session, "post", return_value=_FakeResp()),
+        ):
+            audio, out_sr = mgr.synthesize(text="Привіт!", lang_label="Ukrainian")
+        self.assertEqual(out_sr, sr)
+        self.assertGreater(len(audio), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

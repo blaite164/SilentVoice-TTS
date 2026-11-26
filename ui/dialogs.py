@@ -881,9 +881,67 @@ class VoiceSamplesDialog(QDialog):
             return
 
         for item in samples:
-            self._add_sample_row(item, allow_select=is_clone_tab)
+            if is_demo_tab:
+                self._add_clone_demo_block(item)
+            else:
+                self._add_sample_row(item, allow_select=is_clone_tab)
         self._c_lay.addStretch(1)
         self._refresh_install_buttons()
+
+    def _add_clone_demo_block(self, item: Dict[str, str]) -> None:
+        block = QFrame()
+        block.setStyleSheet(
+            "QFrame { background-color: #2E364D; border: 1px solid #414B6B; border-radius: 10px; }"
+        )
+        b_lay = QVBoxLayout(block)
+        b_lay.setContentsMargins(12, 10, 12, 10)
+        b_lay.setSpacing(8)
+
+        title_row = QHBoxLayout()
+        title_row.setSpacing(6)
+        gender = str(item.get("gender") or "").strip().lower()
+        if gender in ("female", "male"):
+            g_lbl = QLabel(tr("voice.gender_f", "Ж") if gender == "female" else tr("voice.gender_m", "М"))
+            g_lbl.setFixedWidth(16)
+            g_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            g_col = "#F472B6" if gender == "female" else "#38BDF8"
+            g_lbl.setStyleSheet(f"border: none; background: transparent; color: {g_col}; font-weight: 700; font-size: 12px;")
+            title_row.addWidget(g_lbl)
+
+        name_lbl = ElidedLabel(item["name"])
+        lbl_font = name_lbl.font()
+        lbl_font.setBold(True)
+        name_lbl.setFont(lbl_font)
+        name_lbl.setStyleSheet("border: none; background: transparent; color: #FFFFFF; font-size: 13.5px;")
+        title_row.addWidget(name_lbl, 1)
+        b_lay.addLayout(title_row)
+
+        btns_row = QHBoxLayout()
+        btns_row.setSpacing(8)
+
+        ref_path = str(item.get("ref_path") or "").strip()
+        ref_btn = QPushButton(tr("dlg.clone_demo.play_ref", "▶ Референс (оригінал)"))
+        ref_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        ref_btn.setStyleSheet("padding: 6px 12px; font-size: 12.5px;")
+        if ref_path and Path(ref_path).is_file():
+            ref_btn.clicked.connect(
+                lambda checked=False, p=ref_path: tts_manager.play_sample_preview(p, monitor_only=True)
+            )
+        else:
+            ref_btn.setEnabled(False)
+        btns_row.addWidget(ref_btn, 1)
+
+        res_btn = QPushButton(tr("dlg.clone_demo.play_result", "▶ Результат клонування"))
+        res_btn.setObjectName("primaryBtn")
+        res_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        res_btn.setStyleSheet("padding: 6px 12px; font-size: 12.5px;")
+        res_btn.clicked.connect(
+            lambda checked=False, p=item["path"]: tts_manager.play_sample_preview(p, monitor_only=True)
+        )
+        btns_row.addWidget(res_btn, 1)
+
+        b_lay.addLayout(btns_row)
+        self._c_lay.addWidget(block)
 
     def _add_sample_row(self, item: Dict[str, str], allow_select: bool = True) -> None:
         row_card = QFrame()

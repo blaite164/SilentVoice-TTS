@@ -1410,5 +1410,7 @@
   "dlg.samples.tab_clone_demo": "Exemple de clonage",
   "dlg.clone_demo.title": "Exemple de clonage — {engine_title}",
   "dlg.clone_demo.header": "🎧 Exemple de clonage : {engine_title}",
-  "clone_demo.samples.empty_for_lang": "Aucun exemple de clonage pour votre langue pour l'instant.\nAjoutez des fichiers audio (.wav, .mp3, .ogg, .flac) dans data/samples/clone_demos/{engine_id}/{lang}/."
+  "clone_demo.samples.empty_for_lang": "Aucun exemple de clonage pour votre langue pour l'instant.\nAjoutez des fichiers audio (.wav, .mp3, .ogg, .flac) dans data/samples/clone_demos/{engine_id}/{lang}/.",
+  "dlg.clone_demo.play_ref": "▶ Référence (original)",
+  "dlg.clone_demo.play_result": "▶ Résultat cloné"
 }
