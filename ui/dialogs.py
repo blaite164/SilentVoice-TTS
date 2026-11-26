@@ -1357,6 +1357,7 @@ class OmniVoiceSettingsDialog(QDialog):
         seed_row.addWidget(self.seed_spin)
 
         rand_seed_btn = QPushButton(tr("omnivoice.design.new_seed", "🎲 Новий голос"))
+        rand_seed_btn.setAutoDefault(False)
         rand_seed_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         rand_seed_btn.clicked.connect(lambda checked=False: self.seed_spin.setValue(random.randint(1, 999999)))
         seed_row.addWidget(rand_seed_btn)
@@ -1408,12 +1409,14 @@ class OmniVoiceSettingsDialog(QDialog):
         btn_row = QHBoxLayout()
         btn_row.addStretch(1)
         cancel_btn = QPushButton(tr("dlg_026", "Скасувати"))
+        cancel_btn.setAutoDefault(False)
         cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         cancel_btn.clicked.connect(self.reject)
         btn_row.addWidget(cancel_btn)
 
         save_btn = QPushButton(tr("dlg_041", "Зберегти"))
         save_btn.setObjectName("primaryBtn")
+        save_btn.setDefault(True)
         save_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         save_btn.clicked.connect(self._save_and_accept)
         btn_row.addWidget(save_btn)
@@ -1535,6 +1538,7 @@ class OmniVoiceSettingsDialog(QDialog):
         self.asr_status_lbl.setText(tr("omnivoice.whisper.done", "✓ Текст розпізнано!"))
 
     def _save_and_accept(self) -> None:
+        self.seed_spin.interpretText()
         mode = "design" if self.radio_design.isChecked() else "clone"
         config.set("omnivoice_mode", mode)
         config.set("omnivoice_ref_path", self._ref_path)
