@@ -7210,9 +7210,17 @@ class MainWindow(QMainWindow):
 
     def _refresh_omnivoice_whisper_hotkey_availability(self) -> None:
         enabled = str(config.get("active_engine", "") or "").strip() == "omnivoice"
+        tip = (
+            ""
+            if enabled
+            else tr(
+                "hk.omnivoice_disabled_tip",
+                "Недоступно, доки активним голосом не обрано OmniVoice",
+            )
+        )
         for w in getattr(self, "_omnivoice_hotkey_widgets", []):
-            w.setVisible(enabled)
             w.setEnabled(enabled)
+            w.setToolTip(tip)
 
     def _record_config_hotkey(self, cfg_key: str, label_text: str) -> None:
         cur = str(config.get(cfg_key, ""))

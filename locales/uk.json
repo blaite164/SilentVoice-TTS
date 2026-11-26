@@ -1418,5 +1418,6 @@
   "hk.toggle_omnivoice_whisper": "Увімкнути / вимкнути шепіт (OmniVoice):",
   "hk.toggle_omnivoice_whisper_help": "<b>Швидке перемикання шепоту OmniVoice.</b><br>Миттєво вмикає або вимикає стиль шепоту (whisper) для наступних фраз. Доступно, коли активним голосом обрано OmniVoice.",
   "omnivoice.whisper.enabled_status": "🤫 Шепіт (OmniVoice) увімкнено",
-  "omnivoice.whisper.disabled_status": "🗣️ Шепіт (OmniVoice) вимкнено"
+  "omnivoice.whisper.disabled_status": "🗣️ Шепіт (OmniVoice) вимкнено",
+  "hk.omnivoice_disabled_tip": "Недоступно, доки активним голосом не обрано OmniVoice"
 }

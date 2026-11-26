@@ -1418,5 +1418,6 @@
   "hk.toggle_omnivoice_whisper": "Включить / выключить шёпот (OmniVoice):",
   "hk.toggle_omnivoice_whisper_help": "<b>Быстрое переключение шёпота OmniVoice.</b><br>Мгновенно включает или выключает стиль шёпота (whisper) для следующих фраз. Доступно, когда активным голосом выбран OmniVoice.",
   "omnivoice.whisper.enabled_status": "🤫 Шёпот (OmniVoice) включён",
-  "omnivoice.whisper.disabled_status": "🗣️ Шёпот (OmniVoice) выключен"
+  "omnivoice.whisper.disabled_status": "🗣️ Шёпот (OmniVoice) выключен",
+  "hk.omnivoice_disabled_tip": "Недоступно, пока активным голосом не выбран OmniVoice"
 }

@@ -1418,5 +1418,6 @@
   "hk.toggle_omnivoice_whisper": "Activar / desactivar susurro (OmniVoice):",
   "hk.toggle_omnivoice_whisper_help": "<b>Cambio rapido de susurro de OmniVoice.</b><br>Activa o desactiva al instante el estilo susurro para las siguientes frases. Disponible solo cuando OmniVoice esta activo.",
   "omnivoice.whisper.enabled_status": "🤫 Susurro (OmniVoice) activado",
-  "omnivoice.whisper.disabled_status": "🗣️ Susurro (OmniVoice) desactivado"
+  "omnivoice.whisper.disabled_status": "🗣️ Susurro (OmniVoice) desactivado",
+  "hk.omnivoice_disabled_tip": "No disponible hasta que OmniVoice sea seleccionado como voz activa"
 }

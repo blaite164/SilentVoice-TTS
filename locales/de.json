@@ -1418,5 +1418,6 @@
   "hk.toggle_omnivoice_whisper": "Fluestermodus umschalten (OmniVoice):",
   "hk.toggle_omnivoice_whisper_help": "<b>Schnelles Umschalten von OmniVoice-Fluestern.</b><br>Aktiviert oder deaktiviert den Fluesterstil sofort fuer die naechsten Saetze. Nur verfuegbar, wenn OmniVoice aktiv ist.",
   "omnivoice.whisper.enabled_status": "🤫 Fluestern (OmniVoice) aktiviert",
-  "omnivoice.whisper.disabled_status": "🗣️ Fluestern (OmniVoice) deaktiviert"
+  "omnivoice.whisper.disabled_status": "🗣️ Fluestern (OmniVoice) deaktiviert",
+  "hk.omnivoice_disabled_tip": "Nicht verfuegbar, solange OmniVoice nicht als aktive Stimme gewaehlt ist"
 }

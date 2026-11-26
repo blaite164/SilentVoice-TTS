@@ -1418,5 +1418,6 @@
   "hk.toggle_omnivoice_whisper": "Activer / desactiver le chuchotement (OmniVoice) :",
   "hk.toggle_omnivoice_whisper_help": "<b>Bascule rapide du chuchotement OmniVoice.</b><br>Active ou desactive instantanement le mode chuchotement pour les phrases suivantes. Disponible uniquement lorsque OmniVoice est actif.",
   "omnivoice.whisper.enabled_status": "🤫 Chuchotement (OmniVoice) active",
-  "omnivoice.whisper.disabled_status": "🗣️ Chuchotement (OmniVoice) desactive"
+  "omnivoice.whisper.disabled_status": "🗣️ Chuchotement (OmniVoice) desactive",
+  "hk.omnivoice_disabled_tip": "Indisponible tant qu'OmniVoice n'est pas selectionne comme voix active"
 }

@@ -1418,5 +1418,6 @@
   "hk.toggle_omnivoice_whisper": "Wlacz / wylacz szept (OmniVoice):",
   "hk.toggle_omnivoice_whisper_help": "<b>Szybkie przelaczanie szeptu OmniVoice.</b><br>Natychmiast wlacza lub wylacza styl szeptu dla kolejnych fraz. Dostepne tylko wtedy, gdy aktywnym silnikiem jest OmniVoice.",
   "omnivoice.whisper.enabled_status": "🤫 Szept (OmniVoice) wlaczony",
-  "omnivoice.whisper.disabled_status": "🗣️ Szept (OmniVoice) wylaczony"
+  "omnivoice.whisper.disabled_status": "🗣️ Szept (OmniVoice) wylaczony",
+  "hk.omnivoice_disabled_tip": "Niedostepne, dopoki OmniVoice nie zostanie wybrany jako aktywny glos"
 }

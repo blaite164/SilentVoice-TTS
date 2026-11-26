@@ -1418,5 +1418,6 @@
   "hk.toggle_omnivoice_whisper": "Toggle Whisper mode (OmniVoice):",
   "hk.toggle_omnivoice_whisper_help": "<b>Quick OmniVoice whisper toggle.</b><br>Instantly turns whisper style on or off for upcoming phrases. Available only when OmniVoice is the active engine.",
   "omnivoice.whisper.enabled_status": "🤫 Whisper (OmniVoice) enabled",
-  "omnivoice.whisper.disabled_status": "🗣️ Whisper (OmniVoice) disabled"
+  "omnivoice.whisper.disabled_status": "🗣️ Whisper (OmniVoice) disabled",
+  "hk.omnivoice_disabled_tip": "Unavailable until OmniVoice is selected as the active voice"
 }
