@@ -22,6 +22,7 @@ from typing import Any, Callable, Dict, List, Optional
 from PySide6.QtCore import QObject, QRectF, QSize, Qt, QThread, QTimer, QUrl, Signal
 from PySide6.QtGui import QColor, QConicalGradient, QDesktopServices, QGuiApplication, QIcon, QImage, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
+    QAbstractSpinBox,
     QApplication,
     QButtonGroup,
     QCheckBox,
@@ -104,7 +105,7 @@ QLineEdit, QTextEdit {
 QLineEdit:focus, QTextEdit:focus {
     border: 1px solid #7C5CFF;
 }
-QComboBox {
+QComboBox, QSpinBox {
     background-color: #1B1F2D;
     color: #FFFFFF;
     border: 1px solid #3E4766;
@@ -112,7 +113,7 @@ QComboBox {
     padding: 6px 8px;
     font-size: 13px;
 }
-QComboBox:focus {
+QComboBox:focus, QSpinBox:focus {
     border: 1px solid #7C5CFF;
 }
 QPushButton {
@@ -1343,9 +1344,11 @@ class OmniVoiceSettingsDialog(QDialog):
         seed_row.setSpacing(8)
         seed_row.addWidget(_make_lbl(tr("omnivoice.design.seed", "Seed голосу:")))
         self.seed_spin = QSpinBox()
+        self.seed_spin.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
         self.seed_spin.setRange(0, 999999)
         self.seed_spin.setValue(get_active_omnivoice_seed())
         self.seed_spin.setMinimumWidth(110)
+        self.seed_spin.setMinimumHeight(33)
         seed_row.addWidget(self.seed_spin)
 
         rand_seed_btn = QPushButton(tr("omnivoice.design.new_seed", "🎲 Новий голос"))
