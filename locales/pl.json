@@ -1353,7 +1353,7 @@
   "omnivoice.mode.clone": "🎤 Klonowanie glosu (z pliku)",
   "omnivoice.mode.design": "✨ Kreator glosu (bez pliku)",
   "omnivoice.ref_text.label": "Transkrypcja nagrania referencyjnego (wymagana do klonowania):",
-  "omnivoice.ref_text.ph": "Wpisz tekst z pliku lub zostaw puste — przy syntezie zadziala automatyczne rozpoznawanie Whisper",
+  "omnivoice.ref_text.ph": "Wpisz tekst z pliku lub zostaw puste —\nWhisper rozpozna go automatycznie podczas syntezy",
   "omnivoice.whisper.btn": "✨ Rozpoznaj (Whisper)",
   "omnivoice.whisper.running": "⏳ Rozpoznawanie mowy...",
   "omnivoice.whisper.done": "✓ Tekst rozpoznany!",

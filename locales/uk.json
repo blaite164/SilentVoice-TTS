@@ -1353,7 +1353,7 @@
   "omnivoice.mode.clone": "🎤 Клонування голосу (з файлу)",
   "omnivoice.mode.design": "✨ Конструктор голосу (без файлу)",
   "omnivoice.ref_text.label": "Текст того, що сказано у файлі (обов'язково для клонування):",
-  "omnivoice.ref_text.ph": "Введіть текст із файлу або залиште порожнім — при озвучуванні спрацює авторозпізнавання Whisper",
+  "omnivoice.ref_text.ph": "Введіть текст із файлу або залиште порожнім —\nпри озвучуванні спрацює авторозпізнавання Whisper",
   "omnivoice.whisper.btn": "✨ Розпізнати (Whisper)",
   "omnivoice.whisper.running": "⏳ Розпізнавання голосу...",
   "omnivoice.whisper.done": "✓ Текст розпізнано!",

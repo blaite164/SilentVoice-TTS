@@ -1353,7 +1353,7 @@
   "omnivoice.mode.clone": "🎤 Voice Cloning (from file)",
   "omnivoice.mode.design": "✨ Voice Design (no file needed)",
   "omnivoice.ref_text.label": "Transcript of the reference clip (required for cloning):",
-  "omnivoice.ref_text.ph": "Enter what is spoken in the clip or leave blank for automatic Whisper transcription",
+  "omnivoice.ref_text.ph": "Enter the text spoken in the file or leave empty —\nWhisper will transcribe it automatically on synthesis",
   "omnivoice.whisper.btn": "✨ Auto-transcribe (Whisper)",
   "omnivoice.whisper.running": "⏳ Transcribing reference...",
   "omnivoice.whisper.done": "✓ Transcript ready!",

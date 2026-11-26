@@ -1353,7 +1353,7 @@
   "omnivoice.mode.clone": "🎤 Stimmenklonen (aus Datei)",
   "omnivoice.mode.design": "✨ Voice Design (ohne Datei)",
   "omnivoice.ref_text.label": "Transkript der Referenzdatei (fuer Klonen erforderlich):",
-  "omnivoice.ref_text.ph": "Text der Datei eingeben oder leer lassen fuer automatische Whisper-Erkennung",
+  "omnivoice.ref_text.ph": "Text aus der Audiodatei eingeben oder leer lassen —\nWhisper erkennt ihn bei der Sprachausgabe automatisch",
   "omnivoice.whisper.btn": "✨ Erkennen (Whisper)",
   "omnivoice.whisper.running": "⏳ Sprache wird erkannt...",
   "omnivoice.whisper.done": "✓ Text erkannt!",

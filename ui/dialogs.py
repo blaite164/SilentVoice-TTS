@@ -1187,11 +1187,13 @@ class OmniVoiceSettingsDialog(QDialog):
         cl_lay.addWidget(ref_txt_lbl)
 
         self.ref_text_edit = QTextEdit()
-        self.ref_text_edit.setFixedHeight(78)
+        self.ref_text_edit.setAcceptRichText(False)
+        self.ref_text_edit.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
+        self.ref_text_edit.setFixedHeight(84)
         self.ref_text_edit.setPlaceholderText(
             tr(
                 "omnivoice.ref_text.ph",
-                "Введіть текст із файлу або залиште порожнім — при озвучуванні спрацює авторозпізнавання Whisper",
+                "Введіть текст із файлу або залиште порожнім —\nпри озвучуванні спрацює авторозпізнавання Whisper",
             )
         )
         initial_ref_txt = ""

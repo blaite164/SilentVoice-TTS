@@ -1353,7 +1353,7 @@
   "omnivoice.mode.clone": "🎤 Clonacion de voz (desde archivo)",
   "omnivoice.mode.design": "✨ Diseno de voz (sin archivo)",
   "omnivoice.ref_text.label": "Transcripcion del audio de referencia (obligatoria para clonar):",
-  "omnivoice.ref_text.ph": "Escribe el texto del archivo o dejalo vacio para transcripcion automatica con Whisper",
+  "omnivoice.ref_text.ph": "Introduce el texto del archivo o déjalo vacío —\nWhisper lo transcribirá automáticamente al sintetizar",
   "omnivoice.whisper.btn": "✨ Transcribir (Whisper)",
   "omnivoice.whisper.running": "⏳ Transcribiendo audio...",
   "omnivoice.whisper.done": "✓ Texto transcrito!",
