@@ -6440,6 +6440,20 @@ class TTSEngineManager(QObject):
             ):
                 if de_m not in urls_to_try:
                     urls_to_try.append(de_m)
+        # Офіційне дзеркало GitLab Generic Packages для бінарників OmniVoice Runtime
+        m_ov = re.match(
+            r"^https://github\.com/blaite164/SilentVoice-TTS/releases/download/omnivoice-runtime-v?([^/]+)/([^/?#]+)$",
+            url,
+            re.IGNORECASE,
+        )
+        if m_ov:
+            ov_ver, ov_asset = m_ov.group(1), m_ov.group(2)
+            gl_mirror = (
+                f"https://gitlab.com/api/v4/projects/blaite164%2Fsilentvoice-tts"
+                f"/packages/generic/omnivoice-runtime/{ov_ver}/{ov_asset}"
+            )
+            if gl_mirror not in urls_to_try:
+                urls_to_try.append(gl_mirror)
         if bypass_enabled:
             if "huggingface.co/" in url:
                 mirror_url = url.replace("https://huggingface.co/", "https://hf-mirror.com/")
@@ -7750,8 +7764,8 @@ class TTSEngineManager(QObject):
                         proxies=None,
                         proxy_pool=working_proxies,
                         connect_timeout=5.0,
-                        read_timeout=14.0 if has_more_rounds else 25.0,
-                        abort_if_slow=has_more_rounds,
+                        read_timeout=14.0 if (has_more_rounds or slow_fallback_route is not None) else 25.0,
+                        abort_if_slow=has_more_rounds or (slow_fallback_route is not None),
                         cancel_event=cancel_event,
                         known_total=known_total,
                         known_resolved_url=known_resolved,
@@ -7793,7 +7807,7 @@ class TTSEngineManager(QObject):
                 if px_url in tried_proxies:
                     continue
                 tried_proxies.add(px_url)
-                has_fallback = (idx + 1 < len(working_proxies)) or has_more_rounds
+                has_fallback = (idx + 1 < len(working_proxies)) or has_more_rounds or (slow_fallback_route is not None)
                 px_dict = self._format_proxy_dict(px_url)
                 if not px_dict:
                     continue

@@ -273,6 +273,69 @@ class OmniVoiceIntegrationTests(unittest.TestCase):
         self.assertTrue(hook._omnivoice_active)
         self.assertIsNotNone(hook._hk_toggle_omnivoice_whisper)
 
+    def test_omnivoice_runtime_candidate_urls_include_gitlab_mirror(self) -> None:
+        from core.tts_manager import tts_manager
+
+        gh = (
+            "https://github.com/blaite164/SilentVoice-TTS/releases/download/"
+            "omnivoice-runtime-v1/omnivoice-runtime-win-cuda-x64.zip"
+        )
+        gl = (
+            "https://gitlab.com/api/v4/projects/blaite164%2Fsilentvoice-tts"
+            "/packages/generic/omnivoice-runtime/1/omnivoice-runtime-win-cuda-x64.zip"
+        )
+        cands_no_bypass = tts_manager._build_candidate_urls(gh, bypass_enabled=False)
+        self.assertIn(gl, cands_no_bypass)
+        cands_bypass = tts_manager._build_candidate_urls(gh, bypass_enabled=True)
+        self.assertIn(gl, cands_bypass)
+        self.assertLess(cands_bypass.index(gl), cands_bypass.index(f"https://gh-proxy.com/{gh}"))
+
+    def test_slow_direct_preferred_over_slow_proxies(self) -> None:
+        from core.tts_manager import tts_manager
+
+        url = "https://example.com/model.bin"
+        calls: list[dict] = []
+
+        def fake_stream(
+            target_url: str,
+            dest: Path,
+            engine_id: str,
+            base_pct: int,
+            span_pct: int,
+            label: str,
+            **kwargs,
+        ) -> None:
+            calls.append({
+                "url": target_url,
+                "proxies": kwargs.get("proxies"),
+                "proxy_pool": kwargs.get("proxy_pool"),
+                "abort_if_slow": kwargs.get("abort_if_slow"),
+            })
+            if kwargs.get("abort_if_slow"):
+                raise tts_manager._SlowProxyError("too slow")
+            dest.write_bytes(b"ok")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dest = Path(tmpdir) / "model.bin"
+            with (
+                mock.patch.object(tts_manager, "_build_candidate_urls", return_value=[url]),
+                mock.patch.object(tts_manager, "_stream_download_attempt", side_effect=fake_stream),
+                mock.patch.object(tts_manager, "_get_cached_proxies", return_value=["http://1.2.3.4:8080", "http://5.6.7.8:8080"]),
+                mock.patch.object(tts_manager, "_find_working_proxies_for_url", return_value=["http://9.9.9.9:8080"]),
+                mock.patch.object(tts_manager, "_probe_range_info", return_value=(10 * 1024 * 1024, url)),
+                mock.patch("core.tts_manager.get_active_api_proxies", return_value=None),
+                mock.patch("core.tts_manager.config.get", side_effect=lambda k, d=None: True if k == "use_download_bypass" else ("" if k == "custom_proxy_url" else d)),
+            ):
+                tts_manager._download_url_with_progress(url, dest, "omnivoice", 0, 50, "Test")
+
+            self.assertTrue(dest.is_file())
+            self.assertGreaterEqual(len(calls), 2)
+            # Final winning fallback call must be the direct route (no proxies / no proxy_pool)
+            last_call = calls[-1]
+            self.assertIsNone(last_call["proxies"])
+            self.assertIsNone(last_call["proxy_pool"])
+            self.assertFalse(last_call["abort_if_slow"])
+
 
 if __name__ == "__main__":
     unittest.main()
