@@ -62,7 +62,7 @@ OMNIVOICE_WHISPER_MARKER = OMNIVOICE_WHISPER_DIR / "ready.marker"
 OMNIVOICE_REF_CACHE_DIR = DATA_DIR / "tts_cache" / "omnivoice_refs"
 
 OMNIVOICE_NATIVE_SR = 24000
-OMNIVOICE_MAX_REF_SEC = 12.0
+OMNIVOICE_MAX_REF_SEC = 10.0
 OMNIVOICE_HF_REPO = "Serveurperso/OmniVoice-GGUF"
 OMNIVOICE_HF_REV = "361609388ae572a820d085185bbbe2a2aac4b30e"
 
@@ -120,32 +120,32 @@ OMNIVOICE_LANG_LABELS: Dict[str, str] = {
 
 CLONE_GUIDE_SAMPLE_TEXTS: Dict[str, str] = {
     "uk": (
-        "Сьогодні чудова, сонячна погода, і легкий вітер тихо шелестить у гіллі. "
-        "Цей живий запис чисто передає мій природний голос, щирі інтонації та спокійний ритм мовлення."
+        "Сьогодні чудова сонячна погода, і легкий вітер тихо шелестить у гіллі. "
+        "Цей запис чисто передає мій природний голос."
     ),
     "en": (
-        "The morning air feels bright and crisp today, with a gentle breeze moving through the trees. "
-        "This short recording captures my natural voice, clear rhythm, and calm tone."
+        "The morning air feels bright and crisp today, with a gentle breeze in the trees. "
+        "This clip captures my natural voice."
     ),
     "ru": (
         "Сегодня ясная, тёплая погода, и лёгкий ветер тихо шелестит в листве. "
-        "Эта живая запись чисто передаёт мой естественный голос, чёткую дикцию и спокойный темп речи."
+        "Эта запись чисто передаёт мой естественный голос."
     ),
     "pl": (
-        "Dzisiaj jest piękna, słoneczna pogoda, a przyjemny wiatr cicho szeleści wśród liści. "
-        "To krótkie nagranie czysto oddaje mój naturalny głos, wyraźny rytm i spokojną barwę mowy."
+        "Dzisiaj jest piękna, słoneczna pogoda, a wiatr cicho szeleści wśród liści. "
+        "To nagranie czysto oddaje mój naturalny głos."
     ),
     "de": (
-        "Heute ist das Wetter wunderbar klar, und eine sanfte Brise raschelt leise durch die Bäume. "
-        "Diese kurze Aufnahme zeigt meine natürliche Stimme, deutliche Aussprache und ruhigen Klang."
+        "Heute ist das Wetter wunderbar klar, und eine sanfte Brise raschelt in den Bäumen. "
+        "Diese Aufnahme zeigt meine natürliche Stimme."
     ),
     "fr": (
-        "Le matin est clair et lumineux aujourd'hui, avec une brise légère qui souffle doucement dans les arbres. "
-        "Ce court enregistrement capte fidèlement ma voix naturelle, mon rythme et mon ton calme."
+        "Le matin est clair et lumineux aujourd'hui, avec une douce brise dans les arbres. "
+        "Cet enregistrement capte ma voix naturelle."
     ),
     "es": (
-        "Hoy la mañana está clara y fresca, mientras una brisa suave mueve las hojas con calma. "
-        "Esta breve grabación refleja con nitidez mi voz natural, un ritmo fluido y un tono sereno."
+        "Hoy la mañana está clara y fresca, con una brisa suave en las hojas. "
+        "Esta grabación refleja mi voz natural."
     ),
 }
 

@@ -47,14 +47,14 @@ class LlamaTtsTests(unittest.TestCase):
                 (qw / llama_tts.QWEN3_MMPROJ_FILE).write_bytes(b"mm")
                 self.assertTrue(llama_tts.is_qwen3_tts_installed())
 
-    def test_prepare_reference_wav_converts_stereo_clips_12s_resamples_24k_and_caches(self) -> None:
+    def test_prepare_reference_wav_converts_stereo_clips_10s_resamples_24k_and_caches(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             src = root / "long_stereo.wav"
             sr = 48000
             samples = np.ones((sr * 23, 2), dtype=np.float32) * 1.2
-            # Add a quiet pause around 10.5s so pause-aware trim cuts cleanly <= 12s
-            samples[int(sr * 10.4) : int(sr * 10.8), :] = 0.0
+            # Add a quiet pause around 8.5s so pause-aware trim cuts cleanly <= 10s
+            samples[int(sr * 8.4) : int(sr * 8.8), :] = 0.0
             sf.write(str(src), samples, sr)
 
             with patch.object(llama_tts, "_REF_WAV_CACHE_DIR", root / "cache"):
@@ -65,8 +65,8 @@ class LlamaTtsTests(unittest.TestCase):
                 arr, out_sr = sf.read(str(out1), dtype="float32", always_2d=False)
                 self.assertEqual(out_sr, llama_tts.QWEN3_NATIVE_SR)
                 self.assertEqual(arr.ndim, 1)
-                self.assertLessEqual(len(arr), llama_tts.QWEN3_NATIVE_SR * 12)
-                self.assertGreaterEqual(len(arr), int(llama_tts.QWEN3_NATIVE_SR * 10.0))
+                self.assertLessEqual(len(arr), llama_tts.QWEN3_NATIVE_SR * 10)
+                self.assertGreaterEqual(len(arr), int(llama_tts.QWEN3_NATIVE_SR * 8.0))
                 self.assertLessEqual(float(np.max(np.abs(arr))), 0.96)
 
     def test_synthesize_qwen3_tts_sends_multipart_pcm_n_predict(self) -> None:
