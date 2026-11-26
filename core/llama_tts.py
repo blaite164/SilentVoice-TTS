@@ -425,9 +425,9 @@ def prepare_reference_wav(
     audio_path: Path,
     *,
     target_sr: int = QWEN3_NATIVE_SR,
-    max_sec: float = 10.0,
+    max_sec: float = 12.0,
 ) -> Path:
-    """Ensure any reference audio (.wav/.mp3/.ogg/.flac) is stored as mono 16-bit WAV <= 10s (pause-aware) at target_sr."""
+    """Ensure any reference audio (.wav/.mp3/.ogg/.flac) is stored as mono 16-bit WAV <= 12s (pause-aware) at target_sr."""
     if not audio_path.is_file():
         raise FileNotFoundError(f"Reference audio not found: {audio_path}")
     dst_sr = max(8000, int(target_sr))
