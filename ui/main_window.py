@@ -1976,14 +1976,19 @@ class MainWindow(QMainWindow):
             empty_lbl.setStyleSheet("color: #94A3B8; font-size: 13px; padding: 18px;")
             self.local_models_layout.addWidget(empty_lbl)
 
-        clone_gguf_ids = ("omnivoice", "qwen3_tts", "zonos3_mini")
+        clone_gguf_min_vram = {
+            "omnivoice": 2.0,
+            "qwen3_tts": 4.0,
+            "zonos3_mini": 4.0,
+        }
         has_gpu = has_hardware_gpu()
         vram_gb = get_discrete_gpu_vram_gb() if has_gpu else None
         for spec in visible_engines:
             eng_id = spec["id"]
             installed = tts_manager.is_engine_installed(eng_id)
-            is_clone_gguf = eng_id in clone_gguf_ids
-            if is_clone_gguf and not installed and has_gpu and vram_gb is not None and vram_gb < 3.0:
+            is_clone_gguf = eng_id in clone_gguf_min_vram
+            min_vram_gb = clone_gguf_min_vram.get(eng_id)
+            if min_vram_gb is not None and not installed and has_gpu and vram_gb is not None and vram_gb < min_vram_gb:
                 continue
 
             card = (

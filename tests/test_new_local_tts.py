@@ -435,11 +435,30 @@ class NewLocalTtsModelsTests(unittest.TestCase):
                     win.close()
                     win.deleteLater()
 
-            # 2) PC WITH GPU < 3 GB VRAM: ZONOS3 & Qwen3 are hidden from local cards list
+            # 2) PC WITH GPU < 4 GB VRAM (2–3 GB): ZONOS3 & Qwen3 are hidden, OmniVoice (>= 2 GB) is shown
+            for vram in (2.0, 3.0):
+                with (
+                    patch.object(config, "save", lambda *a, **k: None),
+                    patch("ui.main_window.has_hardware_gpu", return_value=True),
+                    patch("ui.main_window.get_discrete_gpu_vram_gb", return_value=vram),
+                    patch("core.llama_tts.has_hardware_gpu", return_value=True),
+                    patch.object(tts_manager, "is_engine_installed", return_value=False),
+                ):
+                    config._data["app_language"] = "en"
+                    win = MainWindow()
+                    try:
+                        self.assertNotIn("zonos3_mini", win._engine_cards_ui)
+                        self.assertNotIn("qwen3_tts", win._engine_cards_ui)
+                        self.assertIn("omnivoice", win._engine_cards_ui)
+                    finally:
+                        win.close()
+                        win.deleteLater()
+
+            # 2b) PC WITH GPU < 2 GB VRAM: OmniVoice is hidden as well
             with (
                 patch.object(config, "save", lambda *a, **k: None),
                 patch("ui.main_window.has_hardware_gpu", return_value=True),
-                patch("ui.main_window.get_discrete_gpu_vram_gb", return_value=2.0),
+                patch("ui.main_window.get_discrete_gpu_vram_gb", return_value=1.5),
                 patch("core.llama_tts.has_hardware_gpu", return_value=True),
                 patch.object(tts_manager, "is_engine_installed", return_value=False),
             ):
@@ -448,6 +467,7 @@ class NewLocalTtsModelsTests(unittest.TestCase):
                 try:
                     self.assertNotIn("zonos3_mini", win._engine_cards_ui)
                     self.assertNotIn("qwen3_tts", win._engine_cards_ui)
+                    self.assertNotIn("omnivoice", win._engine_cards_ui)
                 finally:
                     win.close()
                     win.deleteLater()
