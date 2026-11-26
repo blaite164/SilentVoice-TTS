@@ -6906,9 +6906,9 @@ class MainWindow(QMainWindow):
             hk_grid.addWidget(rec_btn, row_i, 3)
 
             if is_chat_hk:
-                self._chat_hotkey_widgets.extend([lbl_w, help_w, rst_btn, edit, rec_btn])
+                self._chat_hotkey_widgets.extend([lbl_w, rst_btn, edit, rec_btn])
             elif is_ov_hk:
-                self._omnivoice_hotkey_widgets.extend([lbl_w, help_w, rst_btn, edit, rec_btn])
+                self._omnivoice_hotkey_widgets.extend([lbl_w, rst_btn, edit, rec_btn])
 
         hk_lay.addLayout(hk_grid)
         self.chat_hk_disabled_hint = QLabel(
