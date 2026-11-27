@@ -1113,6 +1113,76 @@ class _HotSwapContext:
         self.recovery_attempts = 0
 
 
+def _resample_audio_fast(arr: np.ndarray, src_sr: int, dst_sr: int) -> np.ndarray:
+    """
+    Швидкий ресемплінг 2D-масиву (N, C) без холодної затримки імпорту scipy (~3.8 с):
+    - Якщо `scipy.signal` уже завантажено — використовує `resample_poly`.
+    - Інакше виконує векторизовану кубічну інтерполяцію Catmull-Rom на чистому NumPy (~1–2 мс).
+    """
+    n_in = len(arr)
+    if src_sr <= 0 or dst_sr <= 0 or src_sr == dst_sr or n_in == 0:
+        return arr
+    if "scipy.signal" in sys.modules:
+        import math
+        from scipy.signal import resample_poly
+
+        g = math.gcd(int(src_sr), int(dst_sr))
+        return resample_poly(arr, int(dst_sr) // g, int(src_sr) // g, axis=0).astype(np.float32, copy=False)
+
+    n_out = max(1, int(round(n_in * float(dst_sr) / float(src_sr))))
+    if n_in < 4:
+        pos = np.linspace(0.0, max(0.0, float(n_in - 1)), n_out, dtype=np.float64)
+        idx0 = np.floor(pos).astype(np.int64)
+        idx1 = np.minimum(idx0 + 1, n_in - 1)
+        frac = (pos - idx0).astype(np.float32)[:, None]
+        return ((1.0 - frac) * arr[idx0] + frac * arr[idx1]).astype(np.float32, copy=False)
+
+    pos = np.arange(n_out, dtype=np.float64) * (float(src_sr) / float(dst_sr))
+    pos = np.minimum(pos, float(n_in - 1))
+    i1 = np.floor(pos).astype(np.int64)
+    t = (pos - i1).astype(np.float32)[:, None]
+    i0 = np.maximum(i1 - 1, 0)
+    i2 = np.minimum(i1 + 1, n_in - 1)
+    i3 = np.minimum(i1 + 2, n_in - 1)
+    p0 = arr[i0]
+    p1 = arr[i1]
+    p2 = arr[i2]
+    p3 = arr[i3]
+    t2 = t * t
+    t3 = t2 * t
+    out = 0.5 * (
+        (2.0 * p1)
+        + (-p0 + p2) * t
+        + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2
+        + (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3
+    )
+    return out.astype(np.float32, copy=False)
+
+
+def _trim_leading_silence(
+    arr: np.ndarray,
+    sr: int,
+    *,
+    threshold: float = 0.008,
+    min_trim_ms: float = 35.0,
+    pre_roll_ms: float = 15.0,
+) -> np.ndarray:
+    """Обрізає зайву початкову тишу у прикладах голосів (залишаючи 15 мс запасу перед першим звуком)."""
+    if arr is None or len(arr) == 0 or sr <= 0:
+        return arr
+    amp = np.abs(arr) if arr.ndim == 1 else np.max(np.abs(arr), axis=1)
+    nz = np.flatnonzero(amp > threshold)
+    if len(nz) == 0:
+        return arr
+    first_idx = int(nz[0])
+    min_trim_samples = int(sr * (min_trim_ms / 1000.0))
+    if first_idx <= min_trim_samples:
+        return arr
+    pre_roll = int(sr * (pre_roll_ms / 1000.0))
+    start_idx = max(0, first_idx - pre_roll)
+    return arr[start_idx:] if start_idx > 0 else arr
+
+
 class _PersistentDevicePlayer:
     """
     Постійний callback-потік для одного аудіопристрою:
@@ -1309,11 +1379,7 @@ class _PersistentDevicePlayer:
             arr = np.mean(arr, axis=1, dtype=np.float32)[:, None]
 
         if int(sr) != self.samplerate and len(arr) > 0:
-            import math
-            from scipy.signal import resample_poly
-
-            g = math.gcd(int(sr), self.samplerate)
-            arr = resample_poly(arr, self.samplerate // g, int(sr) // g, axis=0).astype(np.float32, copy=False)
+            arr = _resample_audio_fast(arr, int(sr), self.samplerate)
         return np.ascontiguousarray(arr, dtype=np.float32)
 
     def enqueue(self, samples: np.ndarray, sr: int) -> _LocalTrackHandle:
@@ -1745,7 +1811,7 @@ class DualAudioRouter:
                     for h in stalled_handles:
                         h.mark_done()
                         self._close_player_for_device(h._player.device_idx, abort=True)
-                time.sleep(0.015)
+                self._stop_event.wait(timeout=0.015)
                 continue
 
             if stalled_handles or (now - last_dev_poll >= 0.10):
@@ -1767,7 +1833,7 @@ class DualAudioRouter:
                         prim_stalled=prim_stalled,
                     )
 
-            time.sleep(0.015)
+            self._stop_event.wait(timeout=0.015)
 
     def _notify_playback_queued(
         self,
@@ -2302,8 +2368,46 @@ class DualAudioRouter:
                 self._is_playing = False
                 self._active_generation = None
 
-    def play_wav_file(self, wav_path: str | Path, monitor_only: bool = False, generation: Optional[int] = None) -> float:
-        """Зчитує .wav файл та відтворює його (зі збереженням стерео). Повертає тривалість у секундах."""
+    def prewarm_monitor_device(self) -> None:
+        """Фоново відкриває постійний аудіопотік навушників/монітора, щоб перше прослуховування стартувало без затримки."""
+        def _warm() -> None:
+            try:
+                want_fmt = get_configured_audio_output_format()
+                targets = resolve_secondary_output_targets(_allow_refresh=False)
+                if not targets:
+                    return
+                dev_idx = targets[0]
+                with self._players_lock:
+                    existing = self._players.get(dev_idx)
+                    if existing is not None and existing.is_alive() and existing.requested_format == want_fmt:
+                        return
+                player = _PersistentDevicePlayer(dev_idx, 24000, output_format=want_fmt)
+                replaced: Optional[_PersistentDevicePlayer] = None
+                with self._players_lock:
+                    cur = self._players.get(dev_idx)
+                    if cur is not None and cur.is_alive() and cur.requested_format == want_fmt:
+                        replaced = player
+                    else:
+                        if cur is not None:
+                            replaced = cur
+                        self._players[dev_idx] = player
+                if replaced is not None:
+                    replaced.close(abort=True)
+                self._schedule_idle_reap()
+            except Exception:
+                pass
+
+        threading.Thread(target=_warm, daemon=True, name="AudioMonitorPrewarm").start()
+
+    def play_wav_file(
+        self,
+        wav_path: str | Path,
+        monitor_only: bool = False,
+        generation: Optional[int] = None,
+        *,
+        trim_leading_silence: bool = False,
+    ) -> float:
+        """Зчитує аудіофайл (.wav/.ogg/.mp3/.flac) та відтворює його (зі збереженням стерео). Повертає тривалість у секундах."""
         p = Path(wav_path)
         if not p.exists():
             return 0.0
@@ -2313,6 +2417,8 @@ class DualAudioRouter:
         arr = np.asarray(data, dtype=np.float32)
         if arr.ndim == 2 and arr.shape[1] > 2:
             arr = np.mean(arr, axis=1).astype(np.float32)
+        if trim_leading_silence:
+            arr = _trim_leading_silence(arr, int(sr))
         dur = len(arr) / float(sr) if sr > 0 else 0.0
         self.play_samples(arr, int(sr), monitor_only=monitor_only, generation=generation)
         return dur

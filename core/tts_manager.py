@@ -3292,7 +3292,12 @@ class TTSEngineManager(QObject):
             if gen != audio_router.current_generation:
                 return
             self.status_changed.emit(tr("tts.status.previewing", "Прослуховування: {name}...", name=sample_path.name))
-            audio_router.play_wav_file(sample_path, monitor_only=monitor_only, generation=gen)
+            audio_router.play_wav_file(
+                sample_path,
+                monitor_only=monitor_only,
+                generation=gen,
+                trim_leading_silence=True,
+            )
             if gen == audio_router.current_generation:
                 self.status_changed.emit(tr("ui_113", "Система готова"))
 

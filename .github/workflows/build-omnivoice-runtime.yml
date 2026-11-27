@@ -11,6 +11,11 @@ on:
         required: true
         default: 'omnivoice-runtime-v1'
         type: string
+      mirror_only:
+        description: 'Skip C++ build and mirror existing GitHub Release to GitLab Release + Packages'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -21,6 +26,7 @@ env:
 jobs:
   build-runtime:
     name: Build OmniVoice Windows x64 (${{ matrix.backend }})
+    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.mirror_only }}
     runs-on: windows-2022
     timeout-minutes: 90
     strategy:
@@ -179,9 +185,13 @@ jobs:
 
   publish-runtime:
     name: Publish OmniVoice Runtime Release
+    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.mirror_only }}
     needs: build-runtime
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout SilentVoice repo
+        uses: actions/checkout@v4
+
       - name: Download Vulkan artifact
         uses: actions/download-artifact@v4
         with:
@@ -224,7 +234,7 @@ jobs:
             release_assets/omnivoice-runtime-win-cuda-x64.zip
             release_assets/SHA256SUMS.txt
 
-      - name: Mirror Runtime to GitLab (optional, requires GITLAB_TOKEN secret)
+      - name: Mirror Runtime & Release to GitLab (optional, requires GITLAB_TOKEN secret)
         env:
           GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
           RELEASE_TAG: ${{ steps.tag.outputs.name }}
@@ -233,16 +243,33 @@ jobs:
             echo "GITLAB_TOKEN not configured — skipping GitLab mirror."
             exit 0
           fi
-          ver="${RELEASE_TAG#omnivoice-runtime-}"
-          ver="${ver#v}"
-          ver="${ver#V}"
-          ver="${ver:-1}"
-          base_pkg="https://gitlab.com/api/v4/projects/blaite164%2Fsilentvoice-tts/packages/generic/omnivoice-runtime/${ver}"
+          python3 -c "import requests" 2>/dev/null || python3 -m pip install --quiet requests
+          python3 installer/mirror_omnivoice_runtime_gitlab.py release_assets
+
+  mirror-existing-runtime:
+    name: Mirror Existing GitHub Runtime Release to GitLab
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.mirror_only }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout SilentVoice repo
+        uses: actions/checkout@v4
+
+      - name: Download existing GitHub Release assets & mirror to GitLab Release + Packages
+        env:
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if [ -z "$GITLAB_TOKEN" ]; then
+            echo "GITLAB_TOKEN secret is not configured!" >&2
+            exit 1
+          fi
+          mkdir -p release_assets
           for fname in omnivoice-runtime-win-vulkan-x64.zip omnivoice-runtime-win-cuda-x64.zip SHA256SUMS.txt; do
-            echo "Uploading $fname to GitLab Generic Packages (v${ver})..."
+            echo "Downloading $fname from GitHub release ${RELEASE_TAG}..."
             curl -fsSL --retry 3 --retry-delay 5 \
-              -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" \
-              --upload-file "release_assets/${fname}" \
-              "${base_pkg}/${fname}"
-            echo ""
+              -o "release_assets/${fname}" \
+              "https://github.com/${GH_REPO}/releases/download/${RELEASE_TAG}/${fname}"
           done
+          python3 -c "import requests" 2>/dev/null || python3 -m pip install --quiet requests
+          python3 installer/mirror_omnivoice_runtime_gitlab.py release_assets

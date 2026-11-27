@@ -884,16 +884,30 @@ class VoiceSamplesDialog(QDialog):
         )
         self._has_model_tab = bool(self._is_clone_engine and has_named_model_voices)
         self._has_dual_tabs = bool(self._is_clone_engine)
-        if self._has_model_tab:
-            self._active_tab_mode = "model"
-        elif self._is_clone_engine:
-            self._active_tab_mode = "clone_demo"
+        if self._is_clone_engine:
+            if self._allow_install:
+                # Якщо TTS уже встановлено — за замовчуванням завжди відкриваємо «Голоси для клонування»
+                self._active_tab_mode = "clone"
+            elif self._has_model_tab:
+                # Якщо не встановлено і є власні голоси моделі (напр. ZONOS3-Mini) — «Голоси моделі»
+                self._active_tab_mode = "model"
+            else:
+                # Інакше (не встановлено) — «Приклад клонування»
+                self._active_tab_mode = "clone_demo"
         else:
             self._active_tab_mode = "model"
 
         self.setMinimumSize(520, 380)
         self.resize(580, 440)
         self.setStyleSheet(DIALOG_STYLESHEET)
+
+        # Заздалегідь прогріваємо аудіопотік моніторингу у фоні, щоб перше натискання «▶» стартувало миттєво
+        try:
+            from core.audio_router import audio_router
+
+            audio_router.prewarm_monitor_device()
+        except Exception:
+            pass
 
         lay = QVBoxLayout(self)
         lay.setContentsMargins(20, 18, 20, 16)
@@ -936,7 +950,12 @@ class VoiceSamplesDialog(QDialog):
             self._mode_tabs.setTabData(idx_demo, "clone_demo")
             idx_clone = self._mode_tabs.addTab(tr("dlg.samples.tab_clone", "Голоси для клонування"))
             self._mode_tabs.setTabData(idx_clone, "clone")
-            self._mode_tabs.setCurrentIndex(0)
+            default_tab_idx = 0
+            for ti in range(self._mode_tabs.count()):
+                if str(self._mode_tabs.tabData(ti) or "") == self._active_tab_mode:
+                    default_tab_idx = ti
+                    break
+            self._mode_tabs.setCurrentIndex(default_tab_idx)
             self._mode_tabs.currentChanged.connect(self._on_mode_tab_changed)
             lay.addWidget(self._mode_tabs)
 

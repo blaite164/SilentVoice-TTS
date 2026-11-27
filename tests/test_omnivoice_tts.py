@@ -286,6 +286,106 @@ class OmniVoiceIntegrationTests(unittest.TestCase):
                 ],
             )
 
+    def test_fast_preview_resample_and_leading_silence_trim(self) -> None:
+        import sys
+        import numpy as np
+        from core.audio_router import _resample_audio_fast, _trim_leading_silence
+
+        # 1. Чистий NumPy ресемплер працює швидко й точно навіть без імпорту scipy.signal
+        t = np.linspace(0.0, 0.25, 6000, endpoint=False, dtype=np.float32)
+        src = np.stack([np.sin(2.0 * np.pi * 440.0 * t), np.sin(2.0 * np.pi * 440.0 * t)], axis=1).astype(np.float32)
+        saved_scipy = sys.modules.pop("scipy.signal", None)
+        try:
+            out = _resample_audio_fast(src, 24000, 44100)
+            self.assertEqual(out.shape[1], 2)
+            self.assertAlmostEqual(len(out), round(6000 * 44100 / 24000), delta=2)
+            self.assertFalse(np.isnan(out).any())
+            self.assertGreater(float(np.max(np.abs(out))), 0.9)
+        finally:
+            if saved_scipy is not None:
+                sys.modules["scipy.signal"] = saved_scipy
+
+        # 2. Обрізання початкової тиші у прикладах зберігає ~15 мс запасу перед звуком
+        sr = 24000
+        silence = np.zeros(int(sr * 0.6), dtype=np.float32)
+        tone = np.ones(int(sr * 0.2), dtype=np.float32) * 0.5
+        trimmed = _trim_leading_silence(np.concatenate([silence, tone]), sr)
+        nz = np.flatnonzero(np.abs(trimmed) > 0.008)
+        self.assertGreater(len(nz), 0)
+        lead_ms = nz[0] / sr * 1000.0
+        self.assertLessEqual(lead_ms, 20.0)
+        self.assertGreaterEqual(lead_ms, 10.0)
+
+    def test_voice_samples_dialog_default_tab_by_install_state(self) -> None:
+        from PySide6.QtWidgets import QApplication
+        from ui.dialogs import VoiceSamplesDialog
+
+        app = QApplication.instance() or QApplication([])
+        self.assertIsNotNone(app)
+
+        fake_clone = [{"name": "Voice A", "path": "a.ogg", "gender": "female"}]
+        fake_demo = [{"name": "Demo A", "path": "d.ogg", "ref_path": "r.ogg", "gender": "female"}]
+        fake_model = [{"name": "Willow", "path": "zonos3_en_willow.ogg", "gender": "female"}]
+
+        with mock.patch("core.audio_router.audio_router.prewarm_monitor_device"), mock.patch(
+            "ui.dialogs.get_clone_demo_samples", return_value=fake_demo
+        ):
+            # 1. OmniVoice НЕ встановлено -> «Приклад клонування»
+            with mock.patch("ui.dialogs.get_samples_for_engine", return_value=fake_clone):
+                d1 = VoiceSamplesDialog("omnivoice", "OmniVoice", allow_install=False)
+                try:
+                    self.assertEqual(d1._active_tab_mode, "clone_demo")
+                    assert d1._mode_tabs is not None
+                    self.assertEqual(d1._mode_tabs.tabData(d1._mode_tabs.currentIndex()), "clone_demo")
+                finally:
+                    d1.close()
+                    d1.deleteLater()
+
+                # 2. OmniVoice ВСТАНОВЛЕНО -> «Голоси для клонування»
+                d2 = VoiceSamplesDialog("omnivoice", "OmniVoice", allow_install=True)
+                try:
+                    self.assertEqual(d2._active_tab_mode, "clone")
+                    assert d2._mode_tabs is not None
+                    self.assertEqual(d2._mode_tabs.tabData(d2._mode_tabs.currentIndex()), "clone")
+                finally:
+                    d2.close()
+                    d2.deleteLater()
+
+            # 3. ZONOS3-Mini НЕ встановлено (є голоси моделі) -> «Голоси моделі»
+            def _zonos_samples(eid, lang=None, gender="both", own_only=False):
+                return fake_model if own_only else fake_clone
+
+            with mock.patch("ui.dialogs.get_samples_for_engine", side_effect=_zonos_samples):
+                d3 = VoiceSamplesDialog("zonos3_mini", "ZONOS3-Mini", allow_install=False)
+                try:
+                    self.assertEqual(d3._active_tab_mode, "model")
+                    assert d3._mode_tabs is not None
+                    self.assertEqual(d3._mode_tabs.tabData(d3._mode_tabs.currentIndex()), "model")
+                finally:
+                    d3.close()
+                    d3.deleteLater()
+
+                # 4. ZONOS3-Mini ВСТАНОВЛЕНО -> завжди «Голоси для клонування»
+                d4 = VoiceSamplesDialog("zonos3_mini", "ZONOS3-Mini", allow_install=True)
+                try:
+                    self.assertEqual(d4._active_tab_mode, "clone")
+                    assert d4._mode_tabs is not None
+                    self.assertEqual(d4._mode_tabs.tabData(d4._mode_tabs.currentIndex()), "clone")
+                finally:
+                    d4.close()
+                    d4.deleteLater()
+
+            # 5. ZONOS3-Mini НЕ встановлено (немає голосів моделі) -> «Приклад клонування»
+            with mock.patch("ui.dialogs.get_samples_for_engine", side_effect=lambda eid, lang=None, gender="both", own_only=False: [] if own_only else fake_clone):
+                d5 = VoiceSamplesDialog("zonos3_mini", "ZONOS3-Mini", allow_install=False)
+                try:
+                    self.assertEqual(d5._active_tab_mode, "clone_demo")
+                    assert d5._mode_tabs is not None
+                    self.assertEqual(d5._mode_tabs.tabData(d5._mode_tabs.currentIndex()), "clone_demo")
+                finally:
+                    d5.close()
+                    d5.deleteLater()
+
     def test_omnivoice_runtime_candidate_urls_include_gitlab_mirror(self) -> None:
         from core.tts_manager import tts_manager
 
