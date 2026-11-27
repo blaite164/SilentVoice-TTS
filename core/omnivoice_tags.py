@@ -44,13 +44,13 @@ OMNIVOICE_REACTION_TAGS: Tuple[OmniVoiceTagSpec, ...] = (
         omnivoice_tag="[laughter]",
         emoji="😂",
         primary_cmds={
-            "uk": "сміх",
-            "ru": "смех",
-            "en": "laugh",
-            "de": "lach",
-            "es": "risa",
-            "fr": "rire",
-            "pl": "śmiech",
+            "uk": "хаха",
+            "ru": "хаха",
+            "en": "haha",
+            "de": "haha",
+            "es": "jaja",
+            "fr": "haha",
+            "pl": "haha",
         },
         descriptions={
             "uk": "Живий сміх",
@@ -62,9 +62,10 @@ OMNIVOICE_REACTION_TAGS: Tuple[OmniVoiceTagSpec, ...] = (
             "pl": "Naturalny śmiech",
         },
         aliases=(
-            "сміх", "смех", "ха", "хаха", "лол",
-            "lol", "laugh", "laughter", "ha", "haha",
-            "lach", "risa", "rire", "śmiech", "smiech",
+            "хаха", "ахаха", "ахах", "хах", "ха", "сміх", "смех", "лол",
+            "haha", "ahaha", "hah", "ha", "lol", "laugh", "laughter",
+            "hahaha", "lach", "jaja", "jajaja", "jaj", "risa",
+            "mdr", "rire", "hehe", "śmiech", "smiech",
         ),
     ),
     OmniVoiceTagSpec(
@@ -168,7 +169,7 @@ OMNIVOICE_REACTION_TAGS: Tuple[OmniVoiceTagSpec, ...] = (
             "fr": "Soudain « ah ! »",
             "pl": "Nagłe «ach!»",
         },
-        aliases=("ах", "аха", "ah", "ach"),
+        aliases=("ах", "ахх", "ah", "ahh", "ach"),
     ),
     OmniVoiceTagSpec(
         id="rc_question_en",
@@ -250,6 +251,88 @@ OMNIVOICE_REACTION_TAGS: Tuple[OmniVoiceTagSpec, ...] = (
 _BUILTIN_BY_ID: Dict[str, OmniVoiceTagSpec] = {s.id: s for s in OMNIVOICE_REACTION_TAGS}
 _BUILTIN_BY_TAG: Dict[str, OmniVoiceTagSpec] = {s.tag.lower(): s for s in OMNIVOICE_REACTION_TAGS}
 
+# Локалізовані списки швидких команд для кожної мови (щоб у редакторі та при швидкому друку
+# одразу були природні варіанти на кшталт «хаха, ахаха, ахах, хах»)
+_BUILTIN_LOCALIZED_ALIASES: Dict[str, Dict[str, Tuple[str, ...]]] = {
+    "rc_laughter": {
+        "uk": ("хаха", "ахаха", "ахах", "хах", "сміх", "лол"),
+        "ru": ("хаха", "ахаха", "ахах", "хах", "смех", "лол"),
+        "en": ("haha", "ahaha", "hah", "laugh", "lol"),
+        "de": ("haha", "hahaha", "hah", "lach", "lol"),
+        "es": ("jaja", "jajaja", "jaj", "risa", "lol"),
+        "fr": ("haha", "ahaha", "mdr", "rire", "lol"),
+        "pl": ("haha", "hehe", "hah", "śmiech", "smiech", "lol"),
+    },
+    "rc_sigh": {
+        "uk": ("зітх", "зітхання", "ех"),
+        "ru": ("вздох", "эх"),
+        "en": ("sigh", "phew"),
+        "de": ("seufz", "uff"),
+        "es": ("susp", "suspiro", "uf"),
+        "fr": ("soupir", "ouf"),
+        "pl": ("west", "ech"),
+    },
+    "rc_surprise_wa": {
+        "uk": ("вау", "ого"),
+        "ru": ("вау", "ого"),
+        "en": ("wow", "whoa"),
+        "de": ("wow", "oha"),
+        "es": ("guau", "wow"),
+        "fr": ("waouh", "wow"),
+        "pl": ("wow", "łał", "lal"),
+    },
+    "rc_surprise_oh": {
+        "uk": ("ох", "оу", "ой"),
+        "ru": ("ох", "оу", "ой"),
+        "en": ("oh", "ooh"),
+        "de": ("oh", "oha"),
+        "es": ("oh", "uy"),
+        "fr": ("oh", "ohh"),
+        "pl": ("och", "oj", "oh"),
+    },
+    "rc_surprise_ah": {
+        "uk": ("ах", "ахх"),
+        "ru": ("ах", "ахх"),
+        "en": ("ah", "ahh"),
+        "de": ("ah", "ahh"),
+        "es": ("ah", "ay"),
+        "fr": ("ah", "ahh"),
+        "pl": ("ach", "ah", "ahh"),
+    },
+    "rc_question_en": {
+        "uk": ("хм", "хмм", "мм"),
+        "ru": ("хм", "хмм", "мм"),
+        "en": ("hmm", "hm"),
+        "de": ("hmm", "hm"),
+        "es": ("hmm", "hm"),
+        "fr": ("hmm", "hm"),
+        "pl": ("hmm", "hm"),
+    },
+    "rc_confirmation_en": {
+        "uk": ("угу", "мгм", "ага"),
+        "ru": ("угу", "мгм", "ага"),
+        "en": ("mhm", "uhhuh"),
+        "de": ("mhm", "aha"),
+        "es": ("aja", "ajá", "mhm"),
+        "fr": ("mhm", "aha"),
+        "pl": ("mhm", "aha"),
+    },
+    "rc_dissatisfaction_hnn": {
+        "uk": ("хмф", "фу", "хмпф"),
+        "ru": ("хмф", "фу", "хмпф"),
+        "en": ("hmph", "hnn"),
+        "de": ("hmph", "pff"),
+        "es": ("hmpf", "bah"),
+        "fr": ("hmph", "pff"),
+        "pl": ("hmf", "pff"),
+    },
+}
+
+# Старі первинні назви для плавної міграції наявних config.json при зміні мови
+_LEGACY_PRIMARY_CMDS: Dict[str, Tuple[str, ...]] = {
+    "rc_laughter": ("сміх", "смех", "laugh", "lach", "risa", "rire", "śmiech"),
+}
+
 # Усі 13 офіційних тегів із ServeurpersoCom/omnivoice.cpp/src/prompt-tts.h
 OMNIVOICE_ALL_OFFICIAL_TAGS: Tuple[str, ...] = (
     "[laughter]",
@@ -308,6 +391,33 @@ def sanitize_reaction_command_name(raw: str) -> str:
     return s.lower()
 
 
+def parse_reaction_command_aliases(raw: str) -> List[str]:
+    """Розбирає рядок із однією або кількома командами через кому/крапку з комою/пробіл (`хаха, ахаха, ахах, хах`)."""
+    parts = re.split(r"[,;\s]+", str(raw or "").strip())
+    out: List[str] = []
+    for part in parts:
+        clean = sanitize_reaction_command_name(part)
+        if clean and clean not in out:
+            out.append(clean)
+    return out
+
+
+def get_localized_builtin_aliases(spec_id: str, ui_lang: str = "uk") -> List[str]:
+    """Повертає природний набір команд-синонімів вбудованої реакції для обраної мови інтерфейсу."""
+    lang = str(ui_lang or "uk").strip().lower()
+    if lang == "ua":
+        lang = "uk"
+    loc_map = _BUILTIN_LOCALIZED_ALIASES.get(spec_id, {})
+    loc = loc_map.get(lang) or loc_map.get("en")
+    if loc:
+        return list(loc)
+    spec = _BUILTIN_BY_ID.get(spec_id)
+    if spec is not None:
+        cmd = spec.primary_cmds.get(lang) or spec.primary_cmds.get("en") or spec.aliases[0]
+        return [cmd]
+    return []
+
+
 def get_default_reaction_commands(ui_lang: str = "uk") -> List[Dict[str, Any]]:
     """Повертає стандартний список із 8 вбудованих реакцій для збереження в config.json."""
     lang = str(ui_lang or "uk").strip().lower()
@@ -315,13 +425,14 @@ def get_default_reaction_commands(ui_lang: str = "uk") -> List[Dict[str, Any]]:
         lang = "uk"
     items: List[Dict[str, Any]] = []
     for spec in OMNIVOICE_REACTION_TAGS:
-        cmd = spec.primary_cmds.get(lang) or spec.primary_cmds.get("en") or spec.aliases[0]
+        loc_aliases = get_localized_builtin_aliases(spec.id, lang)
+        cmd = loc_aliases[0] if loc_aliases else (spec.primary_cmds.get(lang) or spec.primary_cmds.get("en") or spec.aliases[0])
         desc = spec.descriptions.get(lang) or spec.descriptions.get("en") or ""
         items.append(
             {
                 "id": spec.id,
                 "command": cmd,
-                "aliases": list(spec.aliases),
+                "aliases": loc_aliases or [cmd],
                 "display": spec.emoji,
                 "description": desc,
                 "audio_file": "",
@@ -331,6 +442,71 @@ def get_default_reaction_commands(ui_lang: str = "uk") -> List[Dict[str, Any]]:
             }
         )
     return items
+
+
+def sync_default_reaction_commands_for_lang(
+    cfg_data: Optional[Dict[str, Any]],
+    ui_lang: str = "uk",
+) -> Optional[List[Dict[str, Any]]]:
+    """
+    Оновлює незмінені користувачем стандартні команди та описи під обрану мову інтерфейсу
+    (зберігаючи порядок, власні файли, бінди, галочки й кастомні команди).
+    Повертає оновлений список, якщо щось змінилось, інакше `None`.
+    """
+    if not isinstance(cfg_data, dict):
+        return None
+    raw = cfg_data.get("reaction_commands", None)
+    if not isinstance(raw, list):
+        return None
+    lang = str(ui_lang or "uk").strip().lower() or "uk"
+    if lang == "ua":
+        lang = "uk"
+
+    updated: List[Dict[str, Any]] = []
+    changed = False
+    for entry in raw:
+        if not isinstance(entry, dict):
+            continue
+        item = dict(entry)
+        cid = str(item.get("id") or "").strip()
+        spec = _BUILTIN_BY_ID.get(cid)
+        if spec is not None:
+            known_cmds = {c.lower() for c in spec.primary_cmds.values()} | {
+                c.lower() for c in _LEGACY_PRIMARY_CMDS.get(cid, ())
+            }
+            known_descs = {d.strip() for d in spec.descriptions.values()}
+            known_all_aliases = {a.lower() for a in spec.aliases}
+            for loc_vals in _BUILTIN_LOCALIZED_ALIASES.get(cid, {}).values():
+                known_all_aliases.update(a.lower() for a in loc_vals)
+
+            cur_cmd = sanitize_reaction_command_name(str(item.get("command") or ""))
+            cur_desc = str(item.get("description") or "").strip()
+            target_aliases = get_localized_builtin_aliases(cid, lang)
+            target_cmd = target_aliases[0] if target_aliases else (spec.primary_cmds.get(lang) or spec.primary_cmds.get("en") or cur_cmd)
+            target_desc = spec.descriptions.get(lang) or spec.descriptions.get("en") or cur_desc
+
+            if cur_cmd in known_cmds:
+                cur_aliases = [
+                    sanitize_reaction_command_name(str(a))
+                    for a in (item.get("aliases") or [])
+                    if sanitize_reaction_command_name(str(a))
+                ]
+                user_extra = [a for a in cur_aliases if a not in known_all_aliases]
+                new_aliases = list(target_aliases)
+                for extra in user_extra:
+                    if extra not in new_aliases:
+                        new_aliases.append(extra)
+                if cur_cmd != target_cmd or cur_aliases != new_aliases:
+                    item["command"] = target_cmd
+                    item["aliases"] = new_aliases
+                    changed = True
+            if not cur_desc or cur_desc in known_descs:
+                if cur_desc != target_desc:
+                    item["description"] = target_desc
+                    changed = True
+        updated.append(item)
+
+    return updated if changed else None
 
 
 def resolve_reaction_audio_path(item: Dict[str, Any], base_dir: Optional[Path] = None) -> str:
@@ -452,7 +628,7 @@ def build_active_reaction_specs(
     """
     if cfg_data is None:
         return list(OMNIVOICE_REACTION_TAGS)
-    eff_lang = str(ui_lang or cfg_data.get("app_language", "uk") or "uk").strip().lower() or "uk"
+    eff_lang = str(ui_lang or cfg_data.get("ui_language") or cfg_data.get("app_language", "uk") or "uk").strip().lower() or "uk"
     eff_engine = str(engine_id if engine_id is not None else cfg_data.get("active_engine", "") or "").strip()
     ov_enabled = bool(cfg_data.get("reaction_omnivoice_enabled", True))
     items = load_reaction_command_items(cfg_data, eff_lang)
@@ -480,7 +656,7 @@ def build_all_configured_reaction_specs(
     """Повертає всі налаштовані команди (для відображення токенів в оверлеї та прев’ю стилів)."""
     if cfg_data is None:
         return list(OMNIVOICE_REACTION_TAGS)
-    eff_lang = str(ui_lang or cfg_data.get("app_language", "uk") or "uk").strip().lower() or "uk"
+    eff_lang = str(ui_lang or cfg_data.get("ui_language") or cfg_data.get("app_language", "uk") or "uk").strip().lower() or "uk"
     items = load_reaction_command_items(cfg_data, eff_lang)
     specs: List[OmniVoiceTagSpec] = []
     for item in items:
@@ -605,9 +781,15 @@ def complete_slash_command(
             return None
         alias_map = _build_alias_to_token_map(specs, ui_lang)
         tag = alias_map.get(q)
-        if not tag:
-            return None
-        return f"{prefix}{tag} "
+        if tag:
+            return f"{prefix}{tag} "
+        # Швидкий друк: якщо введено префікс від 2+ символів і він однозначно
+        # відповідає рівно одній команді (напр. `\зіт`, `\аха`, `\ха`), теж завершуємо по Пробілу
+        if len(q) >= 2:
+            matches = match_reaction_tags(q, ui_lang, specs=specs)
+            if len(matches) == 1:
+                return f"{prefix}{matches[0].tag} "
+        return None
 
     matches = match_reaction_tags(q, ui_lang, specs=specs)
     if not matches:

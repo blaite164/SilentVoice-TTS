@@ -729,10 +729,70 @@ def fetch_ai_provider_models(provider: str, api_key: str = "", base_url: str = "
     return deduped
 
 
+def _extract_protected_reaction_spans(text: str) -> tuple[List[str], List[str]]:
+    """
+    Розділяє текст на чергування звичайних фрагментів (`spans`) та захищених токенів
+    звукових команд / реакцій (`tokens`), щоб AI-коректор гарантовано не спотворював
+    `[laughter]`, `[хаха]` або `/хаха` / `\хаха` / `|хаха`.
+    """
+    from core.omnivoice_tags import (
+        OMNIVOICE_ALL_OFFICIAL_TAGS,
+        build_all_configured_reaction_specs,
+        expand_omnivoice_tags,
+    )
+
+    specs = build_all_configured_reaction_specs(config.data)
+    expanded = expand_omnivoice_tags(text, specs=specs)
+    known_tokens = list(OMNIVOICE_ALL_OFFICIAL_TAGS) + [s.tag for s in specs if s.tag]
+    if not known_tokens or "[" not in expanded:
+        return [text], []
+
+    pat = re.compile(
+        "|".join(re.escape(tok) for tok in sorted(set(known_tokens), key=len, reverse=True)),
+        re.IGNORECASE,
+    )
+    spans: List[str] = []
+    tokens: List[str] = []
+    pos = 0
+    for m in pat.finditer(expanded):
+        spans.append(expanded[pos : m.start()])
+        tokens.append(m.group(0))
+        pos = m.end()
+    spans.append(expanded[pos:])
+    return spans, tokens
+
+
+def _run_ai_single_call(
+    clean: str,
+    prompt: str,
+    prim_item: Optional[Dict[str, Any]],
+    fb_item: Optional[Dict[str, Any]],
+) -> tuple[Optional[str], str, str, str]:
+    """Виконує один виклик AI (основний -> запасний). Повертає `(corrected_or_None, provider, route, error)`."""
+    primary_error = ""
+    if prim_item is not None:
+        try:
+            corrected = _call_ai_item(prim_item, clean, prompt)
+            return corrected, get_ai_item_title(prim_item), "primary", ""
+        except Exception as exc:
+            primary_error = str(exc)
+            print(f"[AICorrector] Помилка основного AI ({prim_item.get('title', prim_item.get('provider'))}): {exc}", file=sys.stderr)
+
+    if fb_item is not None and (prim_item is None or str(fb_item.get("id")) != str(prim_item.get("id"))):
+        try:
+            corrected = _call_ai_item(fb_item, clean, prompt)
+            return corrected, get_ai_item_title(fb_item), "fallback", primary_error
+        except Exception as exc:
+            print(f"[AICorrector] Помилка запасного AI ({fb_item.get('title', fb_item.get('provider'))}): {exc}", file=sys.stderr)
+
+    return None, "", "failed", primary_error or "AI provider failed"
+
+
 def correct_text_with_ai(text: str) -> str:
     """
     Виправляє орфографію/пунктуацію/розкладку через Головний AI-сервіс (або Запасний при збої).
     Якщо AI вимкнений, не налаштований або дав збій — безпечно повертає вихідний текст.
+    Гарантовано зберігає токени звукових команд і реакцій (`[laughter]`, `[хаха]` тощо).
     """
     clean = (text or "").strip()
     if not clean or not bool(config.get("ai_spellcheck_enabled", False)):
@@ -749,27 +809,76 @@ def correct_text_with_ai(text: str) -> str:
     prim_item = next((x for x in items if str(x.get("id")) == prim_id), items[0])
     fb_item = next((x for x in items if str(x.get("id")) == fb_id), None) if fb_id else None
 
-    if prim_item is not None:
-        try:
-            corrected = _call_ai_item(prim_item, clean, prompt)
+    spans, tokens = _extract_protected_reaction_spans(clean)
+    if not tokens:
+        corrected, prov, route, err = _run_ai_single_call(clean, prompt, prim_item, fb_item)
+        if corrected is not None:
             with _LAST_AI_EDIT_LOCK:
-                _LAST_AI_EDIT.update({"input": text, "output": corrected, "provider": get_ai_item_title(prim_item), "route": "primary", "error": ""})
+                _LAST_AI_EDIT.update({"input": text, "output": corrected, "provider": prov, "route": route, "error": err})
             return corrected
-        except Exception as exc:
-            primary_error = str(exc)
-            print(f"[AICorrector] Помилка основного AI ({prim_item.get('title', prim_item.get('provider'))}): {exc}", file=sys.stderr)
-    else:
-        primary_error = ""
+        with _LAST_AI_EDIT_LOCK:
+            _LAST_AI_EDIT.update({"input": text, "output": text, "provider": "", "route": "failed", "error": err})
+        return text
 
-    if fb_item is not None and (prim_item is None or str(fb_item.get("id")) != str(prim_item.get("id"))):
-        try:
-            corrected = _call_ai_item(fb_item, clean, prompt)
+    # Якщо у фразі лише звукові команди без жодних слів — не витрачаємо запит до AI
+    if not any(re.search(r"\w", sp) for sp in spans):
+        return "".join(
+            spans[i] + (tokens[i] if i < len(tokens) else "")
+            for i in range(len(spans))
+        ).strip()
+
+    # Один запит до AI з індексованими маркерами ⟪T0⟫..⟪Tn⟫ + сувора перевірка цілісності
+    placeholders = [f"⟪T{i}⟫" for i in range(len(tokens))]
+    masked = "".join(
+        spans[i] + (placeholders[i] if i < len(tokens) else "")
+        for i in range(len(spans))
+    )
+    protected_prompt = (
+        prompt
+        + "\nIMPORTANT: Keep every placeholder token like ⟪T0⟫, ⟪T1⟫ completely intact, in exact order, without altering or translating it."
+    )
+    corrected_masked, prov, route, err = _run_ai_single_call(masked, protected_prompt, prim_item, fb_item)
+    if corrected_masked is not None:
+        # Перевіряємо, що всі маркери збереглися рівно по одному разу та в правильному порядку
+        positions: List[int] = []
+        intact = True
+        for ph in placeholders:
+            if corrected_masked.count(ph) != 1:
+                intact = False
+                break
+            positions.append(corrected_masked.index(ph))
+        if intact and positions == sorted(positions):
+            restored = corrected_masked
+            for ph, tok in zip(placeholders, tokens):
+                restored = restored.replace(ph, tok, 1)
             with _LAST_AI_EDIT_LOCK:
-                _LAST_AI_EDIT.update({"input": text, "output": corrected, "provider": get_ai_item_title(fb_item), "route": "fallback", "error": primary_error})
-            return corrected
-        except Exception as exc:
-            print(f"[AICorrector] Помилка запасного AI ({fb_item.get('title', fb_item.get('provider'))}): {exc}", file=sys.stderr)
+                _LAST_AI_EDIT.update({"input": text, "output": restored, "provider": prov, "route": route, "error": err})
+            return restored
+
+        # Резервний режим (якщо мала локальна модель зіпсувала маркер):
+        # виправляємо окремі текстові фрагменти й гарантовано склеюємо оригінальні токени
+        rebuilt: List[str] = []
+        any_ok = False
+        for i, sp in enumerate(spans):
+            if re.search(r"\w", sp):
+                lead = sp[: len(sp) - len(sp.lstrip())]
+                trail = sp[len(sp.rstrip()) :]
+                part_corr, prov_p, route_p, err_p = _run_ai_single_call(sp.strip(), prompt, prim_item, fb_item)
+                if part_corr is not None:
+                    any_ok = True
+                    prov, route, err = prov_p, route_p, err_p
+                    rebuilt.append(f"{lead}{part_corr.strip()}{trail}")
+                else:
+                    rebuilt.append(sp)
+            else:
+                rebuilt.append(sp)
+            if i < len(tokens):
+                rebuilt.append(tokens[i])
+        final_txt = re.sub(r"\s{2,}", " ", "".join(rebuilt)).strip()
+        with _LAST_AI_EDIT_LOCK:
+            _LAST_AI_EDIT.update({"input": text, "output": final_txt, "provider": prov if any_ok else "", "route": route if any_ok else "failed", "error": err})
+        return final_txt
 
     with _LAST_AI_EDIT_LOCK:
-        _LAST_AI_EDIT.update({"input": text, "output": text, "provider": "", "route": "failed", "error": primary_error or "AI provider failed"})
+        _LAST_AI_EDIT.update({"input": text, "output": text, "provider": "", "route": "failed", "error": err})
     return text

@@ -3059,7 +3059,7 @@ class TTSEngineManager(QObject):
             strip_omnivoice_tags,
         )
 
-        ui_lang_cur = str(config.get("app_language", "uk") or "uk")
+        ui_lang_cur = str(config.get("ui_language") or config.get("app_language", "uk") or "uk")
 
         def _for_engine_tags(raw_txt: str, target_eng: str) -> str:
             if target_eng == "omnivoice" and bool(config.get("reaction_omnivoice_enabled", True)):
@@ -3409,7 +3409,7 @@ class TTSEngineManager(QObject):
             strip_omnivoice_tags,
         )
 
-        ui_lang_cur = str(config.get("app_language", "uk") or "uk")
+        ui_lang_cur = str(config.get("ui_language") or config.get("app_language", "uk") or "uk")
         if primary_id == "omnivoice" and bool(config.get("reaction_omnivoice_enabled", True)):
             specs = build_active_reaction_specs(config.data, engine_id="omnivoice", ui_lang=ui_lang_cur, base_dir=BASE_DIR)
             synth_text = expand_omnivoice_tags(synth_text, specs=specs, ui_lang=ui_lang_cur)
@@ -3642,7 +3642,7 @@ class TTSEngineManager(QObject):
                 )
 
                 eff_eng_id = str(eng_ovr or config.get("active_engine", "") or "").strip()
-                ui_lang_cur = str(config.get("app_language", "uk") or "uk")
+                ui_lang_cur = str(config.get("ui_language") or config.get("app_language", "uk") or "uk")
                 active_rc_specs = build_active_reaction_specs(
                     config.data,
                     engine_id=eff_eng_id,

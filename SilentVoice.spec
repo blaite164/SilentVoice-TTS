@@ -14,6 +14,7 @@ ROOT = Path(SPECPATH).resolve()
 # Базові дані додатку (без персонального data/config.json, data/crash.log та __pycache__)
 app_datas = [
     (str(ROOT / "assets" / "icon.ico"), "assets"),
+    (str(ROOT / "assets" / "check.svg"), "assets"),
     (str(ROOT / "assets" / "edit.svg"), "assets"),
     (str(ROOT / "assets" / "delete.svg"), "assets"),
     (str(ROOT / "assets" / "easter_egg.ogg"), "assets"),

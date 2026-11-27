@@ -155,7 +155,9 @@ from ui.dialogs import (
     SettingsTransferDialog,
     TelegramAuthDialog,
     VoiceSamplesDialog,
+    get_check_svg_qss_url,
     run_in_background,
+    toggle_collapsible_widget,
 )
 
 from ui.overlay_window import FallbackInputWindow, ScreenOverlayWindow, find_screen_for_rect
@@ -358,9 +360,22 @@ QCheckBox::indicator {
     border: 1px solid #525E85;
     background-color: #1B1F2D;
 }
+QCheckBox::indicator:hover {
+    border-color: #7C5CFF;
+}
 QCheckBox::indicator:checked {
     background-color: #635BFF;
     border-color: #827BFF;
+    image: url("__CHECK_SVG__");
+}
+QCheckBox::indicator:disabled {
+    background-color: #161A26;
+    border-color: #303750;
+}
+QCheckBox::indicator:checked:disabled {
+    background-color: #3A3866;
+    border-color: #4D4B80;
+    image: url("__CHECK_SVG__");
 }
 /* Вкладки всередині розділу Голосів */
 QTabWidget::pane {
@@ -412,6 +427,7 @@ QToolTip {
     font-size: 12px;
 }
 """
+MAIN_STYLESHEET = MAIN_STYLESHEET.replace("__CHECK_SVG__", get_check_svg_qss_url())
 
 
 def _find_app_icon_path() -> Optional[str]:
@@ -6377,7 +6393,7 @@ class MainWindow(QMainWindow):
         # Згортуваний блок звукових команд та реакцій (/ \ |) у стилі блоку VBAN
         from ui.reaction_commands import ReactionCommandsCard
 
-        self.reaction_commands_card = ReactionCommandsCard(keyboard_hook=self.keyboard_hook)
+        self.reaction_commands_card = ReactionCommandsCard(keyboard_hook=self.keyboard_hook, combo_cls=VoiceComboBox)
         self.reaction_commands_card.commands_changed.connect(self._on_reaction_commands_changed)
         self.reaction_commands_card.style_changed_preview.connect(self._on_reaction_style_preview)
         lay.addWidget(self.reaction_commands_card)
@@ -7395,6 +7411,7 @@ class MainWindow(QMainWindow):
         tw_hdr_row.setContentsMargins(0, 0, 0, 0)
         self.twitch_expand_btn = QToolButton()
         self.twitch_expand_btn.setCheckable(True)
+        self.twitch_expand_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.twitch_expand_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self.twitch_expand_btn.setArrowType(Qt.ArrowType.RightArrow)
         self.twitch_expand_btn.setText(tr("twitch.card.title", "💬 Надсилання фраз у чат Twitch"))
@@ -7482,10 +7499,7 @@ class MainWindow(QMainWindow):
         tw_lay.addWidget(self.twitch_body)
 
         def _toggle_twitch_body(checked: bool) -> None:
-            self.twitch_body.setVisible(checked)
-            self.twitch_expand_btn.setArrowType(
-                Qt.ArrowType.DownArrow if checked else Qt.ArrowType.RightArrow
-            )
+            toggle_collapsible_widget(self.twitch_expand_btn, self.twitch_body, checked)
 
         self.twitch_expand_btn.toggled.connect(_toggle_twitch_body)
 
@@ -8756,6 +8770,7 @@ class MainWindow(QMainWindow):
         vban_hdr_row.setContentsMargins(0, 0, 0, 0)
         self.vban_expand_btn = QToolButton()
         self.vban_expand_btn.setCheckable(True)
+        self.vban_expand_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.vban_expand_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self.vban_expand_btn.setArrowType(Qt.ArrowType.RightArrow)
         self.vban_expand_btn.setText(tr("audio.vban.title", "Передача звуку на інший пристрій (VBAN)"))
@@ -8864,10 +8879,7 @@ class MainWindow(QMainWindow):
                 self.vban_health_badge.setVisible(False)
 
         def _toggle_vban_body(checked: bool) -> None:
-            self.vban_body.setVisible(checked)
-            self.vban_expand_btn.setArrowType(
-                Qt.ArrowType.DownArrow if checked else Qt.ArrowType.RightArrow
-            )
+            toggle_collapsible_widget(self.vban_expand_btn, self.vban_body, checked)
             if not checked and self._vban_test_stop_event is not None:
                 self._vban_test_stop_event.set()
         self.vban_expand_btn.toggled.connect(_toggle_vban_body)
@@ -9433,10 +9445,17 @@ class MainWindow(QMainWindow):
         return True
 
     def _on_ui_lang_changed(self) -> None:
+        from core.omnivoice_tags import sync_default_reaction_commands_for_lang
+
         raw_choice = self.ui_lang_combo.currentData()
         selected_lang = str(raw_choice or "").strip().lower()
         target_lang = selected_lang or "en"
         config.set("ui_language", target_lang)
+        synced_rc = sync_default_reaction_commands_for_lang(config.data, target_lang)
+        if synced_rc is not None:
+            config.set("reaction_commands", synced_rc)
+            if hasattr(self, "keyboard_hook"):
+                self.keyboard_hook.update_from_config(config.data)
         if target_lang == get_ui_language():
             return
         self._schedule_live_ui_language(target_lang)

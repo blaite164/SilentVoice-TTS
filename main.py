@@ -442,6 +442,13 @@ def main() -> int:
     _no_wheel_filter = _NoWheelComboFilter(app)
     app.installEventFilter(_no_wheel_filter)
 
+    try:
+        from ui.dialogs import install_global_dialog_centering
+
+        install_global_dialog_centering(app)
+    except Exception:
+        pass
+
     if _mutex_already_exists:
         print("[SilentVoice] Програма вже запущена — активуємо існуюче вікно.", flush=True)
         _activate_existing_instance()

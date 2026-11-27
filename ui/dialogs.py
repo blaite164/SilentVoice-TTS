@@ -19,7 +19,7 @@ import weakref
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
-from PySide6.QtCore import QObject, QRectF, QSize, Qt, QThread, QTimer, QUrl, Signal
+from PySide6.QtCore import QAbstractAnimation, QEasingCurve, QEvent, QObject, QRectF, QSize, Qt, QThread, QTimer, QUrl, QVariantAnimation, Signal
 from PySide6.QtGui import QColor, QConicalGradient, QDesktopServices, QGuiApplication, QIcon, QImage, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
@@ -51,7 +51,7 @@ from PySide6.QtWidgets import (
 )
 
 from core.ai_corrector import AI_PROVIDERS, _call_ai_item, fetch_ai_provider_models, get_ai_item_title, get_default_ai_prompt, get_effective_ai_prompt, get_last_ai_edit_result
-from core.config import BUNDLE_DIR, PHRASES_AUDIO_DIR, config
+from core.config import BASE_DIR, BUNDLE_DIR, PHRASES_AUDIO_DIR, config
 from core.local_llm import (
     LLAMA_MODEL_DIR,
     download_recommended_lmstudio_model,
@@ -184,6 +184,16 @@ QCheckBox::indicator:hover {
 QCheckBox::indicator:checked {
     background-color: #635BFF;
     border-color: #A5B4FC;
+    image: url("__CHECK_SVG__");
+}
+QCheckBox::indicator:disabled {
+    background-color: #161A26;
+    border-color: #303750;
+}
+QCheckBox::indicator:checked:disabled {
+    background-color: #3A3866;
+    border-color: #4D4B80;
+    image: url("__CHECK_SVG__");
 }
 QComboBox QAbstractItemView {
     background-color: #262B3D;
@@ -200,6 +210,17 @@ QComboBox QLineEdit {
     padding: 0px 4px;
 }
 """
+
+
+def get_check_svg_qss_url() -> str:
+    """Повертає POSIX-шлях до SVG-галочки для QCheckBox::indicator:checked."""
+    for cand in (BUNDLE_DIR / "assets" / "check.svg", BASE_DIR / "assets" / "check.svg"):
+        if cand.is_file():
+            return cand.as_posix()
+    return (BUNDLE_DIR / "assets" / "check.svg").as_posix()
+
+
+DIALOG_STYLESHEET = DIALOG_STYLESHEET.replace("__CHECK_SVG__", get_check_svg_qss_url())
 
 
 def center_dialog_on_screen(dlg: QDialog, *, adjust_size: bool = False) -> None:
@@ -241,6 +262,123 @@ def center_dialog_on_screen(dlg: QDialog, *, adjust_size: bool = False) -> None:
         dlg.move(tx, ty)
     except Exception:
         pass
+
+
+class _DialogCenterEventFilter(QObject):
+    """Автоматично центрує кожне діалогове вікно (крім нативного QFileDialog) по центру активного екрана при показі."""
+
+    def eventFilter(self, obj: QObject, event: QEvent) -> bool:
+        if (
+            event.type() == QEvent.Type.Show
+            and not event.spontaneous()
+            and isinstance(obj, QDialog)
+            and not isinstance(obj, QFileDialog)
+        ):
+            dlg = obj
+            center_dialog_on_screen(dlg)
+            QTimer.singleShot(0, lambda w=dlg: center_dialog_on_screen(w) if w.isVisible() else None)
+        return super().eventFilter(obj, event)
+
+
+def install_global_dialog_centering(app: QApplication) -> None:
+    """Підключає глобальне центрування всіх діалогових вікон на активному екрані."""
+    if getattr(app, "_dialog_center_filter", None) is not None:
+        return
+    flt = _DialogCenterEventFilter(app)
+    app.installEventFilter(flt)
+    setattr(app, "_dialog_center_filter", flt)
+
+
+def toggle_collapsible_widget(
+    btn: Any,
+    body: QWidget,
+    expanded: bool,
+    *,
+    duration_ms: int = 210,
+    on_collapsed: Optional[Callable[[], None]] = None,
+) -> None:
+    """Плавно розгортає або згортає тіло картки з кубічним згладжуванням без ривків."""
+    if btn is not None and hasattr(btn, "setArrowType"):
+        btn.setArrowType(Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow)
+
+    prev_anim = getattr(body, "_collapse_anim", None)
+    if prev_anim is not None:
+        try:
+            prev_anim.stop()
+            prev_anim.deleteLater()
+        except Exception:
+            pass
+        setattr(body, "_collapse_anim", None)
+
+    lay = body.layout()
+    if expanded:
+        parent_w = body.parentWidget()
+        avail_w = body.width()
+        if avail_w <= 20 and parent_w is not None:
+            p_lay = parent_w.layout()
+            lm = p_lay.contentsMargins() if p_lay is not None else parent_w.contentsMargins()
+            avail_w = max(240, parent_w.width() - lm.left() - lm.right())
+        body.setMaximumHeight(16777215)
+        if lay is not None:
+            lay.activate()
+        if lay is not None and avail_w > 20 and lay.hasHeightForWidth():
+            target_h = lay.heightForWidth(avail_w)
+        elif avail_w > 20 and body.hasHeightForWidth():
+            target_h = body.heightForWidth(avail_w)
+        else:
+            target_h = body.sizeHint().height()
+            if lay is not None:
+                target_h = max(target_h, lay.sizeHint().height())
+        target_h = max(1, int(target_h))
+        start_h = body.height() if body.isVisible() else 0
+        body.setMaximumHeight(start_h)
+        body.setVisible(True)
+    else:
+        if not body.isVisible():
+            body.setMaximumHeight(16777215)
+            if on_collapsed is not None:
+                on_collapsed()
+            return
+        start_h = max(0, int(body.height()))
+        target_h = 0
+
+    if start_h == target_h or duration_ms <= 0:
+        body.setMaximumHeight(16777215)
+        body.setVisible(expanded)
+        if not expanded and on_collapsed is not None:
+            on_collapsed()
+        return
+
+    anim = QVariantAnimation(body)
+    anim.setDuration(int(duration_ms))
+    anim.setStartValue(int(start_h))
+    anim.setEndValue(int(target_h))
+    anim.setEasingCurve(QEasingCurve.Type.OutCubic if expanded else QEasingCurve.Type.InOutCubic)
+
+    def _on_val(val: Any) -> None:
+        try:
+            body.setMaximumHeight(max(0, int(val)))
+        except RuntimeError:
+            pass
+
+    def _on_done() -> None:
+        try:
+            if getattr(body, "_collapse_anim", None) is anim:
+                setattr(body, "_collapse_anim", None)
+            if expanded:
+                body.setMaximumHeight(16777215)
+            else:
+                body.setVisible(False)
+                body.setMaximumHeight(16777215)
+                if on_collapsed is not None:
+                    on_collapsed()
+        except RuntimeError:
+            pass
+
+    anim.valueChanged.connect(_on_val)
+    anim.finished.connect(_on_done)
+    setattr(body, "_collapse_anim", anim)
+    anim.start(QAbstractAnimation.DeletionPolicy.DeleteWhenStopped)
 
 
 class InfoPopupDialog(QDialog):

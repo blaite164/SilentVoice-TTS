@@ -998,7 +998,7 @@ class ScreenOverlayWindow(QWidget):
         """Показує живий попередній перегляд обраного стилю підказки команд."""
         if style is not None:
             self.set_tag_hint_style(style)
-        ui_lang = str(config.get("app_language", "uk") or "uk")
+        ui_lang = str(config.get("ui_language") or config.get("app_language", "uk") or "uk")
         specs = build_active_reaction_specs(config.data, ui_lang=ui_lang)
         if not specs:
             specs = build_all_configured_reaction_specs(config.data, ui_lang=ui_lang)
@@ -1062,7 +1062,7 @@ class ScreenOverlayWindow(QWidget):
         if slash_state is None:
             self._tag_picker.hide_picker()
             return
-        ui_lang = str(config.get("app_language", "uk") or "uk")
+        ui_lang = str(config.get("ui_language") or config.get("app_language", "uk") or "uk")
         active_specs = build_active_reaction_specs(config.data, ui_lang=ui_lang)
         if not active_specs:
             self._tag_picker.hide_picker()
@@ -1712,7 +1712,7 @@ class ScreenOverlayWindow(QWidget):
         - Варіант A (`"text"`): чистий текст із темною обводкою, без жодної рамки/плашки.
         - Варіант B (`"pill"`): тонка напівпрозора 1-рядкова капсула.
         """
-        ui_lang = str(config.get("app_language", "uk") or "uk")
+        ui_lang = str(config.get("ui_language") or config.get("app_language", "uk") or "uk")
         matches = match_reaction_tags(query, ui_lang)
         if not matches:
             return QRectF()

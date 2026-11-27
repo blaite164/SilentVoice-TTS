@@ -182,6 +182,113 @@ class OmniVoiceTagsLogicTests(unittest.TestCase):
             cfg_off = dict(cfg, reaction_commands=[dict(item_with_file, enabled=False)])
             self.assertEqual(build_active_reaction_specs(cfg_off, engine_id="edge_tts"), [])
 
+    def test_localized_defaults_multi_aliases_fast_prefix_and_lang_sync(self) -> None:
+        from core.omnivoice_tags import (
+            parse_reaction_command_aliases,
+            sync_default_reaction_commands_for_lang,
+        )
+
+        # Кожна мова має власну природну першу команду (укр/рос -> хаха, en/de/fr/pl -> haha, es -> jaja)
+        self.assertEqual(get_default_reaction_commands("uk")[0]["command"], "хаха")
+        self.assertEqual(get_default_reaction_commands("ru")[0]["command"], "хаха")
+        self.assertEqual(get_default_reaction_commands("en")[0]["command"], "haha")
+        self.assertEqual(get_default_reaction_commands("es")[0]["command"], "jaja")
+        self.assertIn("ахаха", get_default_reaction_commands("uk")[0]["aliases"])
+        self.assertIn("хах", get_default_reaction_commands("uk")[0]["aliases"])
+
+        # Введення кількох команд через кому / крапку з комою / пробіл
+        self.assertEqual(
+            parse_reaction_command_aliases(r" \хаха, ахаха; /ахах  хах "),
+            ["хаха", "ахаха", "ахах", "хах"],
+        )
+
+        # Міграція старих англійських/сміх налаштувань під українську зі збереженням файлу, бінду й власних синонімів
+        old_cfg = {
+            "reaction_commands": [
+                {
+                    "id": "rc_laughter",
+                    "command": "laugh",
+                    "aliases": ["laugh", "mycustomlol"],
+                    "display": "😂",
+                    "description": "Natural laughter",
+                    "audio_file": "my.mp3",
+                    "omnivoice_tag": "[laughter]",
+                    "hotkey": "Alt+1",
+                    "enabled": True,
+                },
+            ]
+        }
+        synced = sync_default_reaction_commands_for_lang(old_cfg, "uk")
+        self.assertIsNotNone(synced)
+        assert synced is not None
+        self.assertEqual(synced[0]["command"], "хаха")
+        self.assertEqual(synced[0]["description"], "Живий сміх")
+        self.assertEqual(synced[0]["audio_file"], "my.mp3")
+        self.assertEqual(synced[0]["hotkey"], "Alt+1")
+        self.assertIn("mycustomlol", synced[0]["aliases"])
+        self.assertIn("ахаха", synced[0]["aliases"])
+
+        # Швидкий друк: однозначний префікс 2+ символи завершується вже по Пробілу
+        self.assertEqual(complete_slash_command("Привіт \\зіт", "uk", exact_only=True), "Привіт [sigh] ")
+        self.assertEqual(complete_slash_command("Привіт \\хах", "uk", exact_only=True), "Привіт [laughter] ")
+        self.assertEqual(complete_slash_command("Привіт \\аха", "uk", exact_only=True), "Привіт [laughter] ")
+        # Але 1 символ не завершується випадково
+        self.assertIsNone(complete_slash_command("Привіт \\с", "uk", exact_only=True))
+
+    def test_ai_spellcheck_preserves_reaction_tokens(self) -> None:
+        from core.ai_corrector import correct_text_with_ai
+        from core.config import config
+
+        fake_cfg = {
+            "ai_spellcheck_enabled": True,
+            "ai_primary_id": "p1",
+            "ai_fallback_id": "",
+            "ai_items": [{"id": "p1", "provider": "groq", "title": "MockAI"}],
+            "ui_language": "uk",
+            "reaction_commands": [
+                {
+                    "id": "rc_custom_haha",
+                    "command": "хаха",
+                    "aliases": ["хаха", "ахах"],
+                    "display": "",
+                    "description": "",
+                    "audio_file": "",
+                    "omnivoice_tag": "",
+                    "hotkey": "",
+                    "enabled": True,
+                }
+            ],
+        }
+
+        def _get(k: str, d=None):
+            return fake_cfg.get(k, d)
+
+        with patch.object(config, "_data", fake_cfg), patch.object(config, "get", side_effect=_get):
+            # 1. Один виклик AI, модель зберігає ⟪T0⟫ -> відновлення оригінального тегу
+            with patch("core.ai_corrector._call_ai_item", return_value="Привіт ⟪T0⟫ як справи?") as mock_ai:
+                out = correct_text_with_ai("привыт [laughter] як справы")
+                self.assertEqual(out, "Привіт [laughter] як справи?")
+                self.assertEqual(mock_ai.call_count, 1)
+
+            # 2. Якщо модель зіпсувала маркер -> автоматичний пофрагментний фолбек зберігає всі теги
+            calls: list[str] = []
+
+            def _bad_then_part(_item, text_arg, _prompt):
+                calls.append(text_arg)
+                if "⟪T0⟫" in text_arg:
+                    return "Привіт як справи"  # модель видалила маркер!
+                return text_arg.replace("привыт", "Привіт").replace("справы", "справи")
+
+            with patch("core.ai_corrector._call_ai_item", side_effect=_bad_then_part):
+                out2 = correct_text_with_ai("привыт \\хаха як справы")
+                self.assertEqual(out2, "Привіт [хаха] як справи")
+
+            # 3. Якщо у фразі ТІЛЬКИ команда без слів -> AI взагалі не викликається
+            with patch("core.ai_corrector._call_ai_item") as mock_skip:
+                out3 = correct_text_with_ai("[laughter]")
+                self.assertEqual(out3, "[laughter]")
+                mock_skip.assert_not_called()
+
 
 class TypingUndoRedoTests(unittest.TestCase):
     def test_keyboard_hook_undo_redo_ctrl_z_and_ctrl_y(self) -> None:

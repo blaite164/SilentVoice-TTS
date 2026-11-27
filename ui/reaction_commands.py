@@ -10,7 +10,7 @@ import shutil
 import time
 from typing import Any, Dict, List, Optional
 
-from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtCore import QSize, QTimer, Qt, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -33,16 +33,18 @@ from PySide6.QtWidgets import (
 )
 
 from core.config import BASE_DIR, BUNDLE_DIR, REACTION_AUDIO_DIR, config
-from core.i18n import tr
+from core.i18n import get_ui_language, tr
 from core.omnivoice_tags import (
     get_default_reaction_commands,
     is_reaction_item_playable,
     load_reaction_command_items,
+    parse_reaction_command_aliases,
     resolve_reaction_audio_path,
     sanitize_reaction_command_name,
+    sync_default_reaction_commands_for_lang,
 )
 from core.tts_manager import tts_manager
-from ui.dialogs import DIALOG_STYLESHEET, HotkeyCaptureDialog, center_dialog_on_screen
+from ui.dialogs import DIALOG_STYLESHEET, HotkeyCaptureDialog, center_dialog_on_screen, toggle_collapsible_widget
 from ui.overlay_window import TAG_HINT_MODES
 
 
@@ -139,9 +141,12 @@ class ReactionCommandDialog(QDialog):
                 "enabled": True,
             }
         )
+        self._centered_once = False
         if self._is_edit:
             cur_cmd = sanitize_reaction_command_name(str(self._data.get("command") or ""))
             self._existing_commands.discard(cur_cmd)
+            for al in (self._data.get("aliases") or []):
+                self._existing_commands.discard(sanitize_reaction_command_name(str(al)))
         self._was_playable_initially = is_reaction_item_playable(
             self._data,
             self._omnivoice_enabled,
@@ -169,13 +174,21 @@ class ReactionCommandDialog(QDialog):
         hdr.setObjectName("dialogTitle")
         lay.addWidget(hdr)
 
-        # 1. Назва команди
-        lay.addWidget(QLabel(tr("rc.dlg.cmd_lbl", "Команда (без пробілів, виклик через /, \\ або |):")))
+        # 1. Назва команди (підтримує кілька варіантів через кому для швидкого друку)
+        lay.addWidget(QLabel(tr("rc.dlg.cmd_lbl", "Команди (можна кілька через кому; виклик через /, \\ або |):")))
         cmd_row = QHBoxLayout()
         cmd_row.setSpacing(8)
-        self.cmd_edit = QLineEdit(str(self._data.get("command") or ""))
-        self.cmd_edit.setPlaceholderText(tr("rc.dlg.cmd_ph", "Напр.: хаха"))
-        self.cmd_edit.setMaxLength(28)
+        init_aliases = [
+            sanitize_reaction_command_name(str(a))
+            for a in (self._data.get("aliases") or [])
+            if sanitize_reaction_command_name(str(a))
+        ]
+        init_cmd = sanitize_reaction_command_name(str(self._data.get("command") or ""))
+        if init_cmd and init_cmd not in init_aliases:
+            init_aliases.insert(0, init_cmd)
+        self.cmd_edit = QLineEdit(", ".join(init_aliases) if init_aliases else str(self._data.get("command") or ""))
+        self.cmd_edit.setPlaceholderText(tr("rc.dlg.cmd_ph", "Напр.: хаха, ахаха, ахах, хах"))
+        self.cmd_edit.setMaxLength(160)
         self.cmd_edit.textChanged.connect(self._refresh_preview)
         cmd_row.addWidget(self.cmd_edit, 1)
 
@@ -311,12 +324,24 @@ class ReactionCommandDialog(QDialog):
 
         self._refresh_audio_status()
         self._refresh_preview()
-        center_dialog_on_screen(self)
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        if not self._centered_once:
+            self._centered_once = True
+            center_dialog_on_screen(self, adjust_size=True)
+            QTimer.singleShot(0, lambda: center_dialog_on_screen(self, adjust_size=True) if self.isVisible() else None)
 
     def _refresh_preview(self) -> None:
-        cmd = sanitize_reaction_command_name(self.cmd_edit.text())
+        aliases = parse_reaction_command_aliases(self.cmd_edit.text())
+        cmd = aliases[0] if aliases else ""
         disp = self.display_edit.text().strip()
-        self.cmd_preview_lbl.setText(f"\\{cmd}" if cmd else "")
+        if len(aliases) > 1:
+            self.cmd_preview_lbl.setText(f"\\{cmd} (+{len(aliases) - 1})")
+            self.cmd_preview_lbl.setToolTip(", ".join(f"\\{a}" for a in aliases))
+        else:
+            self.cmd_preview_lbl.setText(f"\\{cmd}" if cmd else "")
+            self.cmd_preview_lbl.setToolTip("")
         shown = disp if disp else (f"[{cmd}]" if cmd else "[...]")
         self.display_preview_lbl.setText(tr("rc.dlg.in_text", "У тексті: {shown}", shown=shown))
 
@@ -389,28 +414,20 @@ class ReactionCommandDialog(QDialog):
             self.hk_edit.setText(dlg.recorded_hotkey)
 
     def _on_save(self) -> None:
-        cmd = sanitize_reaction_command_name(self.cmd_edit.text())
-        if not cmd:
+        parsed_aliases = parse_reaction_command_aliases(self.cmd_edit.text())
+        if not parsed_aliases:
             self.err_lbl.setText(tr("rc.dlg.err_empty_cmd", "⚠️ Введіть назву команди (наприклад: хаха)."))
             self.err_lbl.setVisible(True)
             self.cmd_edit.setFocus()
             return
-        if cmd in self._existing_commands:
-            self.err_lbl.setText(tr("rc.dlg.err_dup_cmd", "⚠️ Команда \\{cmd} уже існує у списку.", cmd=cmd))
+        cmd = parsed_aliases[0]
+        dup = next((al for al in parsed_aliases if al in self._existing_commands), "")
+        if dup:
+            self.err_lbl.setText(tr("rc.dlg.err_dup_cmd", "⚠️ Команда \\{cmd} уже існує у списку.", cmd=dup))
             self.err_lbl.setVisible(True)
             self.cmd_edit.setFocus()
             return
-
-        old_cmd = sanitize_reaction_command_name(str(self._data.get("command") or ""))
-        aliases = [
-            sanitize_reaction_command_name(str(a))
-            for a in (self._data.get("aliases") or [])
-            if sanitize_reaction_command_name(str(a))
-        ]
-        if old_cmd and old_cmd != cmd and old_cmd in aliases and not self._data.get("omnivoice_tag"):
-            aliases = [a for a in aliases if a != old_cmd]
-        if cmd not in aliases:
-            aliases.insert(0, cmd)
+        aliases = parsed_aliases
 
         had_playable = is_reaction_item_playable(
             {"audio_file": self._data.get("audio_file", ""), "omnivoice_tag": self._data.get("omnivoice_tag", "")},
@@ -442,7 +459,13 @@ class ReactionCommandsCard(QFrame):
     commands_changed = Signal()
     style_changed_preview = Signal(str)
 
-    def __init__(self, keyboard_hook: Any = None, parent: Optional[QWidget] = None) -> None:
+    def __init__(
+        self,
+        keyboard_hook: Any = None,
+        *,
+        combo_cls: Any = QComboBox,
+        parent: Optional[QWidget] = None,
+    ) -> None:
         super().__init__(parent)
         self._hook = keyboard_hook
         self.setProperty("class", "card")
@@ -499,7 +522,7 @@ class ReactionCommandsCard(QFrame):
         style_lbl.setStyleSheet("color: #CBD5E1; font-size: 13px;")
         ctrl_row.addWidget(style_lbl)
 
-        self.style_combo = QComboBox()
+        self.style_combo = combo_cls()
         for mode_id in TAG_HINT_MODES:
             key, default_lbl = _STYLE_LABEL_KEYS.get(mode_id, ("", mode_id))
             self.style_combo.addItem(tr(key, default_lbl) if key else default_lbl, mode_id)
@@ -558,15 +581,19 @@ class ReactionCommandsCard(QFrame):
         self.rebuild_list()
 
     def _on_expand_toggled(self, checked: bool) -> None:
-        self.body.setVisible(checked)
-        self.expand_btn.setArrowType(Qt.ArrowType.DownArrow if checked else Qt.ArrowType.RightArrow)
+        toggle_collapsible_widget(self.expand_btn, self.body, checked)
 
     def _ui_lang(self) -> str:
-        return str(config.get("app_language", "uk") or "uk").strip().lower() or "uk"
+        return str(get_ui_language() or config.get("ui_language") or "uk").strip().lower() or "uk"
 
     def _ensure_seeded(self) -> None:
+        lang = self._ui_lang()
         if config.get("reaction_commands", None) is None:
-            config.set("reaction_commands", get_default_reaction_commands(self._ui_lang()))
+            config.set("reaction_commands", get_default_reaction_commands(lang))
+        else:
+            synced = sync_default_reaction_commands_for_lang(config.data, lang)
+            if synced is not None:
+                config.set("reaction_commands", synced)
 
     def _get_items(self) -> List[Dict[str, Any]]:
         return load_reaction_command_items(config.data, self._ui_lang())
@@ -636,7 +663,12 @@ class ReactionCommandsCard(QFrame):
 
     def _on_add_command(self) -> None:
         items = self._get_items()
-        existing = {sanitize_reaction_command_name(str(it.get("command") or "")) for it in items}
+        existing = {
+            sanitize_reaction_command_name(str(al))
+            for it in items
+            for al in ([it.get("command", "")] + list(it.get("aliases") or []))
+            if sanitize_reaction_command_name(str(al))
+        }
         dlg = ReactionCommandDialog(
             None,
             keyboard_hook=self._hook,
@@ -672,7 +704,12 @@ class ReactionCommandsCard(QFrame):
         idx = next((i for i, it in enumerate(items) if str(it.get("id") or "") == cid), -1)
         if idx < 0:
             return
-        existing = {sanitize_reaction_command_name(str(it.get("command") or "")) for it in items}
+        existing = {
+            sanitize_reaction_command_name(str(al))
+            for it in items
+            for al in ([it.get("command", "")] + list(it.get("aliases") or []))
+            if sanitize_reaction_command_name(str(al))
+        }
         dlg = ReactionCommandDialog(
             items[idx],
             keyboard_hook=self._hook,
@@ -783,14 +820,24 @@ class ReactionCommandsCard(QFrame):
             text_lbl.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
             cmd_col = "#F1F5F9" if is_checked else "#7C879E"
             desc_col = "#94A3B8" if is_checked else "#5E687D"
+            extra_aliases = [
+                sanitize_reaction_command_name(str(a))
+                for a in (it.get("aliases") or [])
+                if sanitize_reaction_command_name(str(a)) and sanitize_reaction_command_name(str(a)) != cmd
+            ]
+            alias_short = ""
+            if extra_aliases:
+                shown_al = ", ".join(extra_aliases[:3]) + ("…" if len(extra_aliases) > 3 else "")
+                alias_short = f" <span style='color:#64748B; font-size:11px;'>({shown_al})</span>"
             if desc:
                 text_lbl.setText(
-                    f"<span style='color:{cmd_col}; font-weight:700;'>\\{cmd}</span> "
+                    f"<span style='color:{cmd_col}; font-weight:700;'>\\{cmd}</span>{alias_short} "
                     f"<span style='color:{desc_col};'>— {desc}</span>"
                 )
             else:
-                text_lbl.setText(f"<span style='color:{cmd_col}; font-weight:700;'>\\{cmd}</span>")
-            text_lbl.setToolTip(f"\\{cmd}" + (f" — {desc}" if desc else ""))
+                text_lbl.setText(f"<span style='color:{cmd_col}; font-weight:700;'>\\{cmd}</span>{alias_short}")
+            all_al_tip = ", ".join(f"\\{a}" for a in ([cmd] + extra_aliases))
+            text_lbl.setToolTip(all_al_tip + (f" — {desc}" if desc else ""))
             r_lay.addWidget(text_lbl, 1)
 
             # Бейдж бінду (якщо призначено)
