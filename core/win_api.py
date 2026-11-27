@@ -25,6 +25,16 @@ from typing import Deque, Dict, FrozenSet, List, Optional, Set, Tuple
 from PySide6.QtCore import QObject, QTimer, Signal
 from PySide6.QtGui import QGuiApplication
 
+from core.omnivoice_tags import (
+    OmniVoiceTagSpec,
+    backspace_trailing_omnivoice_tag,
+    build_active_reaction_specs,
+    complete_slash_command,
+    extract_active_slash_query,
+    match_reaction_tags,
+    replace_active_slash_with_tag,
+)
+
 user32 = ctypes.windll.user32
 kernel32 = ctypes.windll.kernel32
 shell32 = ctypes.windll.shell32
@@ -138,6 +148,8 @@ VK_INSERT = 0x2D
 VK_DELETE = 0x2E
 VK_LWIN = 0x5B
 VK_RWIN = 0x5C
+VK_NUMPAD0 = 0x60
+_LLKHF_EXTENDED = 0x01
 VK_LSHIFT = 0xA0
 VK_RSHIFT = 0xA1
 VK_LCONTROL = 0xA2
@@ -1017,6 +1029,7 @@ class KeyboardHookManager(QObject):
     stop_chat_tts_triggered = Signal()
     toggle_chat_tts_triggered = Signal()
     toggle_omnivoice_whisper_triggered = Signal()
+    slash_selection_changed = Signal(int)
     quick_phrase_triggered = Signal(str)         # (phrase_text)
     hotkey_recorded = Signal(str)                # Для діалогу запису нової комбінації клавіш
     _layout_refresh_requested = Signal()
@@ -1031,6 +1044,14 @@ class KeyboardHookManager(QObject):
         # Стан набору
         self._is_typing = False
         self._buffer: str = ""
+        self._undo_stack: List[str] = []
+        self._redo_stack: List[str] = []
+        self._undo_last_kind: str = ""
+        self._undo_last_ts: float = 0.0
+        self._slash_selected_idx: int = 0
+        self._tag_picker_hwnd: int = 0
+        self._ui_lang: str = "uk"
+        self._reaction_specs: List[OmniVoiceTagSpec] = []
         self._input_mode: str = "hook"  # "hook" або "fallback"
         self._overlay_style: str = "text_only"
         self._config_continuous: bool = False
@@ -1113,6 +1134,8 @@ class KeyboardHookManager(QObject):
         self._chat_tts_enabled = bool(cfg_data.get("twitch_read_viewers", False))
         self._hk_toggle_omnivoice_whisper = parse_hotkey_string(cfg_data.get("hotkey_toggle_omnivoice_whisper", ""))
         self._omnivoice_active = str(cfg_data.get("active_engine", "") or "").strip() == "omnivoice"
+        self._ui_lang = str(cfg_data.get("app_language", "uk") or "uk").strip().lower() or "uk"
+        self._reaction_specs = build_active_reaction_specs(cfg_data)
 
         self._game_mode_enabled = bool(cfg_data.get("game_mode_enabled", True))
         self._game_auto_detect_only = bool(cfg_data.get("game_auto_detect_only", True))
@@ -1221,11 +1244,85 @@ class KeyboardHookManager(QObject):
     def current_text(self) -> str:
         return self._buffer
 
+    def set_tag_picker_hwnd(self, hwnd: int) -> None:
+        self._tag_picker_hwnd = int(hwnd or 0)
+
+    def set_slash_selected_index(self, idx: int) -> None:
+        self._slash_selected_idx = max(0, int(idx))
+
+    def _reset_undo_history(self) -> None:
+        self._undo_stack.clear()
+        self._redo_stack.clear()
+        self._undo_last_kind = ""
+        self._undo_last_ts = 0.0
+
+    def _push_undo_snapshot(self, kind: str, *, force: bool = False) -> None:
+        now = time.monotonic()
+        self._redo_stack.clear()
+        if (
+            force
+            or not self._undo_stack
+            or kind != self._undo_last_kind
+            or (now - self._undo_last_ts) > 0.9
+        ):
+            if not self._undo_stack or self._undo_stack[-1] != self._buffer:
+                self._undo_stack.append(self._buffer)
+                if len(self._undo_stack) > 100:
+                    del self._undo_stack[0]
+        self._undo_last_kind = kind
+        self._undo_last_ts = now
+
+    def undo_typing(self) -> bool:
+        """Скасовує останню дію вводу в оверлеї (Ctrl+Z)."""
+        if not self._undo_stack:
+            return False
+        self._redo_stack.append(self._buffer)
+        self._buffer = self._undo_stack.pop()
+        self._undo_last_kind = ""
+        self._slash_selected_idx = 0
+        self.typing_text_changed.emit(self._buffer, self.get_current_lang_code())
+        return True
+
+    def redo_typing(self) -> bool:
+        """Повертає скасовану дію в оверлеї (Ctrl+Y / Ctrl+Shift+Z)."""
+        if not self._redo_stack:
+            return False
+        self._undo_stack.append(self._buffer)
+        self._buffer = self._redo_stack.pop()
+        self._undo_last_kind = ""
+        self._slash_selected_idx = 0
+        self.typing_text_changed.emit(self._buffer, self.get_current_lang_code())
+        return True
+
+    def insert_slash_tag(self, tag: str) -> None:
+        """Вставляє обрану мишкою команду замість активного `/...`, `\\...` або `|...`."""
+        if not self._is_typing or self.uses_popup_window or not self._reaction_specs:
+            return
+        self._push_undo_snapshot("atomic", force=True)
+        self._buffer = replace_active_slash_with_tag(self._buffer, tag)
+        self._slash_selected_idx = 0
+        self.typing_text_changed.emit(self._buffer, self.get_current_lang_code())
+
+    def _is_cursor_in_tag_picker(self) -> bool:
+        hwnd = self._tag_picker_hwnd
+        if not hwnd:
+            return False
+        try:
+            wr = wintypes.RECT()
+            pt = wintypes.POINT()
+            if user32.GetWindowRect(wintypes.HWND(hwnd), ctypes.byref(wr)) and user32.GetCursorPos(ctypes.byref(pt)):
+                return (wr.left - 4) <= pt.x <= (wr.right + 4) and (wr.top - 4) <= pt.y <= (wr.bottom + 4)
+        except Exception:
+            pass
+        return False
+
     def set_typing_mode(self, active: bool, continuous: Optional[bool] = None) -> None:
         """Примусово вмикає або вимикає режим набору (наприклад, через кнопку UI або HTTP API)."""
         if active == self._is_typing and (continuous is None or self._session_continuous == continuous):
             return
         self._is_typing = active
+        self._slash_selected_idx = 0
+        self._reset_undo_history()
         if active:
             self._buffer = self._consume_valid_draft()
             self._session_continuous = bool(continuous) if continuous is not None else self._config_continuous
@@ -1343,6 +1440,8 @@ class KeyboardHookManager(QObject):
             return
         self._stash_draft_on_close(emergency=True)
         self._buffer = ""
+        self._slash_selected_idx = 0
+        self._reset_undo_history()
         self._is_typing = False
         self._session_continuous = False
         self._sync_game_guard()
@@ -1578,6 +1677,8 @@ class KeyboardHookManager(QObject):
                     if self._matches_hotkey(self._hk_send, mods, vk, is_modifier_vk, is_repeat, double_hit_vk):
                         final_text = self._buffer.strip()
                         self._buffer = ""
+                        self._slash_selected_idx = 0
+                        self._reset_undo_history()
                         self._clear_saved_draft()
                         lang = self.get_current_lang_code()
                         if self.is_continuous_active:
@@ -1602,21 +1703,49 @@ class KeyboardHookManager(QObject):
                     # 6. Подальша обробка символів і редагування у режимі сліпого набору
                     if self._is_typing and not self.uses_popup_window:
 
-                        # Backspace (та Ctrl+Backspace для видалення слова)
+                        # Backspace (та Ctrl+Backspace для видалення слова; токени `[команда]` видаляються одним цілим)
                         if vk == VK_BACK:
-                            if "ctrl" in mods:
-                                stripped = self._buffer.rstrip()
-                                last_space = stripped.rfind(" ")
-                                self._buffer = stripped[: last_space + 1] if last_space != -1 else ""
-                            else:
-                                self._buffer = self._buffer[:-1]
-                            self.typing_text_changed.emit(self._buffer, self.get_current_lang_code())
+                            if self._buffer:
+                                if "ctrl" in mods:
+                                    self._push_undo_snapshot("atomic", force=True)
+                                    stripped = self._buffer.rstrip()
+                                    last_space = stripped.rfind(" ")
+                                    self._buffer = stripped[: last_space + 1] if last_space != -1 else ""
+                                else:
+                                    trimmed = backspace_trailing_omnivoice_tag(
+                                        self._buffer,
+                                        specs=self._reaction_specs or None,
+                                    )
+                                    if trimmed is not None:
+                                        self._push_undo_snapshot("atomic", force=True)
+                                        self._buffer = trimmed
+                                    else:
+                                        self._push_undo_snapshot("back")
+                                        self._buffer = self._buffer[:-1]
+                                self._slash_selected_idx = 0
+                                self.typing_text_changed.emit(self._buffer, self.get_current_lang_code())
                             return _swallow_key()
 
                         # Delete або Ctrl+U — очистити весь рядок
                         if vk == VK_DELETE or (vk == ord("U") and "ctrl" in mods):
-                            self._buffer = ""
-                            self.typing_text_changed.emit(self._buffer, self.get_current_lang_code())
+                            if self._buffer:
+                                self._push_undo_snapshot("atomic", force=True)
+                                self._buffer = ""
+                                self._slash_selected_idx = 0
+                                self.typing_text_changed.emit(self._buffer, self.get_current_lang_code())
+                            return _swallow_key()
+
+                        # Ctrl+Z / Ctrl+Shift+Z — скасувати / повернути ввід
+                        if vk == ord("Z") and "ctrl" in mods and not ("alt" in mods):
+                            if "shift" in mods:
+                                self.redo_typing()
+                            else:
+                                self.undo_typing()
+                            return _swallow_key()
+
+                        # Ctrl+Y — повернути скасований ввід
+                        if vk == ord("Y") and "ctrl" in mods and not ("alt" in mods):
+                            self.redo_typing()
                             return _swallow_key()
 
                         # Ctrl+V — вставка з буфера обміну
@@ -1625,7 +1754,9 @@ class KeyboardHookManager(QObject):
                                 cb = QGuiApplication.clipboard()
                                 if cb and cb.text():
                                     clean_paste = cb.text().replace("\r", " ").replace("\n", " ")
+                                    self._push_undo_snapshot("atomic", force=True)
                                     self._buffer += clean_paste
+                                    self._slash_selected_idx = 0
                                     self.typing_text_changed.emit(self._buffer, self.get_current_lang_code())
                             except Exception:
                                 pass
@@ -1646,10 +1777,54 @@ class KeyboardHookManager(QObject):
                         if ("ctrl" in mods or "alt" in mods) and not is_altgr:
                             return _swallow_key()
 
+                        # Автодоповнення та вибір звукових команд/реакцій по `/`, `\` або `|` (Tab вставляє, стрілки обирають)
+                        if self._reaction_specs and not mods:
+                            if vk == VK_TAB:
+                                completed = complete_slash_command(
+                                    self._buffer,
+                                    self._ui_lang,
+                                    selected_index=self._slash_selected_idx,
+                                    specs=self._reaction_specs,
+                                )
+                                if completed is not None:
+                                    self._push_undo_snapshot("atomic", force=True)
+                                    self._buffer = completed
+                                    self._slash_selected_idx = 0
+                                    self.typing_text_changed.emit(self._buffer, self.get_current_lang_code())
+                                return _swallow_key()
+                            if vk in (VK_LEFT, VK_RIGHT, VK_UP, VK_DOWN):
+                                slash_state = extract_active_slash_query(self._buffer)
+                                if slash_state is not None:
+                                    matches = match_reaction_tags(
+                                        slash_state[1],
+                                        self._ui_lang,
+                                        specs=self._reaction_specs,
+                                    )
+                                    if len(matches) > 1:
+                                        delta = 1 if vk in (VK_RIGHT, VK_DOWN) else -1
+                                        self._slash_selected_idx = (self._slash_selected_idx + delta) % len(matches)
+                                        self.slash_selection_changed.emit(self._slash_selected_idx)
+                                return _swallow_key()
+
                         # Перетворення клавіші у символ (UA / RU / EN)
                         ch = self._vk_to_unicode(vk, scan)
                         if ch:
+                            if ch == " " and self._reaction_specs:
+                                exact_completed = complete_slash_command(
+                                    self._buffer,
+                                    self._ui_lang,
+                                    exact_only=True,
+                                    specs=self._reaction_specs,
+                                )
+                                if exact_completed is not None:
+                                    self._push_undo_snapshot("atomic", force=True)
+                                    self._buffer = exact_completed
+                                    self._slash_selected_idx = 0
+                                    self.typing_text_changed.emit(self._buffer, self.get_current_lang_code())
+                                    return _swallow_key()
+                            self._push_undo_snapshot("type", force=(ch == " "))
                             self._buffer += ch
+                            self._slash_selected_idx = 0
                             self.typing_text_changed.emit(self._buffer, self.get_current_lang_code())
                             return _swallow_key()
 
@@ -1717,6 +1892,8 @@ class KeyboardHookManager(QObject):
             self._verify_weak_game_trigger()
             return 0
         if msg == WM_INPUT and self._game_guard_armed:
+            if self._is_cursor_in_tag_picker():
+                return user32.DefWindowProcW(wintypes.HWND(hwnd), msg, wparam, lparam)
             dx, dy, btn_flags, is_abs = _read_raw_mouse_input(lparam)
             if (dx or dy or btn_flags) and self._game_guard.feed(dx, dy, btn_flags, is_absolute=is_abs):
                 if self._game_guard_weak_mode:

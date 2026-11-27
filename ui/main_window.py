@@ -4730,6 +4730,18 @@ class MainWindow(QMainWindow):
             )
             self.live_status_label.setText(msg)
 
+    def _on_reaction_commands_changed(self) -> None:
+        """Оновлює активні звукові команди у хуку клавіатури та оверлеї після редагування списку."""
+        if hasattr(self, "keyboard_hook"):
+            self.keyboard_hook.update_from_config(config.data)
+        if hasattr(self, "overlay") and self.overlay.isVisible():
+            self.overlay.update()
+
+    def _on_reaction_style_preview(self, style: str) -> None:
+        """Показує живий попередній перегляд обраного стилю підказки команд поверх екрана."""
+        if hasattr(self, "overlay"):
+            self.overlay.preview_tag_picker_style(style)
+
     def _append_twitch_feed(self, icon: str, author: str, text: str, note: str = "") -> None:
         if not hasattr(self, "twitch_live_feed"):
             return
@@ -6356,6 +6368,14 @@ class MainWindow(QMainWindow):
         self.quick_phrases_scroll.setWidget(qp_container)
         qp_lay.addWidget(self.quick_phrases_scroll)
         lay.addWidget(qp_card)
+
+        # Згортуваний блок звукових команд та реакцій (/ \ |) у стилі блоку VBAN
+        from ui.reaction_commands import ReactionCommandsCard
+
+        self.reaction_commands_card = ReactionCommandsCard()
+        self.reaction_commands_card.commands_changed.connect(self._on_reaction_commands_changed)
+        self.reaction_commands_card.style_changed_preview.connect(self._on_reaction_style_preview)
+        lay.addWidget(self.reaction_commands_card)
 
         # Додатковий блок: швидке озвучення довільного тексту та історія
         bottom_card = QFrame()
@@ -10293,10 +10313,14 @@ class MainWindow(QMainWindow):
         self.keyboard_hook.toggle_chat_tts_triggered.connect(self._on_toggle_chat_tts_hotkey)
         self.keyboard_hook.toggle_game_mode_triggered.connect(self._on_toggle_game_mode_hotkey)
         self.keyboard_hook.toggle_omnivoice_whisper_triggered.connect(self._on_toggle_omnivoice_whisper_hotkey)
+        self.keyboard_hook.slash_selection_changed.connect(self.overlay.set_tag_hint_selected_index)
         self.keyboard_hook.quick_phrase_triggered.connect(self._trigger_quick_phrase_hotkey)
 
         self.overlay.position_changed.connect(self._on_overlay_dragged)
         self.overlay.move_mode_changed.connect(self._on_overlay_move_mode_changed)
+        self.overlay.tag_picker_chosen.connect(self.keyboard_hook.insert_slash_tag)
+        self.overlay.tag_picker_selection_changed.connect(self.keyboard_hook.set_slash_selected_index)
+        self.overlay.tag_picker_hwnd_changed.connect(self.keyboard_hook.set_tag_picker_hwnd)
 
         self.fallback_window.text_submitted.connect(self._on_fallback_submitted)
         self.fallback_window.cancelled.connect(self._on_fallback_cancelled)

@@ -29,6 +29,7 @@ LOCALES_DIR = (BASE_DIR / "locales") if (BASE_DIR / "locales").exists() else (BU
 SAMPLES_DIR = (DATA_DIR / "samples") if (DATA_DIR / "samples").exists() else (BUNDLE_DIR / "data" / "samples")
 ENGINES_DIR = DATA_DIR / "engines"
 PHRASES_AUDIO_DIR = DATA_DIR / "phrases_audio"
+REACTION_AUDIO_DIR = DATA_DIR / "reaction_audio"
 TTS_CACHE_DIR = DATA_DIR / "tts_cache"
 OBS_TEMPLATES_DIR = DATA_DIR / "obs_templates"
 CONFIG_FILE = DATA_DIR / "config.json"
@@ -380,8 +381,11 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "update_repo_url": "",
     "skipped_update_version": "",
 
-    # 6. Швидкі фрази та історія
+    # 6. Швидкі фрази, звукові команди та історія
     "quick_phrases": copy.deepcopy(DEFAULT_QUICK_PHRASES),
+    "reaction_picker_style": "emoji_dock",
+    "reaction_omnivoice_enabled": True,
+    "reaction_commands": None,
     "recent_phrases": [],
 }
 
@@ -400,6 +404,7 @@ class ConfigManager:
             pass
         ENGINES_DIR.mkdir(parents=True, exist_ok=True)
         PHRASES_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+        REACTION_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
         self._data: Dict[str, Any] = copy.deepcopy(DEFAULT_CONFIG)
         self.load()
 

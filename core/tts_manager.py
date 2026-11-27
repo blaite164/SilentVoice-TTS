@@ -3053,7 +3053,23 @@ class TTSEngineManager(QObject):
         )
         synth_text = apply_default_stress_fixes(synth_text)
 
-        cache_key = self._build_audio_cache_key(synth_text, primary_id, primary_voice)
+        from core.omnivoice_tags import (
+            build_active_reaction_specs,
+            expand_omnivoice_tags,
+            strip_omnivoice_tags,
+        )
+
+        ui_lang_cur = str(config.get("app_language", "uk") or "uk")
+
+        def _for_engine_tags(raw_txt: str, target_eng: str) -> str:
+            if target_eng == "omnivoice" and bool(config.get("reaction_omnivoice_enabled", True)):
+                specs = build_active_reaction_specs(config.data, engine_id="omnivoice", ui_lang=ui_lang_cur, base_dir=BASE_DIR)
+                return expand_omnivoice_tags(raw_txt, specs=specs, ui_lang=ui_lang_cur)
+            stripped = strip_omnivoice_tags(raw_txt)
+            return stripped if stripped else raw_txt
+
+        primary_synth_text = _for_engine_tags(synth_text, primary_id)
+        cache_key = self._build_audio_cache_key(primary_synth_text, primary_id, primary_voice)
         cached = self._cache_lookup(cache_key)
         if cached is not None:
             return cached
@@ -3068,7 +3084,7 @@ class TTSEngineManager(QObject):
 
         try:
             self.status_changed.emit(tr("tts.status.synth", "Синтез ({title})...", title=primary_title))
-            samples, sr = self._synthesize_dispatch(primary_id, primary_voice, synth_text, 1.0)
+            samples, sr = self._synthesize_dispatch(primary_id, primary_voice, primary_synth_text, 1.0)
             samples, sr = apply_engine_dsp(samples, sr, primary_id, primary_voice)
             self._cache_store(cache_key, samples, sr, primary_title)
             return samples, sr, primary_title
@@ -3085,12 +3101,13 @@ class TTSEngineManager(QObject):
                     f"[TTSManager] Збій основного TTS ({primary_title}: {primary_exc}). Перемикання на запасний TTS ({fb_title})...",
                     file=sys.stderr,
                 )
-                fb_cache_key = self._build_audio_cache_key(synth_text, fb_id, resolved_fb_voice)
+                fb_synth_text = _for_engine_tags(synth_text, fb_id)
+                fb_cache_key = self._build_audio_cache_key(fb_synth_text, fb_id, resolved_fb_voice)
                 fb_cached = self._cache_lookup(fb_cache_key)
                 if fb_cached is not None:
                     return fb_cached
                 self.status_changed.emit(tr("tts.status.fallback_synth", "⚡ Запасний TTS ({title})...", title=fb_title))
-                samples, sr = self._synthesize_dispatch(fb_id, resolved_fb_voice, synth_text, 1.0)
+                samples, sr = self._synthesize_dispatch(fb_id, resolved_fb_voice, fb_synth_text, 1.0)
                 samples, sr = apply_engine_dsp(samples, sr, fb_id, resolved_fb_voice)
                 self._cache_store(fb_cache_key, samples, sr, fb_title)
                 return samples, sr, fb_title
@@ -3105,7 +3122,7 @@ class TTSEngineManager(QObject):
                 flush=True,
             )
             try:
-                samples, sr = self._synthesize_dispatch(primary_id, primary_voice, synth_text, 1.0)
+                samples, sr = self._synthesize_dispatch(primary_id, primary_voice, primary_synth_text, 1.0)
                 samples, sr = apply_engine_dsp(samples, sr, primary_id, primary_voice)
                 self._cache_store(cache_key, samples, sr, primary_title)
                 return samples, sr, primary_title
@@ -3286,6 +3303,38 @@ class TTSEngineManager(QObject):
     # ------------------------------------------------------------------
 
     @staticmethod
+    def _load_reaction_audio_samples(audio_path: Path) -> Tuple[np.ndarray, int]:
+        """Завантажує аудіофайл звукової команди (.wav/.mp3/.ogg/.flac) у float32-масив."""
+        if not audio_path.is_file():
+            raise RuntimeError(
+                tr("tts.err.quick_audio_missing", "Аудіофайл швидкої фрази не знайдено: {name}", name=audio_path.name)
+            )
+        try:
+            data, sr = sf.read(str(audio_path), dtype="float32", always_2d=False)
+            samples = np.asarray(data, dtype=np.float32)
+            if samples.ndim == 2 and samples.shape[1] > 2:
+                samples = np.mean(samples, axis=1).astype(np.float32)
+            return samples, int(sr)
+        except Exception:
+            # Резервне декодування через ffmpeg (напр. для m4a / нестандартного mp3)
+            ff = _find_ffmpeg_exe()
+            if not ff:
+                raise
+            proc = subprocess.run(
+                [ff, "-v", "error", "-i", str(audio_path), "-f", "wav", "-acodec", "pcm_f32le", "pipe:1"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=15,
+            )
+            if proc.returncode != 0 or not proc.stdout:
+                raise RuntimeError(proc.stderr.decode("utf-8", errors="ignore").strip() or f"Decode failed: {audio_path.name}")
+            data, sr = sf.read(io.BytesIO(proc.stdout), dtype="float32", always_2d=False)
+            samples = np.asarray(data, dtype=np.float32)
+            if samples.ndim == 2 and samples.shape[1] > 2:
+                samples = np.mean(samples, axis=1).astype(np.float32)
+            return samples, int(sr)
+
+    @staticmethod
     def _play_with_synced_obs(
         samples: np.ndarray,
         sr: int,
@@ -3354,6 +3403,20 @@ class TTSEngineManager(QObject):
             else text
         )
         synth_text = format_stress_marks(apply_default_stress_fixes(synth_text), "strip")
+        from core.omnivoice_tags import (
+            build_active_reaction_specs,
+            expand_omnivoice_tags,
+            strip_omnivoice_tags,
+        )
+
+        ui_lang_cur = str(config.get("app_language", "uk") or "uk")
+        if primary_id == "omnivoice" and bool(config.get("reaction_omnivoice_enabled", True)):
+            specs = build_active_reaction_specs(config.data, engine_id="omnivoice", ui_lang=ui_lang_cur, base_dir=BASE_DIR)
+            synth_text = expand_omnivoice_tags(synth_text, specs=specs, ui_lang=ui_lang_cur)
+        else:
+            stripped = strip_omnivoice_tags(synth_text)
+            if stripped:
+                synth_text = stripped
         cache_key = self._build_audio_cache_key(synth_text, primary_id, primary_voice)
         if self._cache_lookup(cache_key) is not None:
             return None
@@ -3568,6 +3631,105 @@ class TTSEngineManager(QObject):
                     self.speech_finished.emit(display_txt)
                     if not self._cancel_batch:
                         self.status_changed.emit(tr("tts.status.done_rec", "Готово (із запису)"))
+                    continue
+
+                # Перевіряємо, чи містить фраза активні звукові команди з прикріпленими аудіофайлами
+                from core.omnivoice_tags import (
+                    build_active_reaction_specs,
+                    expand_omnivoice_tags,
+                    format_tags_for_display,
+                    split_text_for_reaction_playback,
+                )
+
+                eff_eng_id = str(eng_ovr or config.get("active_engine", "") or "").strip()
+                ui_lang_cur = str(config.get("app_language", "uk") or "uk")
+                active_rc_specs = build_active_reaction_specs(
+                    config.data,
+                    engine_id=eff_eng_id,
+                    ui_lang=ui_lang_cur,
+                    base_dir=BASE_DIR,
+                )
+                rc_segments = (
+                    split_text_for_reaction_playback(
+                        text,
+                        active_rc_specs,
+                        is_omnivoice_engine=(
+                            eff_eng_id == "omnivoice"
+                            and bool(config.get("reaction_omnivoice_enabled", True))
+                        ),
+                        ui_lang=ui_lang_cur,
+                    )
+                    if active_rc_specs
+                    else []
+                )
+                if any(kind == "audio" for kind, _, _ in rc_segments):
+                    display_full = format_tags_for_display(
+                        expand_omnivoice_tags(
+                            strip_plus_stress_marks(text),
+                            specs=active_rc_specs,
+                            ui_lang=ui_lang_cur,
+                        ),
+                        specs=active_rc_specs,
+                        ui_lang=ui_lang_cur,
+                    )
+                    if mirror_twitch and display_full:
+                        self.phrase_spoken.emit(display_full)
+                    for seg_kind, seg_val, seg_disp in rc_segments:
+                        if self._cancel_batch or not self._running:
+                            break
+                        if seg_kind == "audio":
+                            samples, sr = self._load_reaction_audio_samples(Path(seg_val))
+                            if samples is not None and len(samples) > 0 and sr > 0:
+                                dur = len(samples) / float(sr)
+                                self.status_changed.emit(tr("tts.status.playing_rec", "Відтворення запису..."))
+                                self.speech_started.emit(seg_disp or Path(seg_val).stem, dur)
+                                self._play_with_synced_obs(
+                                    samples,
+                                    int(sr),
+                                    subtitle_text=seg_disp,
+                                    duration=dur,
+                                    monitor_only=monitor_only,
+                                    send_primary=send_primary,
+                                    vban_stream_override=vban_stream_override,
+                                    extra_gain_pct=extra_gain_pct,
+                                )
+                                self.speech_finished.emit(seg_disp or Path(seg_val).stem)
+                        elif seg_kind == "text" and seg_val.strip():
+                            seg_text = seg_val.strip()
+                            if bool(config.get("ai_spellcheck_enabled", False)) and not skip_spellcheck:
+                                self.status_changed.emit(tr("tts.status.ai_check", "🪄 AI перевірка орфографії..."))
+                                seg_text = correct_text_with_ai(seg_text)
+                            sub_chunks = (
+                                split_into_sentences_punct(seg_text)
+                                if bool(config.get("split_sentences_enabled", True))
+                                else [seg_text]
+                            )
+                            for sc in sub_chunks:
+                                if self._cancel_batch or not self._running:
+                                    break
+                                t0 = time.perf_counter()
+                                samples, sr, _ = self._synthesize_with_fallback(sc, eng_ovr, voice_ovr)
+                                synth_ms = int((time.perf_counter() - t0) * 1000)
+                                if self._cancel_batch or not self._running:
+                                    break
+                                if samples is not None and len(samples) > 0:
+                                    duration = len(samples) / float(sr)
+                                    self.status_changed.emit(tr("tts.status.speaking_ms", "Озвучення ({ms} мс)...", ms=synth_ms))
+                                    clean_sc = strip_plus_stress_marks(sc)
+                                    self.speech_started.emit(clean_sc, duration)
+                                    self._play_with_synced_obs(
+                                        samples,
+                                        sr,
+                                        subtitle_text=clean_sc,
+                                        duration=duration,
+                                        monitor_only=monitor_only,
+                                        send_primary=send_primary,
+                                        vban_stream_override=vban_stream_override,
+                                        extra_gain_pct=extra_gain_pct,
+                                    )
+                                    self.speech_finished.emit(clean_sc)
+                    if not self._cancel_batch:
+                        self.status_changed.emit(tr("ui_113", "Система готова"))
                     continue
 
                 if bool(config.get("ai_spellcheck_enabled", False)) and not skip_spellcheck:
