@@ -4742,6 +4742,11 @@ class MainWindow(QMainWindow):
         if hasattr(self, "overlay"):
             self.overlay.preview_tag_picker_style(style)
 
+    def _on_reaction_hotkey_triggered(self, tag: str) -> None:
+        """Вставляє звукову команду за біндом у відкрите вікно вводу."""
+        if hasattr(self, "fallback_window") and self.fallback_window.isVisible():
+            self.fallback_window.insert_reaction_tag(tag)
+
     def _append_twitch_feed(self, icon: str, author: str, text: str, note: str = "") -> None:
         if not hasattr(self, "twitch_live_feed"):
             return
@@ -6372,7 +6377,7 @@ class MainWindow(QMainWindow):
         # Згортуваний блок звукових команд та реакцій (/ \ |) у стилі блоку VBAN
         from ui.reaction_commands import ReactionCommandsCard
 
-        self.reaction_commands_card = ReactionCommandsCard()
+        self.reaction_commands_card = ReactionCommandsCard(keyboard_hook=self.keyboard_hook)
         self.reaction_commands_card.commands_changed.connect(self._on_reaction_commands_changed)
         self.reaction_commands_card.style_changed_preview.connect(self._on_reaction_style_preview)
         lay.addWidget(self.reaction_commands_card)
@@ -10314,6 +10319,7 @@ class MainWindow(QMainWindow):
         self.keyboard_hook.toggle_game_mode_triggered.connect(self._on_toggle_game_mode_hotkey)
         self.keyboard_hook.toggle_omnivoice_whisper_triggered.connect(self._on_toggle_omnivoice_whisper_hotkey)
         self.keyboard_hook.slash_selection_changed.connect(self.overlay.set_tag_hint_selected_index)
+        self.keyboard_hook.reaction_hotkey_triggered.connect(self._on_reaction_hotkey_triggered)
         self.keyboard_hook.quick_phrase_triggered.connect(self._trigger_quick_phrase_hotkey)
 
         self.overlay.position_changed.connect(self._on_overlay_dragged)

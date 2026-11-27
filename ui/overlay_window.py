@@ -2352,6 +2352,19 @@ class FallbackInputWindow(QWidget):
         else:
             self.cancelled.emit()
 
+    def insert_reaction_tag(self, tag: str) -> None:
+        """Вставляє звукову команду `[tag] ` у поточну позицію курсора поля вводу."""
+        clean_tag = str(tag or "").strip()
+        if not clean_tag:
+            return
+        cursor = self.input_edit.textCursor()
+        pos = cursor.position()
+        full_text = self.input_edit.toPlainText()
+        before = full_text[:pos]
+        sep = "" if (not before or before[-1].isspace()) else " "
+        cursor.insertText(f"{sep}{clean_tag} ")
+        self.input_edit.setTextCursor(cursor)
+
     def keyPressEvent(self, event: QKeyEvent) -> None:
         if event.key() == Qt.Key.Key_Escape:
             self.close_and_restore_focus()

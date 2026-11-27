@@ -1462,5 +1462,12 @@
   "rc.dlg.file_omnivoice": "🎙️ Réaction OmniVoice intégrée ({tag}). Vous pouvez joindre votre propre fichier pour tous les moteurs TTS.",
   "rc.dlg.file_missing": "⚪ Aucun fichier — la commande ne peut pas être activée sans fichier audio.",
   "rc.dlg.err_empty_cmd": "⚠️ Saisissez un nom de commande (ex. haha).",
-  "rc.dlg.err_dup_cmd": "⚠️ La commande \\{cmd} existe déjà dans la liste."
+  "rc.dlg.err_dup_cmd": "⚠️ La commande \\{cmd} existe déjà dans la liste.",
+  "rc.dlg.hotkey_lbl": "Raccourci d’insertion rapide dans le texte (facultatif) :",
+  "rc.dlg.hotkey_clear": "Effacer le raccourci",
+  "rc.dlg.hotkey_title": "Raccourci pour la commande sonore",
+  "rc.dlg.hotkey_title_cmd": "Raccourci pour \\{cmd}",
+  "rc.row.hotkey_bound_tip": "Raccourci : {hk} (appuyez pendant la saisie pour insérer)",
+  "rc.row.hotkey_change_tip": "Modifier le raccourci ({hk})",
+  "rc.row.hotkey_add_tip": "Attribuer un raccourci d’insertion rapide"
 }

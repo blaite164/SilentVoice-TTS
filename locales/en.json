@@ -1462,5 +1462,12 @@
   "rc.dlg.file_omnivoice": "🎙️ Built-in OmniVoice reaction ({tag}). You can attach your own file for all TTS engines.",
   "rc.dlg.file_missing": "⚪ No file selected — command cannot be enabled until a file is attached.",
   "rc.dlg.err_empty_cmd": "⚠️ Enter a command name (e.g. haha).",
-  "rc.dlg.err_dup_cmd": "⚠️ Command \\{cmd} already exists in the list."
+  "rc.dlg.err_dup_cmd": "⚠️ Command \\{cmd} already exists in the list.",
+  "rc.dlg.hotkey_lbl": "Keybind for quick text insertion (optional):",
+  "rc.dlg.hotkey_clear": "Clear keybind",
+  "rc.dlg.hotkey_title": "Keybind for sound command",
+  "rc.dlg.hotkey_title_cmd": "Keybind for \\{cmd}",
+  "rc.row.hotkey_bound_tip": "Keybind: {hk} (press while typing to insert)",
+  "rc.row.hotkey_change_tip": "Change keybind ({hk})",
+  "rc.row.hotkey_add_tip": "Assign keybind for quick text insertion"
 }

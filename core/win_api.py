@@ -1030,6 +1030,7 @@ class KeyboardHookManager(QObject):
     toggle_chat_tts_triggered = Signal()
     toggle_omnivoice_whisper_triggered = Signal()
     slash_selection_changed = Signal(int)
+    reaction_hotkey_triggered = Signal(str)      # (canonical_tag для вставки у вікно вводу)
     quick_phrase_triggered = Signal(str)         # (phrase_text)
     hotkey_recorded = Signal(str)                # Для діалогу запису нової комбінації клавіш
     _layout_refresh_requested = Signal()
@@ -1052,6 +1053,7 @@ class KeyboardHookManager(QObject):
         self._tag_picker_hwnd: int = 0
         self._ui_lang: str = "uk"
         self._reaction_specs: List[OmniVoiceTagSpec] = []
+        self._reaction_hotkeys: List[Tuple[HotkeySpec, str]] = []
         self._input_mode: str = "hook"  # "hook" або "fallback"
         self._overlay_style: str = "text_only"
         self._config_continuous: bool = False
@@ -1165,6 +1167,13 @@ class KeyboardHookManager(QObject):
             if parsed and text:
                 q_list.append((parsed, text))
         self._quick_hotkeys = q_list
+
+        r_list: List[Tuple[HotkeySpec, str]] = []
+        for r_spec in self._reaction_specs:
+            parsed_r = parse_hotkey_string(r_spec.hotkey)
+            if parsed_r and r_spec.tag:
+                r_list.append((parsed_r, r_spec.tag))
+        self._reaction_hotkeys = r_list
 
     def _cancel_pending_quick_singles(self, vk: Optional[int] = None) -> None:
         """Скасовує відкладені одиночні фрази (усі або для конкретної клавіші)."""
@@ -1302,6 +1311,20 @@ class KeyboardHookManager(QObject):
         self._buffer = replace_active_slash_with_tag(self._buffer, tag)
         self._slash_selected_idx = 0
         self.typing_text_changed.emit(self._buffer, self.get_current_lang_code())
+
+    def trigger_reaction_hotkey(self, tag: str) -> bool:
+        """Вставляє звукову команду за призначеним біндом під час активного набору тексту."""
+        clean_tag = str(tag or "").strip()
+        if not self._is_typing or not clean_tag:
+            return False
+        if self.uses_popup_window:
+            self.reaction_hotkey_triggered.emit(clean_tag)
+            return True
+        self._push_undo_snapshot("atomic", force=True)
+        self._buffer = replace_active_slash_with_tag(self._buffer, clean_tag)
+        self._slash_selected_idx = 0
+        self.typing_text_changed.emit(self._buffer, self.get_current_lang_code())
+        return True
 
     def _is_cursor_in_tag_picker(self) -> bool:
         hwnd = self._tag_picker_hwnd
@@ -1642,6 +1665,15 @@ class KeyboardHookManager(QObject):
                 if self._matches_hotkey(self._hk_toggle, mods, vk, is_modifier_vk, is_repeat, double_hit_vk):
                     self.set_typing_mode(not self._is_typing, continuous=self._config_continuous)
                     return user32.CallNextHookEx(self._hook_handle, nCode, wParam, lParam) if is_modifier_vk else _swallow_key()
+
+                # 3c. Бінди звукових команд і реакцій під час набору тексту (швидка вставка в текст)
+                if self._is_typing and self._reaction_hotkeys:
+                    for r_spec, r_tag in self._reaction_hotkeys:
+                        if double_hit_vk is not None and not r_spec.is_double:
+                            continue
+                        if self._matches_hotkey(r_spec, mods, vk, is_modifier_vk, is_repeat, double_hit_vk):
+                            self.trigger_reaction_hotkey(r_tag)
+                            return user32.CallNextHookEx(self._hook_handle, nCode, wParam, lParam) if is_modifier_vk else _swallow_key()
 
                 # 4. Швидкі фрази за хоткеями
                 if not self._is_typing or mods or double_hit_vk is not None:

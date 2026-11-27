@@ -33,6 +33,7 @@ class OmniVoiceTagSpec:
     enabled: bool = True
     custom_cmd: str = ""
     custom_desc: str = ""
+    hotkey: str = ""
 
 
 # 8 стандартних виразних реакцій (відповідають офіційним тегам OmniVoice)
@@ -325,6 +326,7 @@ def get_default_reaction_commands(ui_lang: str = "uk") -> List[Dict[str, Any]]:
                 "description": desc,
                 "audio_file": "",
                 "omnivoice_tag": spec.omnivoice_tag,
+                "hotkey": "",
                 "enabled": True,
             }
         )
@@ -432,6 +434,7 @@ def item_to_reaction_spec(
         enabled=enabled,
         custom_cmd=cmd,
         custom_desc=desc,
+        hotkey=str(item.get("hotkey") or "").strip(),
     )
 
 

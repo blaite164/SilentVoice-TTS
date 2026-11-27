@@ -217,6 +217,84 @@ class TypingUndoRedoTests(unittest.TestCase):
         self.assertEqual(hook._buffer, "")
         self.assertFalse(hook.redo_typing())
 
+    def test_reaction_hotkey_binds_in_hook_and_fallback_window(self) -> None:
+        from PySide6.QtWidgets import QApplication
+        from core.win_api import KeyboardHookManager
+        from ui.overlay_window import FallbackInputWindow
+
+        app = QApplication.instance() or QApplication([])
+        self.assertIsNotNone(app)
+
+        hook = KeyboardHookManager()
+        with tempfile.TemporaryDirectory() as td:
+            wav = Path(td) / "laugh.wav"
+            wav.write_bytes(b"RIFF\x00\x00\x00\x00WAVE")
+            cfg = {
+                "app_language": "uk",
+                "active_engine": "edge_tts",
+                "input_mode": "hook",
+                "overlay_style": "text_only",
+                "reaction_omnivoice_enabled": False,
+                "reaction_commands": [
+                    {
+                        "id": "rc_bound",
+                        "command": "хаха",
+                        "aliases": ["хаха"],
+                        "display": "",
+                        "description": "Сміх",
+                        "audio_file": str(wav),
+                        "omnivoice_tag": "",
+                        "hotkey": "Alt+1",
+                        "enabled": True,
+                    },
+                    {
+                        "id": "rc_disabled_bind",
+                        "command": "бум",
+                        "aliases": ["бум"],
+                        "display": "💥",
+                        "description": "",
+                        "audio_file": "",
+                        "omnivoice_tag": "",
+                        "hotkey": "Alt+2",
+                        "enabled": True,
+                    },
+                ],
+            }
+            hook.update_from_config(cfg)
+            # Лише команда з файлом отримує активний бінд
+            self.assertEqual(len(hook._reaction_hotkeys), 1)
+            self.assertEqual(hook._reaction_hotkeys[0][1], "[хаха]")
+
+            # Поза режимом набору бінд не спрацьовує
+            hook._is_typing = False
+            self.assertFalse(hook.trigger_reaction_hotkey("[хаха]"))
+
+            # У режимі набору (оверлей) вставляється прямо в буфер із підтримкою Ctrl+Z
+            hook._is_typing = True
+            hook._buffer = "Привіт"
+            hook._reset_undo_history()
+            self.assertTrue(hook.trigger_reaction_hotkey("[хаха]"))
+            self.assertEqual(hook._buffer, "Привіт [хаха] ")
+            self.assertTrue(hook.undo_typing())
+            self.assertEqual(hook._buffer, "Привіт")
+
+            # У режимі вікна вводу (fallback) шле сигнал, і FallbackInputWindow вставляє в курсор
+            received: list[str] = []
+            hook.reaction_hotkey_triggered.connect(received.append)
+            hook._input_mode = "fallback"
+            self.assertTrue(hook.trigger_reaction_hotkey("[хаха]"))
+            self.assertEqual(received, ["[хаха]"])
+
+            fw = FallbackInputWindow()
+            try:
+                fw.input_edit.setPlainText("Ого")
+                fw.input_edit.end()
+                fw.insert_reaction_tag("[хаха]")
+                self.assertEqual(fw.input_edit.toPlainText(), "Ого [хаха] ")
+            finally:
+                fw.close()
+                fw.deleteLater()
+
 
 class OverlayTagHintPaintTests(unittest.TestCase):
     def test_overlay_cycles_all_five_modes_and_renders_picker(self) -> None:

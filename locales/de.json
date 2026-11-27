@@ -1462,5 +1462,12 @@
   "rc.dlg.file_omnivoice": "🎙️ Integrierte OmniVoice-Reaktion ({tag}). Eigene Datei für alle TTS-Engines möglich.",
   "rc.dlg.file_missing": "⚪ Keine Datei gewählt — Befehl kann erst mit einer Datei aktiviert werden.",
   "rc.dlg.err_empty_cmd": "⚠️ Gib einen Befehlsnamen ein (z. B. haha).",
-  "rc.dlg.err_dup_cmd": "⚠️ Der Befehl \\{cmd} existiert bereits in der Liste."
+  "rc.dlg.err_dup_cmd": "⚠️ Der Befehl \\{cmd} existiert bereits in der Liste.",
+  "rc.dlg.hotkey_lbl": "Tastenkürzel zum schnellen Einfügen in Text (optional):",
+  "rc.dlg.hotkey_clear": "Tastenkürzel löschen",
+  "rc.dlg.hotkey_title": "Tastenkürzel für Sound-Befehl",
+  "rc.dlg.hotkey_title_cmd": "Tastenkürzel für \\{cmd}",
+  "rc.row.hotkey_bound_tip": "Tastenkürzel: {hk} (beim Tippen drücken zum Einfügen)",
+  "rc.row.hotkey_change_tip": "Tastenkürzel ändern ({hk})",
+  "rc.row.hotkey_add_tip": "Tastenkürzel zum schnellen Einfügen zuweisen"
 }

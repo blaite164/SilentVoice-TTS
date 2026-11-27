@@ -1462,5 +1462,12 @@
   "rc.dlg.file_omnivoice": "🎙️ Reacción integrada de OmniVoice ({tag}). Puedes adjuntar tu propio archivo para todos los TTS.",
   "rc.dlg.file_missing": "⚪ Sin archivo — no se puede activar el comando hasta adjuntar un archivo.",
   "rc.dlg.err_empty_cmd": "⚠️ Introduce un nombre de comando (p. ej. jaja).",
-  "rc.dlg.err_dup_cmd": "⚠️ El comando \\{cmd} ya existe en la lista."
+  "rc.dlg.err_dup_cmd": "⚠️ El comando \\{cmd} ya existe en la lista.",
+  "rc.dlg.hotkey_lbl": "Atajo para insertar rápido en el texto (opcional):",
+  "rc.dlg.hotkey_clear": "Borrar atajo",
+  "rc.dlg.hotkey_title": "Atajo para comando de sonido",
+  "rc.dlg.hotkey_title_cmd": "Atajo para \\{cmd}",
+  "rc.row.hotkey_bound_tip": "Atajo: {hk} (pulsa al escribir para insertar)",
+  "rc.row.hotkey_change_tip": "Cambiar atajo ({hk})",
+  "rc.row.hotkey_add_tip": "Asignar atajo para insertar rápido en el texto"
 }

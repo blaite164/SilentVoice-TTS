@@ -1462,5 +1462,12 @@
   "rc.dlg.file_omnivoice": "🎙️ Wbudowana reakcja OmniVoice ({tag}). Możesz dodać własny plik dla wszystkich silników TTS.",
   "rc.dlg.file_missing": "⚪ Nie wybrano pliku — polecenia nie można włączyć, dopóki nie dodasz pliku.",
   "rc.dlg.err_empty_cmd": "⚠️ Wpisz nazwę polecenia (np. haha).",
-  "rc.dlg.err_dup_cmd": "⚠️ Polecenie \\{cmd} już istnieje na liście."
+  "rc.dlg.err_dup_cmd": "⚠️ Polecenie \\{cmd} już istnieje na liście.",
+  "rc.dlg.hotkey_lbl": "Skrót do szybkiego wstawiania w tekst (opcjonalnie):",
+  "rc.dlg.hotkey_clear": "Wyczyść skrót",
+  "rc.dlg.hotkey_title": "Skrót dla polecenia dźwiękowego",
+  "rc.dlg.hotkey_title_cmd": "Skrót dla \\{cmd}",
+  "rc.row.hotkey_bound_tip": "Skrót: {hk} (naciśnij podczas pisania, aby wstawić)",
+  "rc.row.hotkey_change_tip": "Zmień skrót ({hk})",
+  "rc.row.hotkey_add_tip": "Przypisz skrót do szybkiego wstawiania w tekst"
 }

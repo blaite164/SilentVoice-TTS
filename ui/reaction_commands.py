@@ -42,7 +42,7 @@ from core.omnivoice_tags import (
     sanitize_reaction_command_name,
 )
 from core.tts_manager import tts_manager
-from ui.dialogs import DIALOG_STYLESHEET, center_dialog_on_screen
+from ui.dialogs import DIALOG_STYLESHEET, HotkeyCaptureDialog, center_dialog_on_screen
 from ui.overlay_window import TAG_HINT_MODES
 
 
@@ -114,11 +114,13 @@ class ReactionCommandDialog(QDialog):
         self,
         item: Optional[Dict[str, Any]] = None,
         *,
+        keyboard_hook: Any = None,
         existing_commands: Optional[set[str]] = None,
         omnivoice_enabled: bool = True,
         parent: Optional[QWidget] = None,
     ) -> None:
         super().__init__(parent)
+        self._hook = keyboard_hook
         self._is_edit = item is not None
         self._existing_commands = {c.lower() for c in (existing_commands or set())}
         self._omnivoice_enabled = bool(omnivoice_enabled)
@@ -133,6 +135,7 @@ class ReactionCommandDialog(QDialog):
                 "description": "",
                 "audio_file": "",
                 "omnivoice_tag": "",
+                "hotkey": "",
                 "enabled": True,
             }
         )
@@ -260,6 +263,31 @@ class ReactionCommandDialog(QDialog):
         ab_lay.addLayout(ab_btns)
         lay.addWidget(audio_box)
 
+        # 5. Гаряча клавіша (бінд для швидкої вставки в текст)
+        lay.addWidget(QLabel(tr("rc.dlg.hotkey_lbl", "Бінд для швидкої вставки в текст (необов’язково):")))
+        hk_row = QHBoxLayout()
+        hk_row.setSpacing(8)
+        self.hk_edit = QLineEdit(str(self._data.get("hotkey") or ""))
+        self.hk_edit.setReadOnly(True)
+        self.hk_edit.setPlaceholderText(tr("dlg_039", "Не призначено (необов'язково)"))
+        hk_row.addWidget(self.hk_edit, 1)
+
+        hk_pick_btn = QPushButton(tr("dlg_040", "⌨️ Вибрати клавішу"))
+        hk_pick_btn.setStyleSheet("padding: 6px 12px; min-height: 18px;")
+        hk_pick_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        hk_pick_btn.setEnabled(self._hook is not None)
+        hk_pick_btn.clicked.connect(self._on_record_hotkey)
+        hk_row.addWidget(hk_pick_btn)
+
+        hk_clear_btn = QPushButton("✕")
+        hk_clear_btn.setFixedSize(32, 32)
+        hk_clear_btn.setStyleSheet("padding: 0px; font-size: 13px;")
+        hk_clear_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        hk_clear_btn.setToolTip(tr("rc.dlg.hotkey_clear", "Очистити бінд"))
+        hk_clear_btn.clicked.connect(self.hk_edit.clear)
+        hk_row.addWidget(hk_clear_btn)
+        lay.addLayout(hk_row)
+
         self.err_lbl = QLabel("")
         self.err_lbl.setWordWrap(True)
         self.err_lbl.setStyleSheet("color: #F87171; font-size: 12px;")
@@ -348,6 +376,18 @@ class ReactionCommandDialog(QDialog):
         self._data["audio_file"] = ""
         self._refresh_audio_status()
 
+    def _on_record_hotkey(self) -> None:
+        if self._hook is None:
+            return
+        dlg = HotkeyCaptureDialog(
+            self._hook,
+            self.hk_edit.text(),
+            tr("rc.dlg.hotkey_title", "Бінд для звукової команди"),
+            self,
+        )
+        if dlg.exec() == QDialog.DialogCode.Accepted and dlg.recorded_hotkey is not None:
+            self.hk_edit.setText(dlg.recorded_hotkey)
+
     def _on_save(self) -> None:
         cmd = sanitize_reaction_command_name(self.cmd_edit.text())
         if not cmd:
@@ -381,6 +421,7 @@ class ReactionCommandDialog(QDialog):
         self._data["aliases"] = aliases
         self._data["display"] = self.display_edit.text().strip()
         self._data["description"] = self.desc_edit.text().strip()
+        self._data["hotkey"] = self.hk_edit.text().strip()
         if not had_playable:
             self._data["enabled"] = False
         elif not self._is_edit or not self._was_playable_initially:
@@ -401,8 +442,9 @@ class ReactionCommandsCard(QFrame):
     commands_changed = Signal()
     style_changed_preview = Signal(str)
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, keyboard_hook: Any = None, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
+        self._hook = keyboard_hook
         self.setProperty("class", "card")
 
         root = QVBoxLayout(self)
@@ -597,12 +639,32 @@ class ReactionCommandsCard(QFrame):
         existing = {sanitize_reaction_command_name(str(it.get("command") or "")) for it in items}
         dlg = ReactionCommandDialog(
             None,
+            keyboard_hook=self._hook,
             existing_commands=existing,
             omnivoice_enabled=self.omnivoice_chk.isChecked(),
             parent=self.window(),
         )
         if dlg.exec() == QDialog.DialogCode.Accepted:
             items.append(dlg.get_result())
+            self._save_items(items)
+
+    def _on_quick_bind_hotkey(self, cid: str) -> None:
+        if self._hook is None:
+            return
+        items = self._get_items()
+        idx = next((i for i, it in enumerate(items) if str(it.get("id") or "") == cid), -1)
+        if idx < 0:
+            return
+        cur_hk = str(items[idx].get("hotkey") or "")
+        cmd_name = str(items[idx].get("command") or "")
+        dlg = HotkeyCaptureDialog(
+            self._hook,
+            cur_hk,
+            tr("rc.dlg.hotkey_title_cmd", "Бінд для \\{cmd}", cmd=cmd_name),
+            self.window(),
+        )
+        if dlg.exec() == QDialog.DialogCode.Accepted and dlg.recorded_hotkey is not None:
+            items[idx]["hotkey"] = dlg.recorded_hotkey.strip()
             self._save_items(items)
 
     def _on_edit_command(self, cid: str) -> None:
@@ -613,6 +675,7 @@ class ReactionCommandsCard(QFrame):
         existing = {sanitize_reaction_command_name(str(it.get("command") or "")) for it in items}
         dlg = ReactionCommandDialog(
             items[idx],
+            keyboard_hook=self._hook,
             existing_commands=existing,
             omnivoice_enabled=self.omnivoice_chk.isChecked(),
             parent=self.window(),
@@ -663,6 +726,7 @@ class ReactionCommandsCard(QFrame):
             disp = str(it.get("display") or "").strip()
             desc = str(it.get("description") or "").strip()
             ov_tag = str(it.get("omnivoice_tag") or "").strip()
+            hk_str = str(it.get("hotkey") or "").strip()
             resolved_audio = resolve_reaction_audio_path(it, base_dir=BASE_DIR)
             has_file = bool(resolved_audio)
             can_use = is_reaction_item_playable(it, ov_enabled, base_dir=BASE_DIR)
@@ -729,6 +793,19 @@ class ReactionCommandsCard(QFrame):
             text_lbl.setToolTip(f"\\{cmd}" + (f" — {desc}" if desc else ""))
             r_lay.addWidget(text_lbl, 1)
 
+            # Бейдж бінду (якщо призначено)
+            if hk_str:
+                hk_lbl = QLabel(f"⌨ {hk_str}")
+                hk_lbl.setToolTip(tr("rc.row.hotkey_bound_tip", "Бінд: {hk} (натисніть під час набору, щоб вставити)", hk=hk_str))
+                hk_lbl.setStyleSheet(
+                    "font-size: 11px; font-weight: 600; color: #93C5FD; background: rgba(59,130,246,0.14); "
+                    "border: 1px solid rgba(96,165,250,0.34); border-radius: 6px; padding: 2px 7px;"
+                    if is_checked
+                    else "font-size: 11px; color: #64748B; background: rgba(100,116,139,0.10); "
+                    "border: 1px solid rgba(100,116,139,0.20); border-radius: 6px; padding: 2px 7px;"
+                )
+                r_lay.addWidget(hk_lbl)
+
             # Бейдж джерела звуку (Файл / OmniVoice / Без файлу)
             src_lbl = QLabel()
             if has_file:
@@ -784,6 +861,24 @@ class ReactionCommandsCard(QFrame):
             )
             file_btn.clicked.connect(lambda _c=False, _id=cid: self._on_quick_attach_file(_id))
             r_lay.addWidget(file_btn)
+
+            hk_row_btn = QPushButton("⌨")
+            hk_row_btn.setFixedSize(26, 26)
+            hk_row_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            hk_row_btn.setEnabled(self._hook is not None)
+            hk_row_btn.setToolTip(
+                tr("rc.row.hotkey_change_tip", "Змінити бінд ({hk})", hk=hk_str)
+                if hk_str
+                else tr("rc.row.hotkey_add_tip", "Призначити бінд для швидкої вставки в текст")
+            )
+            hk_row_btn.setStyleSheet(
+                "QPushButton { padding: 0px; font-size: 12px; color: #93C5FD; background: #22304A; border: 1px solid #3B82F6; border-radius: 6px; }"
+                "QPushButton:hover { background: #2B3D5E; border-color: #60A5FA; }"
+                if hk_str
+                else "QPushButton { padding: 0px; font-size: 12px; border-radius: 6px; }"
+            )
+            hk_row_btn.clicked.connect(lambda _c=False, _id=cid: self._on_quick_bind_hotkey(_id))
+            r_lay.addWidget(hk_row_btn)
 
             edit_btn = QPushButton()
             edit_btn.setFixedSize(26, 26)
