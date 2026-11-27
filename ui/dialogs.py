@@ -799,7 +799,7 @@ class VoiceSamplesDialog(QDialog):
             self.setWindowTitle(tr("dlg_f_003", "Прослухати голоси — {engine_title}", engine_title=self._engine_title))
             self._hdr_label.setText(tr("dlg_f_004", "🎧 Доступні голоси: {engine_title}", engine_title=self._engine_title))
         if self._guide_btn is not None:
-            self._guide_btn.setVisible(is_clone_tab)
+            self._guide_btn.setVisible(True)
 
     def _on_mode_tab_changed(self, idx: int) -> None:
         if self._mode_tabs is None:
@@ -1234,9 +1234,24 @@ class OmniVoiceSettingsDialog(QDialog):
         lay.setContentsMargins(20, 18, 20, 16)
         lay.setSpacing(12)
 
+        hdr_row = QHBoxLayout()
+        hdr_row.setSpacing(8)
         hdr = QLabel(tr("omnivoice.dlg.header", "🎛️ Налаштування OmniVoice"))
         hdr.setObjectName("dialogTitle")
-        lay.addWidget(hdr)
+        hdr_row.addWidget(hdr, 1)
+
+        guide_btn = QPushButton(tr("ov.guide_btn", "📖 Гайд"))
+        guide_btn.setAutoDefault(False)
+        guide_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        guide_btn.setToolTip(tr("clone.guide_btn_tip", "Коротко про клонування голосу, де взяти зразки та готові тексти"))
+        guide_btn.setStyleSheet("padding: 5px 11px; font-size: 12.5px;")
+        guide_btn.clicked.connect(
+            lambda checked=False: VoiceCloneGuideDialog(
+                self, engine_id="omnivoice", engine_title="OmniVoice"
+            ).exec()
+        )
+        hdr_row.addWidget(guide_btn)
+        lay.addLayout(hdr_row)
 
         # --- 1. Режим голосу: Clone vs Voice Design ---
         mode_card = QFrame()
