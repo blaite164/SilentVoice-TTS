@@ -63,6 +63,7 @@ OMNIVOICE_REF_CACHE_DIR = DATA_DIR / "tts_cache" / "omnivoice_refs"
 
 OMNIVOICE_NATIVE_SR = 24000
 OMNIVOICE_MAX_REF_SEC = 10.0
+OMNIVOICE_OUTPUT_GAIN = 0.65  # ~ -3.7 dB: balances hot tts-server output with ZONOS3 & prevents peak clipping
 OMNIVOICE_HF_REPO = "Serveurperso/OmniVoice-GGUF"
 OMNIVOICE_HF_REV = "361609388ae572a820d085185bbbe2a2aac4b30e"
 
@@ -1516,7 +1517,10 @@ class _OmniVoiceServerManager:
 
             if not raw_bytes.startswith(b"RIFF"):
                 raise RuntimeError(f"OmniVoice tts-server error ({resp.status_code}): {raw_bytes[:300]!r}")
-            return _read_wav_bytes(raw_bytes)
+            samples, sr = _read_wav_bytes(raw_bytes)
+            if len(samples) > 0:
+                samples = np.clip(samples * OMNIVOICE_OUTPUT_GAIN, -0.95, 0.95).astype(np.float32, copy=False)
+            return samples, sr
         finally:
             self._req_local.active = False
             self._req_local.is_warmup = False
@@ -1598,6 +1602,7 @@ class _OmniVoiceServerManager:
             if "audio/wav" in ct or not hasattr(resp, "iter_content"):
                 samples, sr = _read_wav_bytes(resp.content)
                 if len(samples) > 0:
+                    samples = np.clip(samples * OMNIVOICE_OUTPUT_GAIN, -0.95, 0.95).astype(np.float32, copy=False)
                     yield samples, sr
                 return
 
@@ -1616,6 +1621,7 @@ class _OmniVoiceServerManager:
                     del carry[:usable]
                     arr = _s16le_pcm_to_float32(chunk_bytes)
                     if len(arr) > 0:
+                        arr = np.clip(arr * OMNIVOICE_OUTPUT_GAIN, -0.95, 0.95).astype(np.float32, copy=False)
                         yield arr, OMNIVOICE_NATIVE_SR
             except OmniVoiceSynthesisCancelledError:
                 raise
