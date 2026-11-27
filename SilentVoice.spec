@@ -96,6 +96,7 @@ hidden_imports = [
     "piper.phonemize_espeak",
     "onnxruntime",
     "core.llama_tts",
+    "core.omnivoice_tts",
     "core.kokoro_onnx_tts",
     "holos_onnx",
     "ipa_uk",

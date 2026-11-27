@@ -422,6 +422,54 @@ class OmniVoiceIntegrationTests(unittest.TestCase):
         self.assertEqual(out_sr, sr)
         self.assertGreater(len(audio), 0)
 
+    def test_keepalive_endheaders_registers_socket_and_idle_timeout_respects_active_engine(self) -> None:
+        import core.omnivoice_tts as ov
+
+        mgr = ov._OmniVoiceServerManager()
+        mgr._req_local.active = True
+        mgr._req_local.is_warmup = False
+        fake_sock = object()
+
+        class _DummyConn(ov._TrackableHTTPConnection):
+            _manager = mgr
+
+            def __init__(self) -> None:
+                self.sock = fake_sock
+                self.sent = False
+
+            def endheaders(self, message_body=None, *, encode_chunked=False) -> None:
+                # Replicate _TrackableHTTPConnection.endheaders without real socket I/O
+                m = self._manager
+                if m is not None and self.sock is not None:
+                    m._register_thread_socket(self.sock)
+                self.sent = True
+
+        # Verify _TrackableHTTPConnection itself defines endheaders
+        self.assertIn("endheaders", ov._TrackableHTTPConnection.__dict__)
+        c = _DummyConn()
+        c.endheaders()
+        self.assertTrue(c.sent)
+        self.assertEqual(len(mgr._active_sockets), 1)
+
+        # Idle timeout must NOT stop resident server while OmniVoice is active engine
+        with (
+            mock.patch.object(ov.config, "get", side_effect=lambda k, d=None: "omnivoice" if k == "active_engine" else d),
+            mock.patch.object(mgr, "stop") as mock_stop,
+        ):
+            mgr._on_idle_timeout()
+            mock_stop.assert_not_called()
+
+        # Idle timeout must NOT stop server while user request is active
+        mgr._active_user_requests = 1
+        with (
+            mock.patch.object(ov.config, "get", side_effect=lambda k, d=None: "piper" if k == "active_engine" else d),
+            mock.patch.object(mgr, "stop") as mock_stop,
+            mock.patch.object(mgr, "_reset_idle_timer") as mock_reset,
+        ):
+            mgr._on_idle_timeout()
+            mock_stop.assert_not_called()
+            mock_reset.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1226,6 +1226,7 @@ class OmniVoiceSettingsDialog(QDialog):
         self._ref_path: str = raw_ref if (raw_ref and Path(raw_ref).is_file()) else ""
         self._whisper_running: bool = False
         self._test_running: bool = False
+        self._closed: bool = False
         self._whisper_finished.connect(self._on_whisper_done)
         self._test_finished.connect(self._on_test_done)
 
@@ -1594,14 +1595,18 @@ class OmniVoiceSettingsDialog(QDialog):
                 from core.omnivoice_tts import resolve_omnivoice_ref_text
 
                 _wav, _digest, text = resolve_omnivoice_ref_text(ref_file, lang="auto", force_whisper=True)
-                self._whisper_finished.emit(text, "")
+                if not self._closed:
+                    self._whisper_finished.emit(text, "")
             except Exception as exc:
-                self._whisper_finished.emit("", str(exc))
+                if not self._closed:
+                    self._whisper_finished.emit("", str(exc))
 
         threading.Thread(target=_job, daemon=True).start()
 
     def _on_whisper_done(self, text: str, err: str) -> None:
         self._whisper_running = False
+        if self._closed:
+            return
         self.whisper_btn.setEnabled(True)
         if err:
             self.asr_status_lbl.setStyleSheet("border: none; background: transparent; color: #F87171; font-size: 12px;")
@@ -1617,6 +1622,10 @@ class OmniVoiceSettingsDialog(QDialog):
         self.seed_spin.interpretText()
         mode = "design" if self.radio_design.isChecked() else "clone"
         ref_path = self._ref_path
+        if mode == "clone" and (not ref_path or not Path(ref_path).is_file()):
+            self.test_status_lbl.setStyleSheet("color: #FBBF24; font-size: 12px;")
+            self.test_status_lbl.setText(tr("ov.ref_missing", "⚠️ Оберіть або перетягніть аудіофайл"))
+            return
         ref_txt = self.ref_text_edit.toPlainText().strip()
         steps = int(self.steps_combo.currentData() or 16)
         whisper = bool(self.whisper_chk.isChecked())
@@ -1684,6 +1693,8 @@ class OmniVoiceSettingsDialog(QDialog):
                     )
                     eff_seed = seed
 
+                if self._closed:
+                    return
                 samples, sr = _omnivoice_server.synthesize(
                     text=sample_phrase,
                     lang_label=lang_label,
@@ -1695,22 +1706,45 @@ class OmniVoiceSettingsDialog(QDialog):
                     steps=steps,
                     denoise=denoise,
                 )
+                if self._closed:
+                    return
                 gen = audio_router.begin_exclusive_playback()
                 audio_router.play_samples(samples, sr, monitor_only=True, generation=gen)
-                self._test_finished.emit("")
+                if not self._closed:
+                    self._test_finished.emit("")
             except Exception as exc:
-                self._test_finished.emit(str(exc))
+                if not self._closed:
+                    self._test_finished.emit(str(exc))
 
         threading.Thread(target=_job, daemon=True).start()
 
     def _on_test_done(self, err: str) -> None:
         self._test_running = False
+        if self._closed:
+            return
         self.test_btn.setEnabled(True)
         if err:
             self.test_status_lbl.setStyleSheet("color: #F87171; font-size: 12px;")
             self.test_status_lbl.setText(err[:90])
         else:
             self.test_status_lbl.setText("")
+
+    def done(self, result: int) -> None:
+        self._closed = True
+        if self._test_running:
+            try:
+                from core.omnivoice_tts import cancel_omnivoice_synthesis
+
+                cancel_omnivoice_synthesis()
+            except Exception:
+                pass
+            try:
+                from core.audio_router import audio_router
+
+                audio_router.begin_exclusive_playback()
+            except Exception:
+                pass
+        super().done(result)
 
     def _save_and_accept(self) -> None:
         self.seed_spin.interpretText()

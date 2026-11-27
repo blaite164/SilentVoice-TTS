@@ -927,8 +927,9 @@ def transcribe_wav_with_whisper_cpp(
         arr = arr.mean(axis=1, dtype=np.float32)
     arr_16k = np.clip(_resample_clean(arr, int(sr), 16000), -1.0, 1.0).astype(np.float32, copy=False)
 
-    tmp_16k = wav_24k_path.with_suffix(".w16k.wav")
-    out_prefix = wav_24k_path.with_suffix(".wout")
+    uid = f"{os.getpid()}_{threading.get_ident()}_{secrets.token_hex(4)}"
+    tmp_16k = wav_24k_path.with_suffix(f".w16k_{uid}.wav")
+    out_prefix = wav_24k_path.with_suffix(f".wout_{uid}")
     out_txt = Path(f"{out_prefix}.txt")
     try:
         sf.write(str(tmp_16k), arr_16k, 16000, subtype="PCM_16")
@@ -1085,6 +1086,12 @@ class _TrackableHTTPConnection(HTTPConnection):
         if mgr is not None and self.sock is not None:
             mgr._register_thread_socket(self.sock)
 
+    def endheaders(self, message_body: Any = None, *, encode_chunked: bool = False) -> None:
+        mgr = self._manager
+        if mgr is not None and self.sock is not None:
+            mgr._register_thread_socket(self.sock)
+        super().endheaders(message_body, encode_chunked=encode_chunked)
+
 
 class _TrackableHTTPAdapter(HTTPAdapter):
     def __init__(self, manager: "_OmniVoiceServerManager", *args: Any, **kwargs: Any) -> None:
@@ -1216,12 +1223,26 @@ class _OmniVoiceServerManager:
         pipe = proc.stdout
         if pipe is None:
             return
-        for raw in iter(pipe.readline, b""):
-            if not raw:
-                break
-            line = raw.decode("utf-8", errors="replace").strip()
-            if line:
-                self._log_tail.append(line)
+        try:
+            for raw in iter(pipe.readline, b""):
+                if not raw:
+                    break
+                line = raw.decode("utf-8", errors="replace").strip()
+                if line:
+                    self._log_tail.append(line)
+        except Exception:
+            pass
+        finally:
+            try:
+                pipe.close()
+            except Exception:
+                pass
+
+    @staticmethod
+    def _is_omnivoice_selected_in_config() -> bool:
+        active = str(config.get("active_engine", "") or "").strip()
+        fallback = str(config.get("fallback_engine", "") or "").strip()
+        return active == "omnivoice" or fallback == "omnivoice"
 
     def _cancel_idle_timer(self) -> None:
         with self._lock:
@@ -1233,14 +1254,22 @@ class _OmniVoiceServerManager:
         with self._lock:
             if self._idle_timer is not None:
                 self._idle_timer.cancel()
+                self._idle_timer = None
+            if self._proc is None or self._proc.poll() is not None:
+                return
+            if self._is_omnivoice_selected_in_config():
+                return
             timer = threading.Timer(self.IDLE_TIMEOUT_SEC, self._on_idle_timeout)
             timer.daemon = True
             self._idle_timer = timer
             timer.start()
 
     def _on_idle_timeout(self) -> None:
+        if self._is_omnivoice_selected_in_config():
+            return
         with self._req_lock:
             if self._active_user_requests > 0:
+                self._reset_idle_timer()
                 return
         self.stop()
 
