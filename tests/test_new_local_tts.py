@@ -611,6 +611,18 @@ class NewLocalTtsModelsTests(unittest.TestCase):
             win.close()
             win.deleteLater()
 
+    def test_llama_idle_timeout_does_not_kill_active_request(self) -> None:
+        mgr = llama_tts._Qwen3ServerManager()
+        mgr._active_user_requests = 1
+        with (
+            patch.object(mgr, "_is_qwen3_selected_in_config", return_value=False),
+            patch.object(mgr, "stop") as mock_stop,
+            patch.object(mgr, "_reset_idle_timer") as mock_reset,
+        ):
+            mgr._on_idle_timeout()
+            mock_stop.assert_not_called()
+            mock_reset.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

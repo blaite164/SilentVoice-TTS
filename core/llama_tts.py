@@ -732,6 +732,10 @@ class _Qwen3ServerManager:
     def _on_idle_timeout(self) -> None:
         if self._is_qwen3_selected_in_config():
             return
+        with self._req_lock:
+            if self._active_user_requests > 0:
+                self._reset_idle_timer()
+                return
         self.stop()
 
     def _reset_idle_timer(self) -> None:
