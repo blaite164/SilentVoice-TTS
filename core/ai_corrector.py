@@ -311,7 +311,20 @@ def _get_ai_http_session() -> requests.Session:
 def _clean_ai_output(text: str) -> str:
     import re as _re
     cleaned = _re.sub(r"<think>.*?</think>", "", str(text or ""), flags=_re.DOTALL | _re.IGNORECASE)
+    # Якщо thinking-модель вперлася в ліміт токенів і не встигла закрити </think>,
+    # відкидаємо незавершений блок роздумів, щоб він не потрапив у TTS.
+    cleaned = _re.sub(r"<think>.*$", "", cleaned, flags=_re.DOTALL | _re.IGNORECASE)
     return cleaned.strip()
+
+
+def _get_live_ai_timeout(item: Dict[str, Any]) -> float:
+    """Повертає адекватний таймаут для реального TTS залежно від типу провайдера."""
+    provider = str(item.get("provider", "")).strip().lower()
+    if provider == "ollama":
+        return 45.0
+    if provider == "local_api":
+        return 30.0
+    return 12.0
 
 
 def _openai_compatible_base_url(base_url: str, default: str = "") -> str:
@@ -386,12 +399,19 @@ def _friendly_ai_api_error(title: str, response: requests.Response) -> str:
     )
 
 
-def _call_ai_item(item: Dict[str, Any], text: str, system_prompt: str, timeout: float = 8.0) -> str:
+def _call_ai_item(
+    item: Dict[str, Any],
+    text: str,
+    system_prompt: str,
+    timeout: Optional[float] = None,
+) -> str:
     provider = str(item.get("provider", "")).strip()
     api_key = str(item.get("api_key", "")).strip()
     spec = AI_PROVIDERS.get(provider)
     if not spec:
         raise RuntimeError(tr("ai.err.unknown_provider", "Невідомий AI-провайдер: {provider}", provider=provider))
+
+    eff_timeout = _get_live_ai_timeout(item) if timeout is None else float(timeout)
 
     model = str(item.get("model") or spec["default_model"]).strip() or spec["default_model"]
     if spec.get("needs_key", True) and not api_key:
@@ -399,9 +419,10 @@ def _call_ai_item(item: Dict[str, Any], text: str, system_prompt: str, timeout: 
 
     proxies = get_active_api_proxies()
     sess = _get_ai_http_session()
-    # Corrected text is usually close to the input length. Bound generated
-    # output for providers where the request format exposes a token limit.
-    output_token_limit = min(1024, max(256, len(str(text)) // 2 + 64))
+    # Corrected text is usually close to the input length, but local thinking
+    # models (e.g. Qwen3 / DeepSeek-R1 in LM Studio) may spend tokens on
+    # reasoning before emitting the final answer; normal models stop at EOS.
+    output_token_limit = min(2048, max(1024, len(str(text)) * 2 + 256))
 
     if provider == "gemini":
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
@@ -410,7 +431,7 @@ def _call_ai_item(item: Dict[str, Any], text: str, system_prompt: str, timeout: 
             "contents": [{"role": "user", "parts": [{"text": text}]}],
             "generationConfig": {"temperature": 0.1},
         }
-        resp = sess.post(url, params={"key": api_key}, json=payload, proxies=proxies, timeout=timeout)
+        resp = sess.post(url, params={"key": api_key}, json=payload, proxies=proxies, timeout=eff_timeout)
         if resp.status_code != 200:
             raise RuntimeError(_friendly_ai_api_error(spec["title"], resp))
         data = resp.json()
@@ -433,11 +454,11 @@ def _call_ai_item(item: Dict[str, Any], text: str, system_prompt: str, timeout: 
                 {"role": "user", "content": text},
             ],
         }
-        # Qwen3.5 accepts an explicit thinking switch. Qwen2.5 and Gemma 3
-        # reject the field, so omit it for those models.
-        if model.lower().startswith("qwen3.5"):
+        # Qwen3 / Qwen3.5 accept an explicit thinking switch in Ollama.
+        # Qwen2.5 and Gemma 3 reject the field, so omit it for those models.
+        if model.lower().startswith("qwen3"):
             payload["think"] = False
-        resp = sess.post(url, json=payload, timeout=timeout)
+        resp = sess.post(url, json=payload, timeout=eff_timeout)
         if resp.status_code != 200:
             raise RuntimeError(_friendly_ai_api_error(spec["title"], resp))
         data = resp.json()
@@ -464,7 +485,7 @@ def _call_ai_item(item: Dict[str, Any], text: str, system_prompt: str, timeout: 
                 {"role": "user", "content": text},
             ],
         }
-        resp = sess.post(url, headers=headers, json=payload, timeout=timeout)
+        resp = sess.post(url, headers=headers, json=payload, timeout=eff_timeout)
         if resp.status_code != 200:
             raise RuntimeError(_friendly_ai_api_error(spec["title"], resp))
         choices = resp.json().get("choices") or []
@@ -496,7 +517,7 @@ def _call_ai_item(item: Dict[str, Any], text: str, system_prompt: str, timeout: 
     }
     if provider == "groq" and "gpt-oss-120b" in model.lower():
         payload["reasoning_effort"] = "low"
-    resp = sess.post(url, headers=headers, json=payload, proxies=proxies, timeout=timeout)
+    resp = sess.post(url, headers=headers, json=payload, proxies=proxies, timeout=eff_timeout)
     if resp.status_code != 200:
         raise RuntimeError(_friendly_ai_api_error(spec["title"], resp))
     choices = resp.json().get("choices") or []
@@ -771,6 +792,7 @@ def _run_ai_single_call(
 ) -> tuple[Optional[str], str, str, str]:
     """Виконує один виклик AI (основний -> запасний). Повертає `(corrected_or_None, provider, route, error)`."""
     primary_error = ""
+    fallback_error = ""
     if prim_item is not None:
         try:
             corrected = _call_ai_item(prim_item, clean, prompt)
@@ -784,9 +806,10 @@ def _run_ai_single_call(
             corrected = _call_ai_item(fb_item, clean, prompt)
             return corrected, get_ai_item_title(fb_item), "fallback", primary_error
         except Exception as exc:
+            fallback_error = str(exc)
             print(f"[AICorrector] Помилка запасного AI ({fb_item.get('title', fb_item.get('provider'))}): {exc}", file=sys.stderr)
 
-    return None, "", "failed", primary_error or "AI provider failed"
+    return None, "", "failed", primary_error or fallback_error or "AI provider failed"
 
 
 def correct_text_with_ai(text: str) -> str:
