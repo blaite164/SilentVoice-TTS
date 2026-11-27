@@ -22,7 +22,7 @@ import time
 import winreg
 from typing import Deque, Dict, FrozenSet, List, Optional, Set, Tuple
 
-from PySide6.QtCore import QObject, QTimer, Signal
+from PySide6.QtCore import QObject, QThread, QTimer, Qt, Signal
 from PySide6.QtGui import QGuiApplication
 
 from core.omnivoice_tags import (
@@ -1013,6 +1013,20 @@ class _GameMouseGuard:
         return total >= thresh
 
 
+class _GUITHREADINFO(ctypes.Structure):
+    _fields_ = [
+        ("cbSize", wintypes.DWORD),
+        ("flags", wintypes.DWORD),
+        ("hwndActive", wintypes.HWND),
+        ("hwndFocus", wintypes.HWND),
+        ("hwndCapture", wintypes.HWND),
+        ("hwndMenuOwner", wintypes.HWND),
+        ("hwndMoveSize", wintypes.HWND),
+        ("hwndCaret", wintypes.HWND),
+        ("rcCaret", wintypes.RECT),
+    ]
+
+
 class KeyboardHookManager(QObject):
     """
     Менеджер глобального перехоплення клавіатури (WH_KEYBOARD_LL) та набору тексту без втрати фокусу.
@@ -1033,6 +1047,7 @@ class KeyboardHookManager(QObject):
     quick_phrase_triggered = Signal(str)         # (phrase_text)
     hotkey_recorded = Signal(str)                # Для діалогу запису нової комбінації клавіш
     _layout_refresh_requested = Signal()
+    _typing_flush_requested = Signal()
 
     def __init__(self, parent: Optional[QObject] = None) -> None:
         super().__init__(parent)
@@ -1049,10 +1064,16 @@ class KeyboardHookManager(QObject):
         self._undo_last_kind: str = ""
         self._undo_last_ts: float = 0.0
         self._slash_selected_idx: int = 0
+        self._slash_navigated: bool = False
         self._tag_picker_hwnd: int = 0
         self._ui_lang: str = "uk"
         self._reaction_specs: List[OmniVoiceTagSpec] = []
         self._reaction_hotkeys: List[Tuple[HotkeySpec, str]] = []
+        self._typing_emit_lock = threading.Lock()
+        self._pending_typing_payload: Optional[Tuple[str, str]] = None
+        self._typing_emit_queued: bool = False
+        self._cached_hkl: int = 0
+        self._cached_hkl_ts: float = 0.0
         self._input_mode: str = "hook"  # "hook" або "fallback"
         self._overlay_style: str = "text_only"
         self._config_continuous: bool = False
@@ -1094,6 +1115,9 @@ class KeyboardHookManager(QObject):
         self._layout_timer.setInterval(55)
         self._layout_timer.timeout.connect(self._emit_live_layout_refresh)
         self._layout_refresh_requested.connect(self._layout_timer.start)
+        # Злиття (coalescing) частих оновлень буфера з потоку хука в GUI-потік,
+        # щоб довге утримання клавіші ніколи не накопичувало чергу проміжних кадрів
+        self._typing_flush_requested.connect(self._flush_pending_typing_text, Qt.ConnectionType.QueuedConnection)
 
         # Хоткеї
         self._hk_toggle: Optional[HotkeySpec] = parse_hotkey_string("Ctrl+Space")
@@ -1255,6 +1279,40 @@ class KeyboardHookManager(QObject):
 
     def set_slash_selected_index(self, idx: int) -> None:
         self._slash_selected_idx = max(0, int(idx))
+        self._slash_navigated = True
+
+    def _clear_pending_typing_text(self) -> None:
+        with self._typing_emit_lock:
+            self._pending_typing_payload = None
+
+    def _emit_typing_text(self, text: str, lang: str) -> None:
+        """
+        Відправляє `typing_text_changed` із злиттям (coalescing) для крос-потокових викликів із хука:
+        у черзі Qt завжди лежить максимум 1 подія з найактуальнішим текстом, тому після відпускання
+        затиснутої клавіші друк зупиняється миттєво без лагу інтерфейсу.
+        """
+        try:
+            same_thread = QThread.currentThread() == self.thread()
+        except Exception:
+            same_thread = False
+        if same_thread:
+            self._clear_pending_typing_text()
+            self.typing_text_changed.emit(text, lang)
+            return
+        with self._typing_emit_lock:
+            self._pending_typing_payload = (text, lang)
+            if self._typing_emit_queued:
+                return
+            self._typing_emit_queued = True
+        self._typing_flush_requested.emit()
+
+    def _flush_pending_typing_text(self) -> None:
+        with self._typing_emit_lock:
+            payload = self._pending_typing_payload
+            self._pending_typing_payload = None
+            self._typing_emit_queued = False
+        if payload is not None:
+            self.typing_text_changed.emit(payload[0], payload[1])
 
     def _reset_undo_history(self) -> None:
         self._undo_stack.clear()
@@ -1286,7 +1344,8 @@ class KeyboardHookManager(QObject):
         self._buffer = self._undo_stack.pop()
         self._undo_last_kind = ""
         self._slash_selected_idx = 0
-        self.typing_text_changed.emit(self._buffer, self.get_current_lang_code())
+        self._slash_navigated = False
+        self._emit_typing_text(self._buffer, self.get_current_lang_code())
         return True
 
     def redo_typing(self) -> bool:
@@ -1297,7 +1356,8 @@ class KeyboardHookManager(QObject):
         self._buffer = self._redo_stack.pop()
         self._undo_last_kind = ""
         self._slash_selected_idx = 0
-        self.typing_text_changed.emit(self._buffer, self.get_current_lang_code())
+        self._slash_navigated = False
+        self._emit_typing_text(self._buffer, self.get_current_lang_code())
         return True
 
     def insert_slash_tag(self, tag: str) -> None:
@@ -1307,7 +1367,8 @@ class KeyboardHookManager(QObject):
         self._push_undo_snapshot("atomic", force=True)
         self._buffer = replace_active_slash_with_tag(self._buffer, tag)
         self._slash_selected_idx = 0
-        self.typing_text_changed.emit(self._buffer, self.get_current_lang_code())
+        self._slash_navigated = False
+        self._emit_typing_text(self._buffer, self.get_current_lang_code())
 
     def trigger_reaction_hotkey(self, tag: str) -> bool:
         """Вставляє звукову команду за призначеним біндом під час активного набору тексту."""
@@ -1320,7 +1381,8 @@ class KeyboardHookManager(QObject):
         self._push_undo_snapshot("atomic", force=True)
         self._buffer = replace_active_slash_with_tag(self._buffer, clean_tag)
         self._slash_selected_idx = 0
-        self.typing_text_changed.emit(self._buffer, self.get_current_lang_code())
+        self._slash_navigated = False
+        self._emit_typing_text(self._buffer, self.get_current_lang_code())
         return True
 
     def _is_cursor_in_tag_picker(self) -> bool:
@@ -1342,7 +1404,9 @@ class KeyboardHookManager(QObject):
             return
         self._is_typing = active
         self._slash_selected_idx = 0
+        self._slash_navigated = False
         self._reset_undo_history()
+        self._clear_pending_typing_text()
         if active:
             self._buffer = self._consume_valid_draft()
             self._session_continuous = bool(continuous) if continuous is not None else self._config_continuous
@@ -1354,7 +1418,7 @@ class KeyboardHookManager(QObject):
         lang = self.get_current_lang_code()
         self.typing_mode_changed.emit(self._is_typing, lang)
         if active and not self.uses_popup_window:
-            self.typing_text_changed.emit(self._buffer, lang)
+            self._emit_typing_text(self._buffer, lang)
         elif not active:
             self.cancel_triggered.emit()
 
@@ -1461,7 +1525,9 @@ class KeyboardHookManager(QObject):
         self._stash_draft_on_close(emergency=True)
         self._buffer = ""
         self._slash_selected_idx = 0
+        self._slash_navigated = False
         self._reset_undo_history()
+        self._clear_pending_typing_text()
         self._is_typing = False
         self._session_continuous = False
         self._sync_game_guard()
@@ -1471,28 +1537,19 @@ class KeyboardHookManager(QObject):
 
     def _emit_live_layout_refresh(self) -> None:
         if self._is_typing and not self.uses_popup_window:
-            self.typing_text_changed.emit(self._buffer, self.get_current_lang_code())
+            self._emit_typing_text(self._buffer, self.get_current_lang_code())
 
-    def get_active_hkl(self) -> int:
+    def get_active_hkl(self, *, use_cache: bool = False) -> int:
+        now = time.monotonic()
+        if use_cache and self._cached_hkl and (now - self._cached_hkl_ts) < 0.25:
+            return self._cached_hkl
+        hkl_val = 0
         try:
             fg = user32.GetForegroundWindow()
             if fg:
                 fg_tid = user32.GetWindowThreadProcessId(fg, None)
                 if fg_tid:
                     # Для UWP/багатопотокових вікон спочатку перевіряємо фокусний потік через GetGUIThreadInfo
-                    class _GUITHREADINFO(ctypes.Structure):
-                        _fields_ = [
-                            ("cbSize", wintypes.DWORD),
-                            ("flags", wintypes.DWORD),
-                            ("hwndActive", wintypes.HWND),
-                            ("hwndFocus", wintypes.HWND),
-                            ("hwndCapture", wintypes.HWND),
-                            ("hwndMenuOwner", wintypes.HWND),
-                            ("hwndMoveSize", wintypes.HWND),
-                            ("hwndCaret", wintypes.HWND),
-                            ("rcCaret", wintypes.RECT),
-                        ]
-
                     gti = _GUITHREADINFO()
                     gti.cbSize = ctypes.sizeof(_GUITHREADINFO)
                     if user32.GetGUIThreadInfo(fg_tid, ctypes.byref(gti)) and gti.hwndFocus:
@@ -1500,16 +1557,49 @@ class KeyboardHookManager(QObject):
                         if focus_tid:
                             hkl = user32.GetKeyboardLayout(focus_tid)
                             if hkl:
-                                return int(hkl)
-                    hkl = user32.GetKeyboardLayout(fg_tid)
-                    if hkl:
-                        return int(hkl)
+                                hkl_val = int(hkl)
+                    if not hkl_val:
+                        hkl = user32.GetKeyboardLayout(fg_tid)
+                        if hkl:
+                            hkl_val = int(hkl)
         except Exception:
             pass
-        return int(user32.GetKeyboardLayout(0))
+        if not hkl_val:
+            hkl_val = int(user32.GetKeyboardLayout(0))
+        self._cached_hkl = hkl_val
+        self._cached_hkl_ts = now
+        return hkl_val
 
-    def get_current_lang_code(self) -> str:
-        return hkl_to_lang_code(self.get_active_hkl())
+    def get_current_lang_code(self, *, use_cache: bool = False) -> str:
+        return hkl_to_lang_code(self.get_active_hkl(use_cache=use_cache))
+
+    def _try_complete_slash_on_enter(self) -> bool:
+        """
+        Якщо відкрите меню команд (`/`, `\\`, `|`) і користувач навігував стрілками/мишкою
+        або залишив голий тригер (`\\`), Enter вставляє обрану команду замість відправки голого `\\`.
+        """
+        if not self._reaction_specs:
+            return False
+        slash_state = extract_active_slash_query(self._buffer)
+        if slash_state is None:
+            return False
+        _prefix, query = slash_state
+        if not self._slash_navigated and query:
+            return False
+        completed = complete_slash_command(
+            self._buffer,
+            self._ui_lang,
+            selected_index=self._slash_selected_idx,
+            specs=self._reaction_specs,
+        )
+        if completed is None:
+            return False
+        self._push_undo_snapshot("atomic", force=True)
+        self._buffer = completed
+        self._slash_selected_idx = 0
+        self._slash_navigated = False
+        self._emit_typing_text(self._buffer, self.get_current_lang_code(use_cache=True))
+        return True
 
     def _get_pressed_modifiers(self) -> Set[str]:
         mods: Set[str] = set()
@@ -1543,7 +1633,7 @@ class KeyboardHookManager(QObject):
             state[VK_RMENU] = 0x80
 
         buf = ctypes.create_unicode_buffer(8)
-        hkl = wintypes.HKL(self.get_active_hkl())
+        hkl = wintypes.HKL(self.get_active_hkl(use_cache=True))
         # Прапорець 0x04 = не змінювати стан dead-key у системі (Win 10 1607+)
         res = user32.ToUnicodeEx(vk, scan, state, buf, len(buf), 0x04, hkl)
         if res > 0:
@@ -1696,16 +1786,20 @@ class KeyboardHookManager(QObject):
 
                 # 5. Обробка клавіш у режимі сліпого набору без втрати фокусу (hook mode)
                 if self._is_typing and not self.uses_popup_window:
-                    # Відправка на озвучку (за замовчуванням Enter)
+                    # Відправка на озвучку (за замовчуванням Enter); якщо відкрите меню `\` із навігацією/голим тригером — вставляємо обрану команду
                     if self._matches_hotkey(self._hk_send, mods, vk, is_modifier_vk, is_repeat, double_hit_vk):
+                        if self._try_complete_slash_on_enter():
+                            return user32.CallNextHookEx(self._hook_handle, nCode, wParam, lParam) if is_modifier_vk else _swallow_key()
                         final_text = self._buffer.strip()
                         self._buffer = ""
                         self._slash_selected_idx = 0
+                        self._slash_navigated = False
                         self._reset_undo_history()
                         self._clear_saved_draft()
+                        self._clear_pending_typing_text()
                         lang = self.get_current_lang_code()
                         if self.is_continuous_active:
-                            self.typing_text_changed.emit("", lang)
+                            self._emit_typing_text("", lang)
                             if final_text:
                                 self.send_triggered.emit(final_text)
                         else:
@@ -1746,7 +1840,8 @@ class KeyboardHookManager(QObject):
                                         self._push_undo_snapshot("back")
                                         self._buffer = self._buffer[:-1]
                                 self._slash_selected_idx = 0
-                                self.typing_text_changed.emit(self._buffer, self.get_current_lang_code())
+                                self._slash_navigated = False
+                                self._emit_typing_text(self._buffer, self.get_current_lang_code(use_cache=is_repeat))
                             return _swallow_key()
 
                         # Delete або Ctrl+U — очистити весь рядок
@@ -1755,7 +1850,8 @@ class KeyboardHookManager(QObject):
                                 self._push_undo_snapshot("atomic", force=True)
                                 self._buffer = ""
                                 self._slash_selected_idx = 0
-                                self.typing_text_changed.emit(self._buffer, self.get_current_lang_code())
+                                self._slash_navigated = False
+                                self._emit_typing_text(self._buffer, self.get_current_lang_code(use_cache=is_repeat))
                             return _swallow_key()
 
                         # Ctrl+Z / Ctrl+Shift+Z — скасувати / повернути ввід
@@ -1780,7 +1876,8 @@ class KeyboardHookManager(QObject):
                                     self._push_undo_snapshot("atomic", force=True)
                                     self._buffer += clean_paste
                                     self._slash_selected_idx = 0
-                                    self.typing_text_changed.emit(self._buffer, self.get_current_lang_code())
+                                    self._slash_navigated = False
+                                    self._emit_typing_text(self._buffer, self.get_current_lang_code())
                             except Exception:
                                 pass
                             return _swallow_key()
@@ -1813,7 +1910,8 @@ class KeyboardHookManager(QObject):
                                     self._push_undo_snapshot("atomic", force=True)
                                     self._buffer = completed
                                     self._slash_selected_idx = 0
-                                    self.typing_text_changed.emit(self._buffer, self.get_current_lang_code())
+                                    self._slash_navigated = False
+                                    self._emit_typing_text(self._buffer, self.get_current_lang_code(use_cache=True))
                                 return _swallow_key()
                             if vk in (VK_LEFT, VK_RIGHT, VK_UP, VK_DOWN):
                                 slash_state = extract_active_slash_query(self._buffer)
@@ -1826,12 +1924,15 @@ class KeyboardHookManager(QObject):
                                     if len(matches) > 1:
                                         delta = 1 if vk in (VK_RIGHT, VK_DOWN) else -1
                                         self._slash_selected_idx = (self._slash_selected_idx + delta) % len(matches)
+                                        self._slash_navigated = True
                                         self.slash_selection_changed.emit(self._slash_selected_idx)
                                 return _swallow_key()
 
-                        # Перетворення клавіші у символ (UA / RU / EN)
+                        # Перетворення клавіші у символ (UA / RU / EN) з перевикористанням HKL (0 зайвих Win32 IPC на автоповтор)
+                        active_hkl = self.get_active_hkl(use_cache=is_repeat)
                         ch = self._vk_to_unicode(vk, scan)
                         if ch:
+                            lang_cur = hkl_to_lang_code(active_hkl)
                             if ch == " " and self._reaction_specs:
                                 exact_completed = complete_slash_command(
                                     self._buffer,
@@ -1843,12 +1944,14 @@ class KeyboardHookManager(QObject):
                                     self._push_undo_snapshot("atomic", force=True)
                                     self._buffer = exact_completed
                                     self._slash_selected_idx = 0
-                                    self.typing_text_changed.emit(self._buffer, self.get_current_lang_code())
+                                    self._slash_navigated = False
+                                    self._emit_typing_text(self._buffer, lang_cur)
                                     return _swallow_key()
                             self._push_undo_snapshot("type", force=(ch == " "))
                             self._buffer += ch
                             self._slash_selected_idx = 0
-                            self.typing_text_changed.emit(self._buffer, self.get_current_lang_code())
+                            self._slash_navigated = False
+                            self._emit_typing_text(self._buffer, lang_cur)
                             return _swallow_key()
 
                         # Блокуємо навігаційні клавіші під час набору, щоб не рухати персонажа в грі

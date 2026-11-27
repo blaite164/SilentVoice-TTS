@@ -921,6 +921,8 @@ class ScreenOverlayWindow(QWidget):
         self._last_mask_rect: QRect = QRect()
         self._text_cache_key: Optional[tuple] = None
         self._text_cache_img: Optional[QImage] = None
+        self._cached_rc_specs_key: Optional[tuple] = None
+        self._cached_rc_specs: Optional[list] = None
         saved_picker_style = str(config.get("reaction_picker_style", "emoji_dock") or "emoji_dock").strip()
         self._tag_hint_style: str = saved_picker_style if saved_picker_style in TAG_HINT_MODES else "emoji_dock"
         self._tag_hint_selected_idx: int = 0
@@ -1476,10 +1478,14 @@ class ScreenOverlayWindow(QWidget):
             if 0 <= sp < 60:
                 tail = tail[sp + 1 :]
             display_text = "… " + tail
-        if self._mode in ("typing", "speaking") and display_text:
+        if self._mode in ("typing", "speaking") and display_text and "[" in display_text:
             ui_lang_cur = str(config.get("app_language") or config.get("ui_language") or "uk")
-            all_specs = build_all_configured_reaction_specs(config.data, ui_lang=ui_lang_cur)
-            display_text = format_tags_for_display(display_text, specs=all_specs, ui_lang=ui_lang_cur)
+            rc_raw = config.data.get("reaction_commands")
+            rc_key = (id(rc_raw), len(rc_raw) if isinstance(rc_raw, list) else -1, ui_lang_cur)
+            if self._cached_rc_specs_key != rc_key or self._cached_rc_specs is None:
+                self._cached_rc_specs = build_all_configured_reaction_specs(config.data, ui_lang=ui_lang_cur)
+                self._cached_rc_specs_key = rc_key
+            display_text = format_tags_for_display(display_text, specs=self._cached_rc_specs, ui_lang=ui_lang_cur)
 
         font = QFont(font_family, font_size, QFont.Weight.Bold)
         painter.setFont(font)
@@ -1543,9 +1549,9 @@ class ScreenOverlayWindow(QWidget):
         total_text_h = len(lines) * line_h
         start_y = text_area.y() + (text_area.height() - total_text_h) / 2.0 + fm.ascent()
 
-        if ow > 2.0:
-            # Для товстої обводки (> 2 px) використовуємо векторний QPainterPath з RoundJoin,
-            # інакше 8 зсувів drawText дають «рвані» краї й роздвоєння букв. Результат кешується в QImage
+        if ow > 3.5:
+            # Для дуже товстої обводки (> 3.5 px) використовуємо векторний QPainterPath з RoundJoin,
+            # але без повторного важкого strokePath для тіні. Результат кешується в QImage
             # без запікання eff_opacity — зміна прозорості тексту застосовується миттєво через painter.setOpacity.
             cache_key = (
                 display_text,
@@ -1586,10 +1592,6 @@ class ScreenOverlayWindow(QWidget):
                     sh_off = max(1.5, min(4.0, shadow_blur / 5.0))
                     cp.save()
                     cp.translate(0.0, sh_off + ow * 0.4)
-                    cp.strokePath(
-                        path,
-                        QPen(full_sh_col, ow * 2.0, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin),
-                    )
                     cp.fillPath(path, full_sh_col)
                     cp.restore()
 
@@ -1611,11 +1613,21 @@ class ScreenOverlayWindow(QWidget):
             else:
                 painter.drawImage(QPointF(box_x, box_y), self._text_cache_img)
         else:
-            outline_offsets = (
-                (-ow, 0.0), (ow, 0.0), (0.0, -ow), (0.0, ow),
-                (-ow * 0.72, -ow * 0.72), (ow * 0.72, -ow * 0.72),
-                (-ow * 0.72, ow * 0.72), (ow * 0.72, ow * 0.72),
-            ) if ow > 0 else ()
+            if ow > 2.0:
+                # 12-точкове кільце через кеш гліфів шрифту: гладке як strokePath, але у ~5 разів швидше
+                # (не гальмує UI при довгому утриманні клавіші)
+                outline_offsets = tuple(
+                    (math.cos(2.0 * math.pi * k / 12.0) * ow, math.sin(2.0 * math.pi * k / 12.0) * ow)
+                    for k in range(12)
+                )
+            elif ow > 0:
+                outline_offsets = (
+                    (-ow, 0.0), (ow, 0.0), (0.0, -ow), (0.0, ow),
+                    (-ow * 0.72, -ow * 0.72), (ow * 0.72, -ow * 0.72),
+                    (-ow * 0.72, ow * 0.72), (ow * 0.72, ow * 0.72),
+                )
+            else:
+                outline_offsets = ()
 
             for i, line in enumerate(lines):
                 lw = fm.horizontalAdvance(line)

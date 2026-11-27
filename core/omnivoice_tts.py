@@ -1687,6 +1687,69 @@ def shutdown_omnivoice_tts() -> None:
     _omnivoice_server.stop()
 
 
+_REF_GENDER_CACHE: Dict[str, str] = {}
+
+
+def _detect_ref_gender(ref_wav: Path, ref_digest: str = "", orig_path: str = "") -> str:
+    """
+    Визначає стать референсного голосу (`"female"` або `"male"`) для шепоту у режимі клонування:
+    1) За маркерами в імені файлу (вбудовані семпли ` Ж` / ` М` / `female` / `male`);
+    2) Інакше — швидка оцінка медіанної основної частоти F0 за автокореляцією (~3 мс, кеш по digest).
+    """
+    cache_key = ref_digest or str(ref_wav)
+    cached = _REF_GENDER_CACHE.get(cache_key)
+    if cached in ("female", "male"):
+        return cached
+
+    name_hint = Path(orig_path).stem if orig_path else ref_wav.stem
+    low_name = f" {name_hint.lower()} "
+    if re.search(r"(\sж$|\sж[\s_]|_ж$|\bfemale\b|\bwoman\b|\bgirl\b)", low_name):
+        _REF_GENDER_CACHE[cache_key] = "female"
+        return "female"
+    if re.search(r"(\sм$|\sм[\s_]|_м$|\bmale\b|\bman\b|\bboy\b)", low_name):
+        _REF_GENDER_CACHE[cache_key] = "male"
+        return "male"
+
+    gender = "female"
+    try:
+        arr, sr = sf.read(str(ref_wav), dtype="float32", always_2d=False)
+        mono = np.asarray(arr, dtype=np.float32)
+        if mono.ndim == 2:
+            mono = mono.mean(axis=1, dtype=np.float32)
+        # Беремо до перших 4 секунд для миттєвої оцінки F0
+        mono = mono[: int(sr * 4.0)]
+        win_len = max(512, int(sr * 0.04))
+        hop = max(256, win_len // 2)
+        lo_lag = max(1, int(sr / 360.0))
+        hi_lag = min(win_len - 1, int(sr / 75.0))
+        rms_all = float(np.sqrt(np.mean(mono * mono))) if len(mono) else 0.0
+        f0s: List[float] = []
+        if rms_all > 1e-4 and hi_lag > lo_lag:
+            for st in range(0, max(0, len(mono) - win_len), hop):
+                fr = mono[st : st + win_len]
+                fr_rms = float(np.sqrt(np.mean(fr * fr)))
+                if fr_rms < rms_all * 0.45:
+                    continue
+                fr0 = fr - float(np.mean(fr))
+                ac = np.correlate(fr0, fr0, mode="full")[win_len - 1 :]
+                if ac[0] <= 1e-9:
+                    continue
+                seg = ac[lo_lag:hi_lag] / ac[0]
+                peak_idx = int(np.argmax(seg))
+                if float(seg[peak_idx]) >= 0.45:
+                    f0s.append(float(sr) / float(lo_lag + peak_idx))
+        if f0s:
+            med_f0 = float(np.median(f0s))
+            gender = "female" if med_f0 >= 165.0 else "male"
+    except Exception:
+        gender = str(config.get("omnivoice_design_gender", "female") or "female").strip().lower()
+        if gender not in ("female", "male"):
+            gender = "female"
+
+    _REF_GENDER_CACHE[cache_key] = gender
+    return gender
+
+
 def _resolve_active_synth_params(lang: str, *, whisper: bool = False) -> Dict[str, Any]:
     """Resolve active OmniVoice mode (Clone vs Design), reference, instruct, seed, steps & denoise."""
     mode = normalize_omnivoice_mode()
@@ -1698,14 +1761,31 @@ def _resolve_active_synth_params(lang: str, *, whisper: bool = False) -> Dict[st
     ref_raw = str(config.get("omnivoice_ref_path", "") or "").strip()
     if mode == "clone" and ref_raw and Path(ref_raw).is_file():
         ref_wav, ref_digest, ref_text = resolve_omnivoice_ref_text(Path(ref_raw), lang="auto")
-        # Whisper style can optionally be combined on top of a cloned voice for inline [whisper] segments
-        instruct = "whisper" if use_whisper else ""
+        if use_whisper:
+            # В OmniVoice режим клонування (`ref_audio_tokens`) ігнорує `instruct="whisper"`,
+            # бо дифузія продовжує акустику гучного референсу. Для шепітного сегмента синтезуємо
+            # чистий шепіт у Voice Design тієї ж статі з детермінованим seed від цього голосу.
+            ref_gender = _detect_ref_gender(ref_wav, ref_digest=ref_digest, orig_path=ref_raw)
+            try:
+                det_seed = int(ref_digest[:8], 16) % 2_000_000_000
+            except ValueError:
+                det_seed = get_active_omnivoice_seed()
+            return {
+                "lang_label": lang_label,
+                "ref_wav": None,
+                "ref_digest": "",
+                "ref_text": "",
+                "instruct": f"{ref_gender}, young adult, whisper",
+                "seed": det_seed,
+                "steps": steps,
+                "denoise": denoise,
+            }
         return {
             "lang_label": lang_label,
             "ref_wav": ref_wav,
             "ref_digest": ref_digest,
             "ref_text": ref_text,
-            "instruct": instruct,
+            "instruct": "",
             "seed": None,
             "steps": steps,
             "denoise": denoise,
@@ -1847,6 +1927,7 @@ def synthesize_omnivoice_tts_stream(
         return
 
     emitted_any = False
+    has_normal = any(not is_w for _, is_w in segments)
     for seg_text, is_whisp in segments:
         if emitted_any:
             yield np.zeros(int(OMNIVOICE_NATIVE_SR * 0.045), dtype=np.float32), OMNIVOICE_NATIVE_SR
@@ -1863,5 +1944,7 @@ def synthesize_omnivoice_tts_stream(
             denoise=params["denoise"],
         ):
             if len(chunk) > 0:
+                if has_normal and is_whisp:
+                    chunk = (chunk * OMNIVOICE_WHISPER_REL_GAIN).astype(np.float32, copy=False)
                 emitted_any = True
                 yield chunk, sr

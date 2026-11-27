@@ -675,6 +675,61 @@ class OmniVoiceIntegrationTests(unittest.TestCase):
             tts_manager._warmed_models = old_warmed
             tts_manager._running = old_running
 
+    def test_clone_mode_whisper_switches_to_gender_matched_voice_design_and_1d_resample(self) -> None:
+        import sys
+        import numpy as np
+        import soundfile as sf
+        from core.audio_router import _resample_audio_fast
+        from core.config import config
+        from core import omnivoice_tts as ov
+
+        # 1. Регресія 1D моно-ресемплера без scipy.signal (не повинен падати з MemoryError)
+        saved_scipy = sys.modules.pop("scipy.signal", None)
+        try:
+            mono_src = np.sin(2.0 * np.pi * 220.0 * np.linspace(0.0, 0.2, 4800, endpoint=False)).astype(np.float32)
+            mono_out = _resample_audio_fast(mono_src, 24000, 48000)
+            self.assertEqual(mono_out.ndim, 1)
+            self.assertEqual(len(mono_out), 9600)
+        finally:
+            if saved_scipy is not None:
+                sys.modules["scipy.signal"] = saved_scipy
+
+        # 2. Визначення статі референсу (за F0 та іменем) + шепіт у clone-режимі без ref_wav
+        with tempfile.TemporaryDirectory() as td:
+            td_p = Path(td)
+            t = np.linspace(0.0, 1.0, 24000, endpoint=False, dtype=np.float32)
+            male_wav = td_p / "speaker_a.wav"
+            fem_wav = td_p / "speaker_b.wav"
+            sf.write(str(male_wav), (0.3 * np.sin(2.0 * np.pi * 115.0 * t)).astype(np.float32), 24000)
+            sf.write(str(fem_wav), (0.3 * np.sin(2.0 * np.pi * 225.0 * t)).astype(np.float32), 24000)
+
+            ov._REF_GENDER_CACHE.clear()
+            self.assertEqual(ov._detect_ref_gender(male_wav, ref_digest="dig_male_01"), "male")
+            self.assertEqual(ov._detect_ref_gender(fem_wav, ref_digest="dig_fem_01"), "female")
+            self.assertEqual(ov._detect_ref_gender(male_wav, ref_digest="dig_hint_f", orig_path="Mita Ж.mp3"), "female")
+
+            old_mode = config.get("omnivoice_mode")
+            old_ref = config.get("omnivoice_ref_path")
+            try:
+                config.set("omnivoice_mode", "clone")
+                config.set("omnivoice_ref_path", str(male_wav))
+                with mock.patch(
+                    "core.omnivoice_tts.resolve_omnivoice_ref_text",
+                    return_value=(male_wav, "abcdef1234567890", "Привет."),
+                ):
+                    p_norm = ov._resolve_active_synth_params("ru", whisper=False)
+                    p_whisp = ov._resolve_active_synth_params("ru", whisper=True)
+
+                self.assertEqual(p_norm["ref_wav"], male_wav)
+                self.assertEqual(p_norm["instruct"], "")
+                # Для шепоту ref_wav прибирається (бо omnivoice.cpp ігнорує whisper при ref_audio)
+                self.assertIsNone(p_whisp["ref_wav"])
+                self.assertEqual(p_whisp["instruct"], "male, young adult, whisper")
+                self.assertIsInstance(p_whisp["seed"], int)
+            finally:
+                config.set("omnivoice_mode", old_mode)
+                config.set("omnivoice_ref_path", old_ref)
+
 
 if __name__ == "__main__":
     unittest.main()

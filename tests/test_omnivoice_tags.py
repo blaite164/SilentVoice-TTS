@@ -735,6 +735,56 @@ class OverlayTagHintPaintTests(unittest.TestCase):
             scroll.close()
             scroll.deleteLater()
 
+    def test_hook_typing_coalescing_and_enter_slash_selection(self) -> None:
+        import threading
+        from PySide6.QtWidgets import QApplication
+        from core.win_api import KeyboardHookManager
+
+        app = QApplication.instance() or QApplication([])
+        self.assertIsNotNone(app)
+
+        hook = KeyboardHookManager()
+        hook.update_from_config(
+            {
+                "app_language": "ru",
+                "active_engine": "omnivoice",
+                "reaction_omnivoice_enabled": True,
+                "reaction_commands": get_default_reaction_commands("ru"),
+            }
+        )
+        received: list[str] = []
+        hook.typing_text_changed.connect(lambda txt, _lang: received.append(txt))
+
+        # 1. Крос-потоковий потік автоповтору "оооо..." зливається в 1 оновлення з найсвіжішим текстом
+        def _bg_spam() -> None:
+            for n in range(1, 41):
+                hook._emit_typing_text("о" * n, "RU")
+
+        th = threading.Thread(target=_bg_spam)
+        th.start()
+        th.join()
+        app.processEvents()
+        self.assertEqual(received, ["о" * 40])
+
+        # 2. Enter при голому `\` або після навігації в меню вставляє обрану команду замість відправки голого `\`
+        hook._is_typing = True
+        hook._buffer = "шопот \\"
+        hook._slash_selected_idx = 0
+        hook._slash_navigated = False
+        self.assertTrue(hook._try_complete_slash_on_enter())
+        self.assertEqual(hook._buffer, "шопот [laughter] ")
+
+        # Навігація стрілками/мишкою на конкретний пункт + Enter теж вставляє обраний тег
+        hook._buffer = "привет \\ш"
+        hook.set_slash_selected_index(0)
+        self.assertTrue(hook._try_complete_slash_on_enter())
+        self.assertEqual(hook._buffer, "привет [whisper] ")
+
+        # Якщо користувач сам додрукував команду без навігації — Enter відправляє одразу (повертає False)
+        hook._buffer = "привет \\хаха"
+        hook._slash_navigated = False
+        self.assertFalse(hook._try_complete_slash_on_enter())
+
 
 if __name__ == "__main__":
     unittest.main()

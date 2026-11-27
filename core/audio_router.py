@@ -1134,13 +1134,17 @@ def _resample_audio_fast(arr: np.ndarray, src_sr: int, dst_sr: int) -> np.ndarra
         pos = np.linspace(0.0, max(0.0, float(n_in - 1)), n_out, dtype=np.float64)
         idx0 = np.floor(pos).astype(np.int64)
         idx1 = np.minimum(idx0 + 1, n_in - 1)
-        frac = (pos - idx0).astype(np.float32)[:, None]
+        frac = (pos - idx0).astype(np.float32)
+        if arr.ndim > 1:
+            frac = frac[:, None]
         return ((1.0 - frac) * arr[idx0] + frac * arr[idx1]).astype(np.float32, copy=False)
 
     pos = np.arange(n_out, dtype=np.float64) * (float(src_sr) / float(dst_sr))
     pos = np.minimum(pos, float(n_in - 1))
     i1 = np.floor(pos).astype(np.int64)
-    t = (pos - i1).astype(np.float32)[:, None]
+    t = (pos - i1).astype(np.float32)
+    if arr.ndim > 1:
+        t = t[:, None]
     i0 = np.maximum(i1 - 1, 0)
     i2 = np.minimum(i1 + 1, n_in - 1)
     i3 = np.minimum(i1 + 2, n_in - 1)
