@@ -1243,8 +1243,9 @@ class _OmniVoiceServerManager:
                 return
         self.stop()
 
-    def stop(self) -> None:
-        self.cancel_active(only_warmup=False)
+    def stop(self, *, bump_cancel: bool = True) -> None:
+        if bump_cancel:
+            self.cancel_active(only_warmup=False)
         with self._lock:
             if self._idle_timer is not None:
                 self._idle_timer.cancel()
@@ -1353,7 +1354,7 @@ class _OmniVoiceServerManager:
                 self._cancel_idle_timer()
                 return self._port
 
-            self.stop()
+            self.stop(bump_cancel=False)
             try:
                 port = self._spawn_and_wait(base_gguf, codec_gguf, force_cpu=self._force_cpu_session)
                 self._loaded_quant = quant_id
