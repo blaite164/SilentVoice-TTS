@@ -1470,5 +1470,6 @@
   "rc.row.hotkey_bound_tip": "Skrót: {hk} (naciśnij podczas pisania, aby wstawić)",
   "rc.row.hotkey_change_tip": "Zmień skrót ({hk})",
   "rc.row.hotkey_add_tip": "Przypisz skrót do szybkiego wstawiania w tekst",
-  "rc.dlg.whisper_info": "🤫 Wbudowany tryb szeptu OmniVoice. Wstaw raz, aby szeptać dalszy fragment; wstaw ponownie, aby wrócić do zwykłego głosu."
+  "rc.dlg.whisper_info": "🤫 Wbudowany tryb szeptu OmniVoice. Wstaw raz, aby szeptać dalszy fragment; wstaw ponownie, aby wrócić do zwykłego głosu.",
+  "dlg.qp.remove_audio_tip": "Usuń dołączony plik audio"
 }

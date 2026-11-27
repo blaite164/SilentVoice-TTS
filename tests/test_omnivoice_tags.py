@@ -785,6 +785,63 @@ class OverlayTagHintPaintTests(unittest.TestCase):
         hook._slash_navigated = False
         self.assertFalse(hook._try_complete_slash_on_enter())
 
+    def test_quick_phrase_dialog_remove_audio_button_visibility_and_action(self) -> None:
+        from PySide6.QtWidgets import QApplication
+        from core.win_api import KeyboardHookManager
+        from ui.dialogs import QuickPhraseDialog
+
+        app = QApplication.instance() or QApplication([])
+        self.assertIsNotNone(app)
+        hook = KeyboardHookManager()
+
+        # 1. Без прикріпленого файлу кнопки «Прослухати» та «Видалити» приховані
+        dlg_empty = QuickPhraseDialog(hook)
+        try:
+            self.assertTrue(dlg_empty.btn_preview_audio.isHidden())
+            self.assertTrue(dlg_empty.btn_remove_audio.isHidden())
+        finally:
+            dlg_empty.close()
+            dlg_empty.deleteLater()
+
+        # 2. З прикріпленим файлом кнопка видалення показана справа від тексту й під «Прослухати»,
+        # і при натисканні очищує `audio_file` (не видаляючи початковий файл до збереження)
+        with tempfile.TemporaryDirectory() as td:
+            wav = Path(td) / "phrase.wav"
+            wav.write_bytes(b"RIFF\x00\x00\x00\x00WAVE")
+            dlg = QuickPhraseDialog(
+                hook,
+                {"title": "Тест", "text": "Привіт", "hotkey": "", "emoji": "💬", "audio_file": str(wav)},
+            )
+            dlg.show()
+            app.processEvents()
+            try:
+                self.assertFalse(dlg.btn_preview_audio.isHidden())
+                self.assertFalse(dlg.btn_remove_audio.isHidden())
+                # Кнопка видалення має бути справа від тексту статусу та нижче за кнопку «Прослухати»
+                self.assertGreater(dlg.btn_remove_audio.geometry().left(), dlg.audio_status_lbl.geometry().left())
+                self.assertGreater(dlg.btn_remove_audio.geometry().top(), dlg.btn_preview_audio.geometry().top())
+
+                dlg.btn_remove_audio.click()
+                self.assertEqual(dlg.get_result().get("audio_file"), "")
+                self.assertTrue(dlg.btn_preview_audio.isHidden())
+                self.assertTrue(dlg.btn_remove_audio.isHidden())
+                # Оригінальний файл ще на диску на випадок «Скасувати»
+                self.assertTrue(wav.exists())
+
+                # А тимчасовий файл, доданий у цій сесії, при видаленні прибирається і з диска
+                tmp_wav = Path(td) / "session_rec.wav"
+                tmp_wav.write_bytes(b"RIFF\x00\x00\x00\x00WAVE")
+                dlg._data["audio_file"] = str(tmp_wav)
+                dlg._session_audio_files.add(str(tmp_wav))
+                dlg._refresh_audio_status()
+                self.assertFalse(dlg.btn_remove_audio.isHidden())
+                dlg.btn_remove_audio.click()
+                self.assertEqual(dlg.get_result().get("audio_file"), "")
+                self.assertFalse(tmp_wav.exists())
+            finally:
+                dlg.close()
+                dlg.deleteLater()
+
 
 if __name__ == "__main__":
     unittest.main()

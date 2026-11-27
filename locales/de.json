@@ -1470,5 +1470,6 @@
   "rc.row.hotkey_bound_tip": "Tastenkürzel: {hk} (beim Tippen drücken zum Einfügen)",
   "rc.row.hotkey_change_tip": "Tastenkürzel ändern ({hk})",
   "rc.row.hotkey_add_tip": "Tastenkürzel zum schnellen Einfügen zuweisen",
-  "rc.dlg.whisper_info": "🤫 Integrierter OmniVoice-Flüstermodus. Einmal einfügen, um ab dort zu flüstern; erneut einfügen für normale Stimme."
+  "rc.dlg.whisper_info": "🤫 Integrierter OmniVoice-Flüstermodus. Einmal einfügen, um ab dort zu flüstern; erneut einfügen für normale Stimme.",
+  "dlg.qp.remove_audio_tip": "Angehängte Audiodatei entfernen"
 }

@@ -3200,6 +3200,8 @@ class QuickPhraseDialog(QDialog):
             phrase_data
             or {"title": "", "text": "", "hotkey": "", "emoji": "💬", "audio_file": ""}
         )
+        self._initial_audio_file: str = str(self._data.get("audio_file", "")).strip()
+        self._session_audio_files: set[str] = set()
 
         self.setWindowTitle(tr("dlg_027", "Швидка фраза"))
         self.setMinimumWidth(510)
@@ -3269,10 +3271,34 @@ class QuickPhraseDialog(QDialog):
 
         ac_lay.addLayout(audio_btn_row)
 
+        audio_status_row = QHBoxLayout()
+        audio_status_row.setContentsMargins(0, 0, 0, 0)
+        audio_status_row.setSpacing(8)
+
         self.audio_status_lbl = QLabel()
         self.audio_status_lbl.setWordWrap(True)
         self.audio_status_lbl.setStyleSheet("border: none; background: transparent; font-size: 12px;")
-        ac_lay.addWidget(self.audio_status_lbl)
+        audio_status_row.addWidget(self.audio_status_lbl, 1)
+
+        self.btn_remove_audio = QPushButton()
+        self.btn_remove_audio.setFixedSize(26, 26)
+        self.btn_remove_audio.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_remove_audio.setIcon(QIcon(str(BUNDLE_DIR / "assets" / "delete.svg")))
+        self.btn_remove_audio.setIconSize(QSize(15, 15))
+        self.btn_remove_audio.setToolTip(tr("dlg.qp.remove_audio_tip", "Видалити прикріплений аудіофайл"))
+        self.btn_remove_audio.setStyleSheet(
+            "QPushButton { padding: 0px; text-align: center; background-color: #2E354B; "
+            "border: 1px solid #414B6B; border-radius: 6px; }"
+            "QPushButton:hover { background-color: #4A2736; border-color: #F87171; }"
+        )
+        self.btn_remove_audio.clicked.connect(self._on_remove_audio_file)
+        audio_status_row.addWidget(
+            self.btn_remove_audio,
+            0,
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+        )
+
+        ac_lay.addLayout(audio_status_row)
 
         lay.addLayout(form)
         lay.addWidget(audio_card)
@@ -3310,6 +3336,7 @@ class QuickPhraseDialog(QDialog):
         af = str(self._data.get("audio_file", "")).strip()
         exists = bool(af and Path(af).exists())
         self.btn_preview_audio.setVisible(exists)
+        self.btn_remove_audio.setVisible(exists)
         if exists:
             self.audio_status_lbl.setText(tr("dlg_f_005", "✅ Прикріплено файл: <b>{filename}</b> (відтворюється миттєво з файлу)", filename=Path(af).name))
             self.audio_status_lbl.setStyleSheet("border: none; background: transparent; color: #34D399; font-size: 12px;")
@@ -3336,6 +3363,7 @@ class QuickPhraseDialog(QDialog):
         try:
             shutil.copy2(src, dest)
             self._data["audio_file"] = str(dest)
+            self._session_audio_files.add(str(dest))
             if not self.title_edit.text().strip():
                 self.title_edit.setText(src.stem[:24])
             if not self.text_edit.toPlainText().strip():
@@ -3367,6 +3395,7 @@ class QuickPhraseDialog(QDialog):
 
         if ok:
             self._data["audio_file"] = msg
+            self._session_audio_files.add(str(msg))
             if not self.title_edit.text().strip():
                 self.title_edit.setText(text[:22])
             self._refresh_audio_status()
@@ -3374,6 +3403,23 @@ class QuickPhraseDialog(QDialog):
         else:
             self.audio_status_lbl.setText(f"⚠️ {msg}")
             self.audio_status_lbl.setStyleSheet("border: none; background: transparent; color: #F87171; font-size: 12px;")
+
+    def _on_remove_audio_file(self) -> None:
+        af = str(self._data.get("audio_file", "")).strip()
+        try:
+            from core.audio_router import audio_router
+
+            audio_router.begin_exclusive_playback()
+        except Exception:
+            pass
+        if af and af in self._session_audio_files and af != self._initial_audio_file:
+            try:
+                Path(af).unlink(missing_ok=True)
+            except OSError:
+                pass
+            self._session_audio_files.discard(af)
+        self._data["audio_file"] = ""
+        self._refresh_audio_status()
 
     def _on_preview_saved_audio(self) -> None:
         af = str(self._data.get("audio_file", "")).strip()
