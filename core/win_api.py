@@ -1133,7 +1133,7 @@ class KeyboardHookManager(QObject):
         self._hk_toggle_chat = parse_hotkey_string(cfg_data.get("hotkey_toggle_chat_tts", ""))
         self._chat_tts_enabled = bool(cfg_data.get("twitch_read_viewers", False))
         self._omnivoice_active = str(cfg_data.get("active_engine", "") or "").strip() == "omnivoice"
-        self._ui_lang = str(cfg_data.get("ui_language") or cfg_data.get("app_language", "uk") or "uk").strip().lower() or "uk"
+        self._ui_lang = str(cfg_data.get("app_language") or cfg_data.get("ui_language") or "uk").strip().lower() or "uk"
         self._reaction_specs = build_active_reaction_specs(cfg_data)
 
         self._game_mode_enabled = bool(cfg_data.get("game_mode_enabled", True))

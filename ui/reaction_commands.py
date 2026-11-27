@@ -33,7 +33,7 @@ from PySide6.QtWidgets import (
 )
 
 from core.config import BASE_DIR, BUNDLE_DIR, REACTION_AUDIO_DIR, config
-from core.i18n import get_ui_language, tr
+from core.i18n import tr
 from core.omnivoice_tags import (
     build_default_whisper_command,
     get_default_reaction_commands,
@@ -447,6 +447,8 @@ class ReactionCommandDialog(QDialog):
             self._omnivoice_enabled,
             base_dir=BASE_DIR,
         )
+        if is_whisper_reaction_item(self._data):
+            self._data["audio_file"] = ""
         self._data["command"] = cmd
         self._data["aliases"] = aliases
         self._data["display"] = self.display_edit.text().strip()
@@ -597,7 +599,7 @@ class ReactionCommandsCard(QFrame):
         toggle_collapsible_widget(self.expand_btn, self.body, checked)
 
     def _ui_lang(self) -> str:
-        return str(get_ui_language() or config.get("ui_language") or "uk").strip().lower() or "uk"
+        return str(config.get("app_language") or config.get("ui_language") or "uk").strip().lower() or "uk"
 
     def _ensure_seeded(self) -> None:
         lang = self._ui_lang()

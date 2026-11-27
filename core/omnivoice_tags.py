@@ -716,7 +716,7 @@ def build_active_reaction_specs(
     """
     if cfg_data is None:
         return list(OMNIVOICE_REACTION_TAGS)
-    eff_lang = str(ui_lang or cfg_data.get("ui_language") or cfg_data.get("app_language", "uk") or "uk").strip().lower() or "uk"
+    eff_lang = str(ui_lang or cfg_data.get("app_language") or cfg_data.get("ui_language") or "uk").strip().lower() or "uk"
     eff_engine = str(engine_id if engine_id is not None else cfg_data.get("active_engine", "") or "").strip()
     ov_enabled = bool(cfg_data.get("reaction_omnivoice_enabled", True))
     items = load_reaction_command_items(cfg_data, eff_lang)
@@ -747,7 +747,7 @@ def build_all_configured_reaction_specs(
     """Повертає всі налаштовані команди (для відображення токенів в оверлеї та прев’ю стилів)."""
     if cfg_data is None:
         return list(OMNIVOICE_REACTION_TAGS)
-    eff_lang = str(ui_lang or cfg_data.get("ui_language") or cfg_data.get("app_language", "uk") or "uk").strip().lower() or "uk"
+    eff_lang = str(ui_lang or cfg_data.get("app_language") or cfg_data.get("ui_language") or "uk").strip().lower() or "uk"
     items = load_reaction_command_items(cfg_data, eff_lang)
     specs: List[OmniVoiceTagSpec] = []
     for item in items:

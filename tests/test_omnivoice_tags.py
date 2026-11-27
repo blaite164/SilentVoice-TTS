@@ -369,9 +369,29 @@ class OmniVoiceTagsLogicTests(unittest.TestCase):
                 card.rebuild_list()
                 ids_off = [card.cmd_list.item(i).data(0x0100) for i in range(card.cmd_list.count())]
                 self.assertNotIn(OMNIVOICE_WHISPER_ID, ids_off)
+
+                # Мова дефолтного списку команд береться з фільтра мов (app_language), а не ui_language
+                cur_cfg["app_language"] = "pl"
+                self.assertEqual(card._ui_lang(), "pl")
             finally:
                 card.close()
                 card.deleteLater()
+
+        # У діалозі редагування шепоту не можна прикріпити аудіофайл
+        from ui.reaction_commands import ReactionCommandDialog
+
+        w_item = build_default_whisper_command("uk")
+        w_dlg = ReactionCommandDialog(w_item, omnivoice_enabled=True)
+        try:
+            self.assertTrue(w_dlg.btn_pick_file.isHidden())
+            self.assertTrue(w_dlg.btn_preview_file.isHidden())
+            self.assertTrue(w_dlg.btn_clear_file.isHidden())
+            w_dlg._data["audio_file"] = "ignored.wav"
+            w_dlg._on_save()
+            self.assertEqual(w_dlg.get_result().get("audio_file"), "")
+        finally:
+            w_dlg.close()
+            w_dlg.deleteLater()
 
 
 class TypingUndoRedoTests(unittest.TestCase):

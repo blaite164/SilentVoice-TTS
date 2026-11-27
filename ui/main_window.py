@@ -1595,11 +1595,19 @@ class MainWindow(QMainWindow):
 
     def _on_sidebar_lang_changed(self) -> None:
         from core.config import sync_default_quick_phrases_for_lang
+        from core.omnivoice_tags import sync_default_reaction_commands_for_lang
         lang = str(self.sidebar_lang_combo.currentData() or "uk").strip().lower() or "uk"
         config.update({"app_language": lang, "language_confirmed": True})
-        if sync_default_quick_phrases_for_lang(lang):
+        qp_changed = sync_default_quick_phrases_for_lang(lang)
+        synced_rc = sync_default_reaction_commands_for_lang(config.data, lang)
+        if synced_rc is not None:
+            config.set("reaction_commands", synced_rc)
+        if qp_changed or synced_rc is not None:
             self.keyboard_hook.update_from_config(config.data)
+        if qp_changed:
             self._rebuild_quick_phrases_grid()
+        if synced_rc is not None and hasattr(self, "reaction_commands_card"):
+            self.reaction_commands_card.rebuild_list()
         if hasattr(self, "test_voice_input"):
             cur_txt = self.test_voice_input.text().strip()
             if not cur_txt or cur_txt in self._all_default_test_phrases():
@@ -9406,17 +9414,10 @@ class MainWindow(QMainWindow):
         return True
 
     def _on_ui_lang_changed(self) -> None:
-        from core.omnivoice_tags import sync_default_reaction_commands_for_lang
-
         raw_choice = self.ui_lang_combo.currentData()
         selected_lang = str(raw_choice or "").strip().lower()
         target_lang = selected_lang or "en"
         config.set("ui_language", target_lang)
-        synced_rc = sync_default_reaction_commands_for_lang(config.data, target_lang)
-        if synced_rc is not None:
-            config.set("reaction_commands", synced_rc)
-            if hasattr(self, "keyboard_hook"):
-                self.keyboard_hook.update_from_config(config.data)
         if target_lang == get_ui_language():
             return
         self._schedule_live_ui_language(target_lang)
