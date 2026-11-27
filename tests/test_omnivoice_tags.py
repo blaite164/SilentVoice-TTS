@@ -549,6 +549,74 @@ class OverlayTagHintPaintTests(unittest.TestCase):
                     card.close()
                     card.deleteLater()
 
+    def test_collapsible_animation_zero_jump_for_widgets_above(self) -> None:
+        from PySide6.QtCore import Qt
+        from PySide6.QtWidgets import QApplication, QFrame, QLabel, QScrollArea, QToolButton, QVBoxLayout, QWidget
+
+        from ui.dialogs import toggle_collapsible_widget
+
+        app = QApplication.instance() or QApplication([])
+        self.assertIsNotNone(app)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        content = QWidget()
+        c_lay = QVBoxLayout(content)
+        c_lay.setSpacing(12)
+
+        above = QFrame()
+        above.setMinimumHeight(260)
+        al = QVBoxLayout(above)
+        al.addWidget(QLabel("Above"))
+        c_lay.addWidget(above)
+
+        card = QFrame()
+        card_lay = QVBoxLayout(card)
+        card_lay.setContentsMargins(16, 10, 16, 10)
+        card_lay.setSpacing(0)
+        btn = QToolButton()
+        btn.setCheckable(True)
+        card_lay.addWidget(btn)
+        body = QWidget()
+        b_lay = QVBoxLayout(body)
+        b_lay.setContentsMargins(0, 8, 0, 0)
+        inner = QFrame()
+        inner.setFixedHeight(240)
+        b_lay.addWidget(inner)
+        body.setVisible(False)
+        card_lay.addWidget(body)
+        c_lay.addWidget(card)
+
+        below = QFrame()
+        below.setMinimumHeight(260)
+        c_lay.addWidget(below)
+        c_lay.addStretch(1)
+
+        scroll.setWidget(content)
+        scroll.resize(700, 520)
+        scroll.show()
+        app.processEvents()
+        try:
+            ref_above = above.geometry().getRect()
+            ref_card_y = card.geometry().y()
+            toggle_collapsible_widget(btn, body, True, duration_ms=200)
+            app.processEvents()
+            self.assertEqual(above.geometry().getRect(), ref_above)
+            self.assertEqual(card.geometry().y(), ref_card_y)
+
+            anim = getattr(body, "_collapse_anim", None)
+            self.assertIsNotNone(anim)
+            assert anim is not None
+            for t_ms in (20, 100, 180, 220):
+                anim.setCurrentTime(t_ms)
+                app.processEvents()
+                self.assertEqual(above.geometry().getRect(), ref_above)
+                self.assertEqual(card.geometry().y(), ref_card_y)
+        finally:
+            scroll.close()
+            scroll.deleteLater()
+
 
 if __name__ == "__main__":
     unittest.main()

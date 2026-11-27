@@ -289,6 +289,47 @@ def install_global_dialog_centering(app: QApplication) -> None:
     setattr(app, "_dialog_center_filter", flt)
 
 
+def _find_scroll_area_and_content(widget: Optional[QWidget]) -> tuple[Optional[QScrollArea], Optional[QWidget]]:
+    """Знаходить найближчу QScrollArea та її внутрішній content-віджет, у якому лежить картка."""
+    p = widget.parentWidget() if widget is not None else None
+    while p is not None:
+        gp = p.parentWidget()
+        if gp is not None and isinstance(gp.parentWidget(), QScrollArea):
+            return gp.parentWidget(), p
+        p = gp
+    return None, None
+
+
+def _sync_collapsible_scroll_layout(
+    card: Optional[QWidget],
+    scroll_area: Optional[QScrollArea],
+    content: Optional[QWidget],
+    *,
+    release_min_height: bool = False,
+) -> None:
+    """
+    Синхронно оновлює висоту `card` та `QScrollArea.widget()` в одному кроці,
+    щоб картки ВИЩЕ за згортуваний блок не стискалися й не смикалися на жоден піксель.
+    """
+    if card is not None and card.layout() is not None:
+        card.layout().invalidate()
+        card.layout().activate()
+    if content is None or scroll_area is None:
+        return
+    c_lay = content.layout()
+    if c_lay is None:
+        return
+    c_lay.invalidate()
+    vp = scroll_area.viewport()
+    vp_w = max(1, vp.width())
+    vp_h = max(1, vp.height())
+    need_h = c_lay.heightForWidth(vp_w) if c_lay.hasHeightForWidth() else c_lay.sizeHint().height()
+    need_h = max(need_h, c_lay.minimumSize().height(), vp_h)
+    content.setMinimumHeight(0 if release_min_height else need_h)
+    content.resize(vp_w, need_h)
+    c_lay.activate()
+
+
 def toggle_collapsible_widget(
     btn: Any,
     body: QWidget,
@@ -297,7 +338,7 @@ def toggle_collapsible_widget(
     duration_ms: int = 210,
     on_collapsed: Optional[Callable[[], None]] = None,
 ) -> None:
-    """Плавно розгортає або згортає тіло картки з кубічним згладжуванням без ривків."""
+    """Плавно розгортає або згортає тіло картки шторкою без ривків елементів вище."""
     if btn is not None and hasattr(btn, "setArrowType"):
         btn.setArrowType(Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow)
 
@@ -310,14 +351,20 @@ def toggle_collapsible_widget(
             pass
         setattr(body, "_collapse_anim", None)
 
+    card = body.parentWidget()
+    scroll_area, content = _find_scroll_area_and_content(card)
     lay = body.layout()
+
     if expanded:
-        parent_w = body.parentWidget()
         avail_w = body.width()
-        if avail_w <= 20 and parent_w is not None:
-            p_lay = parent_w.layout()
-            lm = p_lay.contentsMargins() if p_lay is not None else parent_w.contentsMargins()
-            avail_w = max(240, parent_w.width() - lm.left() - lm.right())
+        if (avail_w <= 20 or not body.isVisible()) and card is not None:
+            p_lay = card.layout()
+            lm = p_lay.contentsMargins() if p_lay is not None else card.contentsMargins()
+            avail_w = max(240, card.width() - lm.left() - lm.right())
+        start_h = max(0, int(body.height())) if body.isVisible() else 0
+        if lay is not None:
+            lay.setEnabled(True)
+        body.setMinimumHeight(0)
         body.setMaximumHeight(16777215)
         if lay is not None:
             lay.activate()
@@ -330,21 +377,40 @@ def toggle_collapsible_widget(
             if lay is not None:
                 target_h = max(target_h, lay.sizeHint().height())
         target_h = max(1, int(target_h))
-        start_h = body.height() if body.isVisible() else 0
-        body.setMaximumHeight(start_h)
+
+        # Заздалегідь розкладаємо вміст у фінальному розмірі й блокуємо внутрішній layout
+        # на час шторки — діти плавно відкриваються без стискання та стрибків.
+        body.resize(max(240, avail_w), target_h)
+        if lay is not None:
+            lay.activate()
+            lay.setEnabled(False)
+        body.setFixedHeight(start_h)
         body.setVisible(True)
+        _sync_collapsible_scroll_layout(card, scroll_area, content)
     else:
         if not body.isVisible():
+            if lay is not None:
+                lay.setEnabled(True)
+            body.setMinimumHeight(0)
             body.setMaximumHeight(16777215)
+            _sync_collapsible_scroll_layout(card, scroll_area, content, release_min_height=True)
             if on_collapsed is not None:
                 on_collapsed()
             return
         start_h = max(0, int(body.height()))
         target_h = 0
+        if lay is not None:
+            lay.setEnabled(False)
+        body.setFixedHeight(start_h)
+        _sync_collapsible_scroll_layout(card, scroll_area, content)
 
     if start_h == target_h or duration_ms <= 0:
+        if lay is not None:
+            lay.setEnabled(True)
+        body.setMinimumHeight(0)
         body.setMaximumHeight(16777215)
         body.setVisible(expanded)
+        _sync_collapsible_scroll_layout(card, scroll_area, content, release_min_height=True)
         if not expanded and on_collapsed is not None:
             on_collapsed()
         return
@@ -357,7 +423,8 @@ def toggle_collapsible_widget(
 
     def _on_val(val: Any) -> None:
         try:
-            body.setMaximumHeight(max(0, int(val)))
+            body.setFixedHeight(max(0, int(val)))
+            _sync_collapsible_scroll_layout(card, scroll_area, content)
         except RuntimeError:
             pass
 
@@ -366,10 +433,18 @@ def toggle_collapsible_widget(
             if getattr(body, "_collapse_anim", None) is anim:
                 setattr(body, "_collapse_anim", None)
             if expanded:
+                if lay is not None:
+                    lay.setEnabled(True)
+                body.setMinimumHeight(0)
                 body.setMaximumHeight(16777215)
+                _sync_collapsible_scroll_layout(card, scroll_area, content, release_min_height=True)
             else:
                 body.setVisible(False)
+                if lay is not None:
+                    lay.setEnabled(True)
+                body.setMinimumHeight(0)
                 body.setMaximumHeight(16777215)
+                _sync_collapsible_scroll_layout(card, scroll_area, content, release_min_height=True)
                 if on_collapsed is not None:
                     on_collapsed()
         except RuntimeError:

@@ -7405,7 +7405,7 @@ class MainWindow(QMainWindow):
         twitch_card.setProperty("class", "card")
         tw_lay = QVBoxLayout(twitch_card)
         tw_lay.setContentsMargins(16, 10, 16, 10)
-        tw_lay.setSpacing(8)
+        tw_lay.setSpacing(0)
 
         tw_hdr_row = QHBoxLayout()
         tw_hdr_row.setContentsMargins(0, 0, 0, 0)
@@ -7430,7 +7430,7 @@ class MainWindow(QMainWindow):
 
         self.twitch_body = QWidget()
         tw_body_lay = QVBoxLayout(self.twitch_body)
-        tw_body_lay.setContentsMargins(0, 2, 0, 0)
+        tw_body_lay.setContentsMargins(0, 8, 0, 0)
         tw_body_lay.setSpacing(8)
 
         self.twitch_enable_chk = QCheckBox(tr("twitch.enable", "Дублювати озвучені фрази в чат Twitch"))
@@ -8765,7 +8765,7 @@ class MainWindow(QMainWindow):
         vban_card.setProperty("class", "card")
         vban_lay = QVBoxLayout(vban_card)
         vban_lay.setContentsMargins(16, 10, 16, 10)
-        vban_lay.setSpacing(8)
+        vban_lay.setSpacing(0)
         vban_hdr_row = QHBoxLayout()
         vban_hdr_row.setContentsMargins(0, 0, 0, 0)
         self.vban_expand_btn = QToolButton()
@@ -8788,7 +8788,7 @@ class MainWindow(QMainWindow):
         vban_lay.addLayout(vban_hdr_row)
         self.vban_body = QWidget()
         vban_body_lay = QVBoxLayout(self.vban_body)
-        vban_body_lay.setContentsMargins(0, 2, 0, 0)
+        vban_body_lay.setContentsMargins(0, 8, 0, 0)
         vban_body_lay.setSpacing(8)
         self.vban_enable_chk = QCheckBox(tr("audio.vban.enable", "Надсилати голос через локальну мережу"))
         self.vban_enable_chk.setChecked(bool(config.get("vban_enabled", False)))

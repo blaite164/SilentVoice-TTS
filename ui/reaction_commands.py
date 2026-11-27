@@ -472,7 +472,7 @@ class ReactionCommandsCard(QFrame):
 
         root = QVBoxLayout(self)
         root.setContentsMargins(16, 10, 16, 10)
-        root.setSpacing(8)
+        root.setSpacing(0)
 
         # Заголовок (згортуваний, як у VBAN)
         hdr_row = QHBoxLayout()
@@ -497,10 +497,10 @@ class ReactionCommandsCard(QFrame):
         hdr_row.addWidget(self.status_badge)
         root.addLayout(hdr_row)
 
-        # Тіло картки (згорнуте за замовчуванням)
+        # Тіло картки (згорнуте за замовчуванням; верхній відступ всередині body, щоб не було стрибка на 8px)
         self.body = QWidget()
         body_lay = QVBoxLayout(self.body)
-        body_lay.setContentsMargins(0, 2, 0, 0)
+        body_lay.setContentsMargins(0, 8, 0, 0)
         body_lay.setSpacing(10)
 
         help_lbl = QLabel(
