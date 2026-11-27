@@ -163,12 +163,41 @@ _CLONE_SAMPLE_LANG_ALIASES: Dict[str, str] = {
 }
 
 
+def _is_custom_clone_sample_path(p: Path) -> bool:
+    """Повертає True, якщо файл додано користувачем у `custom_clone_samples` (не є вбудованим семплом)."""
+    try:
+        target = str(p.resolve()).lower()
+    except OSError:
+        target = str(p).lower()
+    custom_map = config.get("custom_clone_samples", {}) or {}
+    if not isinstance(custom_map, dict):
+        return False
+    for entries in custom_map.values():
+        if not isinstance(entries, list):
+            continue
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            raw_ep = str(entry.get("path", "") or "").strip()
+            if not raw_ep:
+                continue
+            try:
+                ep_norm = str(Path(raw_ep).resolve()).lower()
+            except OSError:
+                ep_norm = raw_ep.lower()
+            if ep_norm == target:
+                return True
+    return False
+
+
 def detect_bundled_clone_sample_lang(ref_path: Optional[str | Path]) -> Optional[str]:
-    """Detect language code if ref_path is one of the bundled clone voice samples."""
+    """Detect language code if ref_path is one of the bundled clone voice samples (excluding user custom clips)."""
     raw = str(ref_path or "").strip()
     if not raw:
         return None
     p = Path(raw)
+    if _is_custom_clone_sample_path(p):
+        return None
     parts_low = [part.lower() for part in p.parts]
     in_clone_catalog = False
     for idx, part in enumerate(parts_low[:-1]):

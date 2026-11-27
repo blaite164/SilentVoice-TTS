@@ -730,6 +730,28 @@ class OmniVoiceIntegrationTests(unittest.TestCase):
                 config.set("omnivoice_mode", old_mode)
                 config.set("omnivoice_ref_path", old_ref)
 
+        # 3. Власний файл користувача, скопійований у data/samples/clone_voices/ru/ і записаний у custom_clone_samples,
+        # НЕ повинен отримувати фальшивий вбудований текст-підказку (інакше Whisper не запуститься і клон зламається)
+        with tempfile.TemporaryDirectory() as td:
+            custom_in_samples = Path(td) / "samples" / "clone_voices" / "ru" / "my_custom_voice.wav"
+            custom_in_samples.parent.mkdir(parents=True, exist_ok=True)
+            custom_in_samples.write_bytes(b"RIFF\x00\x00\x00\x00WAVE")
+
+            old_custom = config.get("custom_clone_samples")
+            try:
+                config.set("custom_clone_samples", {})
+                self.assertEqual(ov.detect_bundled_clone_sample_lang(custom_in_samples), "ru")
+                self.assertTrue(bool(ov.get_default_omnivoice_ref_text(custom_in_samples)))
+
+                config.set(
+                    "custom_clone_samples",
+                    {"clone_voices": [{"path": str(custom_in_samples), "lang": "ru"}]},
+                )
+                self.assertIsNone(ov.detect_bundled_clone_sample_lang(custom_in_samples))
+                self.assertEqual(ov.get_default_omnivoice_ref_text(custom_in_samples), "")
+            finally:
+                config.set("custom_clone_samples", old_custom)
+
 
 if __name__ == "__main__":
     unittest.main()
