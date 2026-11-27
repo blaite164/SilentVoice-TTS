@@ -1805,6 +1805,7 @@ class TTSEngineManager(QObject):
         self._proxy_lock = threading.Lock()
         self._warmed_models: set = set()
         self._warmup_lock = threading.Lock()
+        self._warmup_exec_lock = threading.Lock()
         self._warmup_timer: Optional[threading.Timer] = None
         self._is_synthesizing: bool = False
         self._current_is_viewer_chat: bool = False
@@ -1959,6 +1960,16 @@ class TTSEngineManager(QObject):
             from core.llama_tts import resolve_soprano_device
 
             cache_key = f"soprano_1_1:{resolve_soprano_device()}"
+        elif eng == "omnivoice":
+            from core.omnivoice_tts import get_omnivoice_cache_signature
+
+            cache_key = f"omnivoice:{get_omnivoice_cache_signature()}"
+        elif eng == "qwen3_tts":
+            ref_p = str(config.get("qwen3_tts_ref_path", "") or "").strip()
+            cache_key = f"qwen3_tts:{ref_p}"
+        elif eng == "zonos3_mini":
+            ref_p = str(config.get("zonos3_mini_ref_path", "") or "").strip()
+            cache_key = f"zonos3_mini:{v_id}:{ref_p}"
         else:
             cache_key = eng
 
@@ -2172,6 +2183,16 @@ class TTSEngineManager(QObject):
             t.start()
 
     def _run_smart_warmup(self, reason: str, retry: int) -> None:
+        if not self._warmup_exec_lock.acquire(blocking=False):
+            if retry < 6 and self._running:
+                self.schedule_smart_warmup(delay_sec=3.0, reason=f"{reason}:overlap", _retry=retry + 1)
+            return
+        try:
+            self._run_smart_warmup_locked(reason, retry)
+        finally:
+            self._warmup_exec_lock.release()
+
+    def _run_smart_warmup_locked(self, reason: str, retry: int) -> None:
         targets = self._resolve_local_warmup_targets()
         online_targets = self._resolve_online_warmup_targets()
         _llama_eids = ("qwen3_tts", "zonos3_mini", "kokoro_82m", "soprano_1_1")
@@ -2185,6 +2206,7 @@ class TTSEngineManager(QObject):
             item for item in targets
             if item[0] in _llama_eids and not (item[0] == "kokoro_82m" and _kokoro_uses_cpu)
         ]
+        _primary_uses_llama_server = any(item[3] == "primary" for item in _active_llama_targets)
         if not _active_llama_targets:
             try:
                 from core.llama_tts import is_qwen3_server_running, shutdown_llama_tts
@@ -2242,6 +2264,7 @@ class TTSEngineManager(QObject):
             return
 
         emitted_status = False
+        llama_server_occupied = False
         try:
             for engine_id, voice_id, _cache_key, _role in pending_dsp_local:
                 if not self._running or self._is_synthesizing or self._active_downloads > 0 or not self._queue.empty():
@@ -2283,6 +2306,12 @@ class TTSEngineManager(QObject):
                         self.schedule_smart_warmup(delay_sec=5.0, reason=f"{reason}:busy", _retry=retry + 1)
                     return
 
+                uses_llama_server = engine_id in _llama_eids and not (engine_id == "kokoro_82m" and _kokoro_uses_cpu)
+                # Єдиний процес llama-server.exe може тримати у VRAM лише одну GGUF-модель:
+                # ніколи не витісняємо основний (primary) llama-рушій прогрівом запасного/чат-рушія.
+                if uses_llama_server and role != "primary" and (_primary_uses_llama_server or llama_server_occupied):
+                    continue
+
                 is_heavy = engine_id in ("silero", "holos", "teratts", "omnivoice", "qwen3_tts", "zonos3_mini")
                 min_ram_mb = 2048 if engine_id in ("omnivoice", "qwen3_tts", "zonos3_mini") else (1024 if is_heavy else 350)
                 req_ram = min_ram_mb if role == "primary" else (min_ram_mb + 1024)
@@ -2299,22 +2328,28 @@ class TTSEngineManager(QObject):
 
                 t0 = time.perf_counter()
                 try:
+                    voices = ENGINE_SPECS.get(engine_id, {}).get("voices", [])
+                    v_entry = next((v for v in voices if str(v.get("id")) == voice_id), None)
+                    v_lang = str((v_entry or {}).get("lang") or self._current_lang() or "uk").strip().lower()
+                    warmed_ok = True
                     if engine_id == "qwen3_tts":
                         from core.llama_tts import warmup_qwen3_tts
-                        warmup_qwen3_tts()
+                        warmed_ok = bool(warmup_qwen3_tts())
                     elif engine_id == "omnivoice":
                         from core.omnivoice_tts import warmup_omnivoice_tts
-                        warmup_omnivoice_tts(lang=self._current_lang())
-                    elif engine_id in ("zonos3_mini", "soprano_1_1") or (engine_id == "kokoro_82m" and not _kokoro_uses_cpu):
+                        warmed_ok = bool(warmup_omnivoice_tts(lang=v_lang))
+                    elif uses_llama_server:
                         from core.llama_tts import warmup_llama_tts
-                        voices = ENGINE_SPECS.get(engine_id, {}).get("voices", [])
-                        v_entry = next((v for v in voices if str(v.get("id")) == voice_id), None)
                         spk = str((v_entry or {}).get("speaker") or "")
-                        warmup_llama_tts(engine_id, lang=self._current_lang(), voice=spk)
+                        warmed_ok = bool(warmup_llama_tts(engine_id, lang=v_lang, voice=spk))
                     else:
-                        cur_lang = self._current_lang()
-                        probe_text = "a." if engine_id == "kokoro_82m" else ("а." if cur_lang in ("uk", "ru") else "a.")
+                        probe_text = "a." if engine_id == "kokoro_82m" else ("а." if v_lang in ("uk", "ru") else "a.")
                         self._synthesize_dispatch(engine_id, voice_id, probe_text, 1.0)
+                    if not warmed_ok:
+                        print(f"[TTSWarmup] Попередній прогрів {engine_id} ({voice_id}) [{role}] не завершився [{reason}]", file=sys.stderr, flush=True)
+                        continue
+                    if uses_llama_server:
+                        llama_server_occupied = True
                     self._prewarm_dsp_libs(engine_id, voice_id)
                     self._warmed_models.add((engine_id, cache_key))
                     dt_ms = int((time.perf_counter() - t0) * 1000)

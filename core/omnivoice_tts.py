@@ -1727,9 +1727,9 @@ def _resolve_active_synth_params(lang: str) -> Dict[str, Any]:
     }
 
 
-def warmup_omnivoice_tts(lang: str = "") -> None:
+def warmup_omnivoice_tts(lang: str = "") -> bool:
     if not is_omnivoice_installed():
-        return
+        return False
     eff_lang = str(lang or config.get("app_language", "uk") or "uk").strip().lower() or "uk"
     try:
         params = _resolve_active_synth_params(eff_lang)
@@ -1742,12 +1742,16 @@ def warmup_omnivoice_tts(lang: str = "") -> None:
             ref_text=params["ref_text"],
             instruct=params["instruct"],
             seed=params["seed"],
-            steps=params["steps"],
+            steps=1,
             denoise=params["denoise"],
             is_warmup=True,
         )
-    except Exception:
-        pass
+        return True
+    except OmniVoiceSynthesisCancelledError:
+        return False
+    except Exception as exc:
+        print(f"[TTSWarmup] OmniVoice warmup failed: {exc}", file=sys.stderr, flush=True)
+        return False
 
 
 def synthesize_omnivoice_tts(

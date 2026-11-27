@@ -470,6 +470,74 @@ class OmniVoiceIntegrationTests(unittest.TestCase):
             mock_stop.assert_not_called()
             mock_reset.assert_called_once()
 
+    def test_warmup_uses_single_step_and_guards_failures_and_llama_eviction(self) -> None:
+        import core.omnivoice_tts as ov
+
+        # 1) warmup_omnivoice_tts must pass steps=1 and return False on failure
+        seen_steps: list[int] = []
+
+        def fake_synth(**kwargs):
+            seen_steps.append(int(kwargs.get("steps", -1)))
+            return np.zeros(100, dtype=np.float32), 24000
+
+        with (
+            mock.patch.object(ov, "is_omnivoice_installed", return_value=True),
+            mock.patch.object(
+                ov,
+                "_resolve_active_synth_params",
+                return_value={
+                    "lang_label": "Ukrainian",
+                    "ref_wav": None,
+                    "ref_digest": "",
+                    "ref_text": "",
+                    "instruct": "female, young adult",
+                    "seed": 42,
+                    "steps": 32,
+                    "denoise": True,
+                },
+            ),
+            mock.patch.object(ov._omnivoice_server, "synthesize", side_effect=fake_synth),
+        ):
+            self.assertTrue(ov.warmup_omnivoice_tts(lang="uk"))
+        self.assertEqual(seen_steps, [1])
+
+        with (
+            mock.patch.object(ov, "is_omnivoice_installed", return_value=True),
+            mock.patch.object(ov, "_resolve_active_synth_params", side_effect=RuntimeError("boom")),
+        ):
+            self.assertFalse(ov.warmup_omnivoice_tts(lang="uk"))
+
+        # 2) _run_smart_warmup must NOT mark failed warmup as warmed, and must NOT evict primary llama server with fallback llama server
+        old_warmed = set(tts_manager._warmed_models)
+        old_running = tts_manager._running
+        try:
+            tts_manager._warmed_models.clear()
+            tts_manager._running = True
+            warmed_calls: list[str] = []
+            with (
+                mock.patch.object(
+                    tts_manager,
+                    "_resolve_local_warmup_targets",
+                    return_value=[
+                        ("qwen3_tts", "qwen3_en", "qwen3_tts:", "primary"),
+                        ("zonos3_mini", "zonos3_en_savannah", "zonos3_mini:zonos3_en_savannah:", "fallback"),
+                    ],
+                ),
+                mock.patch.object(tts_manager, "_resolve_online_warmup_targets", return_value=[]),
+                mock.patch.object(tts_manager, "_get_system_resources_for_warmup", return_value=(16000, False, 10.0)),
+                mock.patch("core.llama_tts.resolve_kokoro_device", return_value="gpu"),
+                mock.patch("core.llama_tts.warmup_qwen3_tts", side_effect=lambda: (warmed_calls.append("qwen3_tts") or True)),
+                mock.patch("core.llama_tts.warmup_llama_tts", side_effect=lambda eid, **k: (warmed_calls.append(eid) or True)),
+                mock.patch("core.omnivoice_tts.is_omnivoice_server_running", return_value=False),
+            ):
+                tts_manager._run_smart_warmup("test", 0)
+            self.assertEqual(warmed_calls, ["qwen3_tts"])
+            self.assertIn(("qwen3_tts", "qwen3_tts:"), tts_manager._warmed_models)
+            self.assertNotIn(("zonos3_mini", "zonos3_mini:zonos3_en_savannah:"), tts_manager._warmed_models)
+        finally:
+            tts_manager._warmed_models = old_warmed
+            tts_manager._running = old_running
+
 
 if __name__ == "__main__":
     unittest.main()

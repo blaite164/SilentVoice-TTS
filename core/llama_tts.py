@@ -17,6 +17,7 @@ import re
 import shutil
 import socket
 import subprocess
+import sys
 import threading
 import time
 import zipfile
@@ -1297,9 +1298,9 @@ def _resolve_qwen3_reference(lang: str) -> Tuple[Optional[Path], str]:
     return ref_wav, ref_text
 
 
-def warmup_qwen3_tts() -> None:
+def warmup_qwen3_tts() -> bool:
     if not is_qwen3_tts_installed():
-        return
+        return False
     warmup_lang = _resolve_qwen3_warmup_lang()
     ref_wav: Optional[Path] = None
     ref_text = ""
@@ -1309,17 +1310,22 @@ def warmup_qwen3_tts() -> None:
         pass
     try:
         port = _qwen3_server.ensure_started("gpu")
-    except Exception:
-        return
+    except Exception as exc:
+        print(f"[TTSWarmup] Qwen3-TTS server startup failed: {exc}", file=sys.stderr, flush=True)
+        return False
     try:
-        _qwen3_server.warmup_inference(
+        warmed = _qwen3_server.warmup_inference(
             port=port,
             ref_wav=ref_wav,
             lang=warmup_lang,
             ref_text=ref_text,
         )
-    except Exception:
-        pass
+        return bool(warmed or _qwen3_server._warmed_port == port)
+    except Qwen3SynthesisCancelledError:
+        return False
+    except Exception as exc:
+        print(f"[TTSWarmup] Qwen3-TTS warmup inference failed: {exc}", file=sys.stderr, flush=True)
+        return False
 
 
 def synthesize_qwen3_tts(
@@ -1422,22 +1428,21 @@ def _resolve_llama_call_params(
     raise RuntimeError(f"Unsupported llama.cpp TTS engine: {eid}")
 
 
-def warmup_llama_tts(engine_id: str, lang: str = "", voice: str = "") -> None:
+def warmup_llama_tts(engine_id: str, lang: str = "", voice: str = "") -> bool:
     eid = str(engine_id or "").strip()
     if eid == "qwen3_tts":
-        warmup_qwen3_tts()
-        return
+        return warmup_qwen3_tts()
     if eid == "kokoro_82m" and resolve_kokoro_device() == "cpu":
-        return
+        return True
     eff_lang = str(lang or config.get("app_language", "en") or "en").strip().lower() or "en"
     if not is_llama_engine_installed(eid, lang=eff_lang):
-        return
+        return False
     try:
         _, req_lang, ref_wav, req_voice, dev, use_lang, include_n_predict, _ = _resolve_llama_call_params(
             eid, "a.", eff_lang, voice
         )
         port = _qwen3_server.ensure_started(dev, engine_id=eid, lang=eff_lang)
-        _qwen3_server.warmup_inference(
+        warmed = _qwen3_server.warmup_inference(
             port=port,
             ref_wav=ref_wav,
             lang=req_lang,
@@ -1446,8 +1451,12 @@ def warmup_llama_tts(engine_id: str, lang: str = "", voice: str = "") -> None:
             use_lang=use_lang,
             n_predict=2 if include_n_predict else None,
         )
-    except Exception:
-        pass
+        return bool(warmed or _qwen3_server._warmed_port == port)
+    except Qwen3SynthesisCancelledError:
+        return False
+    except Exception as exc:
+        print(f"[TTSWarmup] {eid} warmup failed: {exc}", file=sys.stderr, flush=True)
+        return False
 
 
 def synthesize_llama_tts(
