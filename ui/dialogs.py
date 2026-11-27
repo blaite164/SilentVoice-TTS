@@ -665,7 +665,11 @@ class VoiceSamplesDialog(QDialog):
             if engine_id in self._ENGINES_WITH_BUILTIN_AND_CLONE
             else []
         )
-        self._has_model_tab = bool(self._is_clone_engine and self._model_samples)
+        has_named_model_voices = any(
+            not Path(str(s.get("path", "") or "")).stem.lower().endswith("_default")
+            for s in self._model_samples
+        )
+        self._has_model_tab = bool(self._is_clone_engine and has_named_model_voices)
         self._has_dual_tabs = bool(self._is_clone_engine)
         if self._has_model_tab:
             self._active_tab_mode = "model"

@@ -370,6 +370,10 @@ class NewLocalTtsModelsTests(unittest.TestCase):
                 (samples_root / "clone_demos" / "zonos3_mini" / "en" / "CloneVoice.ogg").write_bytes(b"d")
                 (samples_root / "zonos3_mini" / "en").mkdir(parents=True)
                 (samples_root / "zonos3_mini" / "en" / "zonos3_en_savannah.ogg").write_bytes(b"z")
+                (samples_root / "zonos3_mini" / "ru").mkdir(parents=True)
+                (samples_root / "zonos3_mini" / "ru" / "zonos3_ru_default.ogg").write_bytes(b"z")
+                (samples_root / "clone_demos" / "zonos3_mini" / "ru").mkdir(parents=True)
+                (samples_root / "clone_demos" / "zonos3_mini" / "ru" / "Mita Ж.ogg").write_bytes(b"d")
 
                 with (
                     patch("core.tts_manager.SAMPLES_DIR", samples_root),
@@ -431,6 +435,27 @@ class NewLocalTtsModelsTests(unittest.TestCase):
                     self.assertNotEqual(dlg_z._hdr_label.text(), hdr_model)
                     dlg_z.close()
                     dlg_z.deleteLater()
+
+                # ZONOS3-Mini on lang with only *_default (ru): hide 'model' tab -> tab 0 = 'clone_demo', tab 1 = 'clone'
+                with (
+                    patch("core.tts_manager.SAMPLES_DIR", samples_root),
+                    patch("core.tts_manager.config.get", side_effect=lambda k, d=None: "ru" if k == "app_language" else ("both" if k == "voice_gender_filter" else d)),
+                    patch("ui.dialogs.config.get", side_effect=lambda k, d=None: "ru" if k == "app_language" else ("both" if k == "voice_gender_filter" else d)),
+                ):
+                    dlg_z_ru = VoiceSamplesDialog(
+                        "zonos3_mini",
+                        "ZONOS3-Mini",
+                        on_select_sample=lambda _p: None,
+                        allow_install=False,
+                    )
+                    self.assertIsNotNone(dlg_z_ru._mode_tabs)
+                    assert dlg_z_ru._mode_tabs is not None
+                    self.assertEqual(dlg_z_ru._mode_tabs.count(), 2)
+                    self.assertEqual(dlg_z_ru._mode_tabs.tabData(0), "clone_demo")
+                    self.assertEqual(dlg_z_ru._mode_tabs.tabData(1), "clone")
+                    self.assertEqual(dlg_z_ru._active_tab_mode, "clone_demo")
+                    dlg_z_ru.close()
+                    dlg_z_ru.deleteLater()
 
             # 1) PC WITHOUT GPU: ZONOS3 & Qwen3 stay visible (disabled 'No GPU', hidden listen btn)
             with (
