@@ -285,6 +285,30 @@ class OmniVoiceIntegrationTests(unittest.TestCase):
                     ("бувай", "female"),
                 ],
             )
+            # У змішаній фразі шепітний сегмент має бути м'якшим за звичайний (компенсація server peak-norm)
+            mid_idx = 240 + int(24000 * 0.045) + 10
+            self.assertLess(float(audio[mid_idx]), float(audio[10]))
+
+        # У Voice Design `get_active_omnivoice_design_instruct(whisper=True)` опускає `pitch`, щоб уникнути конфлікту F0
+        from core.config import config
+        from core.omnivoice_tts import get_active_omnivoice_design_instruct
+
+        old_g = config.get("omnivoice_design_gender")
+        old_a = config.get("omnivoice_design_age")
+        old_p = config.get("omnivoice_design_pitch")
+        old_acc = config.get("omnivoice_design_accent")
+        try:
+            config.set("omnivoice_design_gender", "male")
+            config.set("omnivoice_design_age", "young adult")
+            config.set("omnivoice_design_pitch", "moderate pitch")
+            config.set("omnivoice_design_accent", "")
+            self.assertEqual(get_active_omnivoice_design_instruct(whisper=False), "male, young adult, moderate pitch")
+            self.assertEqual(get_active_omnivoice_design_instruct(whisper=True), "male, young adult, whisper")
+        finally:
+            config.set("omnivoice_design_gender", old_g)
+            config.set("omnivoice_design_age", old_a)
+            config.set("omnivoice_design_pitch", old_p)
+            config.set("omnivoice_design_accent", old_acc)
 
     def test_fast_preview_resample_and_leading_silence_trim(self) -> None:
         import sys

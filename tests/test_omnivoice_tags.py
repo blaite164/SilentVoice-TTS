@@ -393,6 +393,20 @@ class OmniVoiceTagsLogicTests(unittest.TestCase):
             w_dlg.close()
             w_dlg.deleteLater()
 
+        # Перехресна мова та `ё`/`е` + `шопот`: має працювати навіть коли фільтр мови `uk`, а друкують `\шёпот` або `\шопот`
+        specs_uk = build_active_reaction_specs(cfg_ov_on, engine_id="omnivoice", ui_lang="uk")
+        for variant in (r"\шёпот", r"\шепот", r"\шопот", r"\шепіт", r"\whisper"):
+            self.assertEqual(
+                complete_slash_command(f"пиривет меня звыть {variant}", "uk", exact_only=True, specs=specs_uk),
+                "пиривет меня звыть [whisper] ",
+                msg=f"complete_slash_command failed for {variant}",
+            )
+            self.assertEqual(
+                expand_omnivoice_tags(f"пиривет меня звыть {variant} Дима", specs=specs_uk, ui_lang="uk"),
+                "пиривет меня звыть [whisper] Дима",
+                msg=f"expand_omnivoice_tags failed for {variant}",
+            )
+
 
 class TypingUndoRedoTests(unittest.TestCase):
     def test_keyboard_hook_undo_redo_ctrl_z_and_ctrl_y(self) -> None:

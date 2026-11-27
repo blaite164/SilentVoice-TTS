@@ -276,7 +276,7 @@ OMNIVOICE_WHISPER_SPEC = OmniVoiceTagSpec(
         "pl": "Szept dla fragmentu zdania (ponownie — zwykły głos)",
     },
     aliases=(
-        "шепіт", "шепот", "шёпот", "шіп", "тихо", "шш", "тсс",
+        "шепіт", "шепот", "шёпот", "шопот", "шіп", "тихо", "шш", "тсс",
         "whisper", "whisp", "shh", "quiet",
         "flüster", "fluester", "leise", "pst",
         "susurro", "sus",
@@ -365,8 +365,8 @@ _BUILTIN_LOCALIZED_ALIASES: Dict[str, Dict[str, Tuple[str, ...]]] = {
         "pl": ("hmf", "pff"),
     },
     OMNIVOICE_WHISPER_ID: {
-        "uk": ("шепіт", "шепот", "шіп", "тихо", "шш"),
-        "ru": ("шёпот", "шепот", "тихо", "тсс"),
+        "uk": ("шепіт", "шепот", "шёпот", "шопот", "шіп", "тихо", "шш"),
+        "ru": ("шёпот", "шепот", "шопот", "тихо", "тсс"),
         "en": ("whisper", "whisp", "shh", "quiet"),
         "de": ("flüster", "fluester", "leise", "pst"),
         "es": ("susurro", "sus", "shh"),
@@ -800,6 +800,11 @@ def extract_active_slash_query(text: str) -> Optional[Tuple[str, str]]:
     return m.group("prefix"), m.group("query")
 
 
+def _fold_cmd_key(raw: str) -> str:
+    """Нормалізує ключ команди для нечутливого до регістру та `ё`/`е` зіставлення."""
+    return str(raw or "").strip().lower().replace("ё", "е")
+
+
 def match_reaction_tags(
     query: str,
     ui_lang: str = "uk",
@@ -810,23 +815,30 @@ def match_reaction_tags(
     q = str(query or "").strip().lower()
     if not q:
         return list(pool)
+    q_fold = _fold_cmd_key(q)
 
     scored: List[Tuple[int, int, OmniVoiceTagSpec]] = []
     for idx, spec in enumerate(pool):
         prim = get_primary_cmd_name(spec, ui_lang).lower()
+        prim_fold = _fold_cmd_key(prim)
         tag_inner = spec.tag.strip("[]").lower()
         aliases_low = tuple(a.lower() for a in spec.aliases)
+        aliases_fold = tuple(_fold_cmd_key(a) for a in spec.aliases)
+        builtin = _BUILTIN_BY_ID.get(spec.id)
+        builtin_fold = tuple(_fold_cmd_key(a) for a in builtin.aliases) if builtin is not None else ()
         rank: Optional[int] = None
-        if prim == q:
+        if prim == q or prim_fold == q_fold:
             rank = 0
-        elif q in aliases_low:
+        elif q in aliases_low or q_fold in aliases_fold:
             rank = 1
-        elif prim.startswith(q):
+        elif prim.startswith(q) or prim_fold.startswith(q_fold):
             rank = 2
-        elif any(al.startswith(q) for al in aliases_low):
+        elif any(al.startswith(q) for al in aliases_low) or any(al.startswith(q_fold) for al in aliases_fold):
             rank = 3
-        elif tag_inner.startswith(q) or q in tag_inner:
+        elif q_fold in builtin_fold:
             rank = 4
+        elif tag_inner.startswith(q) or q in tag_inner or any(al.startswith(q_fold) for al in builtin_fold):
+            rank = 5
         if rank is not None:
             scored.append((rank, idx, spec))
 
@@ -836,16 +848,39 @@ def match_reaction_tags(
 
 def _build_alias_to_token_map(specs: Optional[Sequence[OmniVoiceTagSpec]], ui_lang: str = "uk") -> Dict[str, str]:
     if specs is None:
-        return _DEFAULT_ALIAS_TO_TAG
+        base_map = dict(_DEFAULT_ALIAS_TO_TAG)
+        for k, v in list(base_map.items()):
+            folded = _fold_cmd_key(k)
+            if folded:
+                base_map.setdefault(folded, v)
+        return base_map
     mapping: Dict[str, str] = {}
     for spec in specs:
         prim = get_primary_cmd_name(spec, ui_lang).lower()
         if prim:
             mapping.setdefault(prim, spec.tag)
+            mapping.setdefault(_fold_cmd_key(prim), spec.tag)
         for al in spec.aliases:
             low = al.lower()
             if low:
                 mapping.setdefault(low, spec.tag)
+                mapping.setdefault(_fold_cmd_key(low), spec.tag)
+    # Fallback-аліаси для активних вбудованих команд (щоб `\шёпот`, `\шепот`, `\шопот`,
+    # `\шепіт`, `\whisper` працювали незалежно від обраної мови фільтра чи розкладки)
+    for spec in specs:
+        builtin = _BUILTIN_BY_ID.get(spec.id)
+        if builtin is None:
+            continue
+        for cmd in builtin.primary_cmds.values():
+            low = cmd.lower()
+            if low:
+                mapping.setdefault(low, spec.tag)
+                mapping.setdefault(_fold_cmd_key(low), spec.tag)
+        for al in builtin.aliases:
+            low = al.lower()
+            if low:
+                mapping.setdefault(low, spec.tag)
+                mapping.setdefault(_fold_cmd_key(low), spec.tag)
     return mapping
 
 
@@ -871,7 +906,7 @@ def complete_slash_command(
         if not q:
             return None
         alias_map = _build_alias_to_token_map(specs, ui_lang)
-        tag = alias_map.get(q)
+        tag = alias_map.get(q) or alias_map.get(_fold_cmd_key(q))
         if tag:
             return f"{prefix}{tag} "
         # Швидкий друк: якщо введено префікс від 2+ символів і він однозначно
@@ -941,7 +976,7 @@ def expand_omnivoice_tags(
 
     def _repl(m: re.Match[str]) -> str:
         tok = m.group(1).lower()
-        tag = alias_map.get(tok)
+        tag = alias_map.get(tok) or alias_map.get(_fold_cmd_key(tok))
         return tag if tag else m.group(0)
 
     return _SLASH_TOKEN_RE.sub(_repl, text)

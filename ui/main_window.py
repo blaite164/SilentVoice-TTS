@@ -1181,6 +1181,9 @@ class MainWindow(QMainWindow):
 
         # 2. Будуємо інтерфейс (робоча зона зліва + компактна панель кнопок справа)
         self._build_ui()
+        # Повторно синхронізуємо хук після `_build_ui()`, оскільки `ReactionCommandsCard._ensure_seeded()`
+        # міг додати нові вбудовані команди (зокрема `rc_whisper`) або оновити їхню мову у `config.data`
+        self.keyboard_hook.update_from_config(config.data)
         self._setup_tray()
         self._connect_signals()
         self.fish_voices_fetched.connect(self._on_fish_voices_fetched)

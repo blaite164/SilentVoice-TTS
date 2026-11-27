@@ -64,6 +64,7 @@ OMNIVOICE_REF_CACHE_DIR = DATA_DIR / "tts_cache" / "omnivoice_refs"
 OMNIVOICE_NATIVE_SR = 24000
 OMNIVOICE_MAX_REF_SEC = 10.0
 OMNIVOICE_OUTPUT_GAIN = 0.65  # ~ -3.7 dB: balances hot tts-server output with ZONOS3 & prevents peak clipping
+OMNIVOICE_WHISPER_REL_GAIN = 0.80  # ~ -1.9 dB softer whisper relative to normal segments (compensates server peak norm)
 OMNIVOICE_HF_REPO = "Serveurperso/OmniVoice-GGUF"
 OMNIVOICE_HF_REV = "361609388ae572a820d085185bbbe2a2aac4b30e"
 
@@ -316,10 +317,12 @@ def build_omnivoice_instruct(
 
 
 def get_active_omnivoice_design_instruct(*, whisper: bool = False) -> str:
+    # Шепіт акустично не має голосової висоти тону (F0): передача `pitch` одночасно з `whisper`
+    # у MaskGIT часто викликає конфлікт/шипіння (особливо на чоловічих голосах і частині seed).
     return build_omnivoice_instruct(
         gender=str(config.get("omnivoice_design_gender", "female") or ""),
         age=str(config.get("omnivoice_design_age", "young adult") or ""),
-        pitch=str(config.get("omnivoice_design_pitch", "moderate pitch") or ""),
+        pitch="" if whisper else str(config.get("omnivoice_design_pitch", "moderate pitch") or ""),
         whisper=bool(whisper),
         accent=str(config.get("omnivoice_design_accent", "") or ""),
     )
@@ -1710,7 +1713,7 @@ def _resolve_active_synth_params(lang: str, *, whisper: bool = False) -> Dict[st
 
     # Voice Design mode (or Clone mode when no reference clip has been chosen yet)
     instruct = get_active_omnivoice_design_instruct(whisper=use_whisper) or (
-        "female, young adult, moderate pitch, whisper" if use_whisper else "female, young adult, moderate pitch"
+        "female, young adult, whisper" if use_whisper else "female, young adult, moderate pitch"
     )
     seed = get_active_omnivoice_seed()
     return {
@@ -1788,6 +1791,7 @@ def synthesize_omnivoice_tts(
     else:
         parts: List[np.ndarray] = []
         sr = OMNIVOICE_NATIVE_SR
+        has_normal = any(not is_w for _, is_w in segments)
         for idx, (seg_text, is_whisp) in enumerate(segments):
             params = _resolve_active_synth_params(lang, whisper=is_whisp)
             seg_samples, seg_sr = _omnivoice_server.synthesize(
@@ -1803,6 +1807,8 @@ def synthesize_omnivoice_tts(
             )
             if len(seg_samples) > 0:
                 sr = int(seg_sr)
+                if has_normal and is_whisp:
+                    seg_samples = (seg_samples * OMNIVOICE_WHISPER_REL_GAIN).astype(np.float32, copy=False)
                 if parts:
                     parts.append(np.zeros(int(sr * 0.045), dtype=np.float32))
                 parts.append(seg_samples)
