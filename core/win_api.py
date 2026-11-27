@@ -1028,7 +1028,6 @@ class KeyboardHookManager(QObject):
     toggle_game_mode_triggered = Signal()
     stop_chat_tts_triggered = Signal()
     toggle_chat_tts_triggered = Signal()
-    toggle_omnivoice_whisper_triggered = Signal()
     slash_selection_changed = Signal(int)
     reaction_hotkey_triggered = Signal(str)      # (canonical_tag для вставки у вікно вводу)
     quick_phrase_triggered = Signal(str)         # (phrase_text)
@@ -1107,7 +1106,6 @@ class KeyboardHookManager(QObject):
         self._hk_stop_chat: Optional[HotkeySpec] = None
         self._hk_toggle_chat: Optional[HotkeySpec] = None
         self._chat_tts_enabled: bool = False
-        self._hk_toggle_omnivoice_whisper: Optional[HotkeySpec] = None
         self._omnivoice_active: bool = False
         self._quick_hotkeys: List[Tuple[HotkeySpec, str]] = []
         # Відкладаємо одиночну фразу, якщо для тієї ж клавіші є хоткей 2x.
@@ -1134,7 +1132,6 @@ class KeyboardHookManager(QObject):
         self._hk_stop_chat = parse_hotkey_string(cfg_data.get("hotkey_stop_chat_tts", ""))
         self._hk_toggle_chat = parse_hotkey_string(cfg_data.get("hotkey_toggle_chat_tts", ""))
         self._chat_tts_enabled = bool(cfg_data.get("twitch_read_viewers", False))
-        self._hk_toggle_omnivoice_whisper = parse_hotkey_string(cfg_data.get("hotkey_toggle_omnivoice_whisper", ""))
         self._omnivoice_active = str(cfg_data.get("active_engine", "") or "").strip() == "omnivoice"
         self._ui_lang = str(cfg_data.get("ui_language") or cfg_data.get("app_language", "uk") or "uk").strip().lower() or "uk"
         self._reaction_specs = build_active_reaction_specs(cfg_data)
@@ -1649,12 +1646,6 @@ class KeyboardHookManager(QObject):
                     if self._matches_hotkey(self._hk_toggle_chat, mods, vk, is_modifier_vk, is_repeat, double_hit_vk):
                         self.toggle_chat_tts_triggered.emit()
                         return user32.CallNextHookEx(self._hook_handle, nCode, wParam, lParam) if is_modifier_vk else _swallow_key()
-
-                if self._omnivoice_active and self._matches_hotkey(
-                    self._hk_toggle_omnivoice_whisper, mods, vk, is_modifier_vk, is_repeat, double_hit_vk
-                ):
-                    self.toggle_omnivoice_whisper_triggered.emit()
-                    return user32.CallNextHookEx(self._hook_handle, nCode, wParam, lParam) if is_modifier_vk else _swallow_key()
 
                 # 3a. Режим постійного спілкування (діалогу)
                 if self._matches_hotkey(self._hk_conversation, mods, vk, is_modifier_vk, is_repeat, double_hit_vk):

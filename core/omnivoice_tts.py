@@ -315,12 +315,12 @@ def build_omnivoice_instruct(
     return ", ".join(parts)
 
 
-def get_active_omnivoice_design_instruct() -> str:
+def get_active_omnivoice_design_instruct(*, whisper: bool = False) -> str:
     return build_omnivoice_instruct(
         gender=str(config.get("omnivoice_design_gender", "female") or ""),
         age=str(config.get("omnivoice_design_age", "young adult") or ""),
         pitch=str(config.get("omnivoice_design_pitch", "moderate pitch") or ""),
-        whisper=bool(config.get("omnivoice_whisper", False)),
+        whisper=bool(whisper),
         accent=str(config.get("omnivoice_design_accent", "") or ""),
     )
 
@@ -331,7 +331,6 @@ def format_omnivoice_design_summary_localized() -> str:
     a = str(config.get("omnivoice_design_age", "young adult") or "").strip().lower()
     p = str(config.get("omnivoice_design_pitch", "moderate pitch") or "").strip().lower()
     acc = str(config.get("omnivoice_design_accent", "") or "").strip().lower()
-    whisper = bool(config.get("omnivoice_whisper", False))
 
     gender_map = {
         "female": tr("omnivoice.gender.female", "Жіночий"),
@@ -361,8 +360,6 @@ def format_omnivoice_design_summary_localized() -> str:
         parts.append(pitch_map[p])
     if acc in OMNIVOICE_ACCENTS and acc:
         parts.append(acc.replace(" accent", "").title())
-    if whisper:
-        parts.append("🤫")
     if not parts:
         return ", ".join((gender_map["female"], age_map["young adult"], pitch_map["moderate pitch"]))
     return ", ".join(parts)
@@ -383,7 +380,6 @@ def get_omnivoice_cache_signature() -> str:
     steps = normalize_omnivoice_steps()
     quant = normalize_omnivoice_quant()
     denoise = 1 if bool(config.get("omnivoice_denoise", True)) else 0
-    whisper = 1 if bool(config.get("omnivoice_whisper", False)) else 0
     ref_path_val = str(config.get("omnivoice_ref_path", "") or "").strip()
     has_ref = bool(ref_path_val and Path(ref_path_val).is_file())
 
@@ -394,7 +390,7 @@ def get_omnivoice_cache_signature() -> str:
         except OSError:
             ref_stat = ref_path_val
         ref_txt = str(config.get("omnivoice_ref_text", "") or "").strip()
-        return f"ov:clone:{quant}:s{steps}:d{denoise}:w{whisper}:{ref_stat}:{ref_txt}"
+        return f"ov:clone:{quant}:s{steps}:d{denoise}:{ref_stat}:{ref_txt}"
 
     instruct = get_active_omnivoice_design_instruct()
     seed = get_active_omnivoice_seed()
@@ -1688,19 +1684,19 @@ def shutdown_omnivoice_tts() -> None:
     _omnivoice_server.stop()
 
 
-def _resolve_active_synth_params(lang: str) -> Dict[str, Any]:
+def _resolve_active_synth_params(lang: str, *, whisper: bool = False) -> Dict[str, Any]:
     """Resolve active OmniVoice mode (Clone vs Design), reference, instruct, seed, steps & denoise."""
     mode = normalize_omnivoice_mode()
     steps = normalize_omnivoice_steps()
     denoise = bool(config.get("omnivoice_denoise", True))
-    whisper = bool(config.get("omnivoice_whisper", False))
+    use_whisper = bool(whisper)
     lang_label = normalize_omnivoice_lang_label(lang)
 
     ref_raw = str(config.get("omnivoice_ref_path", "") or "").strip()
     if mode == "clone" and ref_raw and Path(ref_raw).is_file():
         ref_wav, ref_digest, ref_text = resolve_omnivoice_ref_text(Path(ref_raw), lang="auto")
-        # Whisper style can optionally be combined on top of a cloned voice
-        instruct = "whisper" if whisper else ""
+        # Whisper style can optionally be combined on top of a cloned voice for inline [whisper] segments
+        instruct = "whisper" if use_whisper else ""
         return {
             "lang_label": lang_label,
             "ref_wav": ref_wav,
@@ -1713,7 +1709,9 @@ def _resolve_active_synth_params(lang: str) -> Dict[str, Any]:
         }
 
     # Voice Design mode (or Clone mode when no reference clip has been chosen yet)
-    instruct = get_active_omnivoice_design_instruct() or "female, young adult, moderate pitch"
+    instruct = get_active_omnivoice_design_instruct(whisper=use_whisper) or (
+        "female, young adult, moderate pitch, whisper" if use_whisper else "female, young adult, moderate pitch"
+    )
     seed = get_active_omnivoice_seed()
     return {
         "lang_label": lang_label,
@@ -1767,18 +1765,49 @@ def synthesize_omnivoice_tts(
                 name="OmniVoice",
             )
         )
-    params = _resolve_active_synth_params(lang)
-    samples, sr = _omnivoice_server.synthesize(
-        text=str(text or "").strip(),
-        lang_label=params["lang_label"],
-        ref_wav=params["ref_wav"],
-        ref_digest=params["ref_digest"],
-        ref_text=params["ref_text"],
-        instruct=params["instruct"],
-        seed=params["seed"],
-        steps=params["steps"],
-        denoise=params["denoise"],
-    )
+    from core.omnivoice_tags import split_omnivoice_whisper_segments
+
+    segments = split_omnivoice_whisper_segments(str(text or "").strip())
+    if not segments:
+        return np.zeros(0, dtype=np.float32), OMNIVOICE_NATIVE_SR
+
+    if len(segments) == 1:
+        seg_text, is_whisp = segments[0]
+        params = _resolve_active_synth_params(lang, whisper=is_whisp)
+        samples, sr = _omnivoice_server.synthesize(
+            text=seg_text,
+            lang_label=params["lang_label"],
+            ref_wav=params["ref_wav"],
+            ref_digest=params["ref_digest"],
+            ref_text=params["ref_text"],
+            instruct=params["instruct"],
+            seed=params["seed"],
+            steps=params["steps"],
+            denoise=params["denoise"],
+        )
+    else:
+        parts: List[np.ndarray] = []
+        sr = OMNIVOICE_NATIVE_SR
+        for idx, (seg_text, is_whisp) in enumerate(segments):
+            params = _resolve_active_synth_params(lang, whisper=is_whisp)
+            seg_samples, seg_sr = _omnivoice_server.synthesize(
+                text=seg_text,
+                lang_label=params["lang_label"],
+                ref_wav=params["ref_wav"],
+                ref_digest=params["ref_digest"],
+                ref_text=params["ref_text"],
+                instruct=params["instruct"],
+                seed=params["seed"],
+                steps=params["steps"],
+                denoise=params["denoise"],
+            )
+            if len(seg_samples) > 0:
+                sr = int(seg_sr)
+                if parts:
+                    parts.append(np.zeros(int(sr * 0.045), dtype=np.float32))
+                parts.append(seg_samples)
+        samples = np.concatenate(parts).astype(np.float32, copy=False) if parts else np.zeros(0, dtype=np.float32)
+
     if abs(speed - 1.0) > 0.04 and len(samples) > 100:
         from scipy.signal import resample
 
@@ -1805,15 +1834,28 @@ def synthesize_omnivoice_tts_stream(
         if len(samples) > 0:
             yield samples, sr
         return
-    params = _resolve_active_synth_params(lang)
-    yield from _omnivoice_server.synthesize_stream(
-        text=str(text or "").strip(),
-        lang_label=params["lang_label"],
-        ref_wav=params["ref_wav"],
-        ref_digest=params["ref_digest"],
-        ref_text=params["ref_text"],
-        instruct=params["instruct"],
-        seed=params["seed"],
-        steps=params["steps"],
-        denoise=params["denoise"],
-    )
+    from core.omnivoice_tags import split_omnivoice_whisper_segments
+
+    segments = split_omnivoice_whisper_segments(str(text or "").strip())
+    if not segments:
+        return
+
+    emitted_any = False
+    for seg_text, is_whisp in segments:
+        if emitted_any:
+            yield np.zeros(int(OMNIVOICE_NATIVE_SR * 0.045), dtype=np.float32), OMNIVOICE_NATIVE_SR
+        params = _resolve_active_synth_params(lang, whisper=is_whisp)
+        for chunk, sr in _omnivoice_server.synthesize_stream(
+            text=seg_text,
+            lang_label=params["lang_label"],
+            ref_wav=params["ref_wav"],
+            ref_digest=params["ref_digest"],
+            ref_text=params["ref_text"],
+            instruct=params["instruct"],
+            seed=params["seed"],
+            steps=params["steps"],
+            denoise=params["denoise"],
+        ):
+            if len(chunk) > 0:
+                emitted_any = True
+                yield chunk, sr

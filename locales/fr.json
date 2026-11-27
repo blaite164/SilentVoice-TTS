@@ -1469,5 +1469,6 @@
   "rc.dlg.hotkey_title_cmd": "Raccourci pour \\{cmd}",
   "rc.row.hotkey_bound_tip": "Raccourci : {hk} (appuyez pendant la saisie pour insérer)",
   "rc.row.hotkey_change_tip": "Modifier le raccourci ({hk})",
-  "rc.row.hotkey_add_tip": "Attribuer un raccourci d’insertion rapide"
+  "rc.row.hotkey_add_tip": "Attribuer un raccourci d’insertion rapide",
+  "rc.dlg.whisper_info": "🤫 Mode chuchotement intégré d’OmniVoice. Insérez-le une fois pour chuchoter la suite ; une seconde fois pour revenir à la voix normale."
 }

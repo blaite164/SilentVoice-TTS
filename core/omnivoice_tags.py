@@ -248,8 +248,46 @@ OMNIVOICE_REACTION_TAGS: Tuple[OmniVoiceTagSpec, ...] = (
     ),
 )
 
-_BUILTIN_BY_ID: Dict[str, OmniVoiceTagSpec] = {s.id: s for s in OMNIVOICE_REACTION_TAGS}
-_BUILTIN_BY_TAG: Dict[str, OmniVoiceTagSpec] = {s.tag.lower(): s for s in OMNIVOICE_REACTION_TAGS}
+OMNIVOICE_WHISPER_ID = "rc_whisper"
+OMNIVOICE_WHISPER_TAG = "[whisper]"
+
+# Вбудований перемикач шепоту OmniVoice (з’являється у списку лише коли активний OmniVoice)
+OMNIVOICE_WHISPER_SPEC = OmniVoiceTagSpec(
+    id=OMNIVOICE_WHISPER_ID,
+    tag=OMNIVOICE_WHISPER_TAG,
+    omnivoice_tag=OMNIVOICE_WHISPER_TAG,
+    emoji="🤫",
+    primary_cmds={
+        "uk": "шепіт",
+        "ru": "шёпот",
+        "en": "whisper",
+        "de": "flüster",
+        "es": "susurro",
+        "fr": "chuchot",
+        "pl": "szept",
+    },
+    descriptions={
+        "uk": "Шепіт для частини фрази (повторно — звичайний голос)",
+        "ru": "Шёпот для части фразы (повторно — обычный голос)",
+        "en": "Whisper part of phrase (repeat for normal voice)",
+        "de": "Flüstern für Satzteil (erneut — normale Stimme)",
+        "es": "Susurro para parte de la frase (repetir — voz normal)",
+        "fr": "Chuchotement pour une partie (répéter — voix normale)",
+        "pl": "Szept dla fragmentu zdania (ponownie — zwykły głos)",
+    },
+    aliases=(
+        "шепіт", "шепот", "шёпот", "шіп", "тихо", "шш", "тсс",
+        "whisper", "whisp", "shh", "quiet",
+        "flüster", "fluester", "leise", "pst",
+        "susurro", "sus",
+        "chuchot", "chut",
+        "szept", "cicho", "cii",
+    ),
+)
+
+_ALL_BUILTIN_SPECS: Tuple[OmniVoiceTagSpec, ...] = OMNIVOICE_REACTION_TAGS + (OMNIVOICE_WHISPER_SPEC,)
+_BUILTIN_BY_ID: Dict[str, OmniVoiceTagSpec] = {s.id: s for s in _ALL_BUILTIN_SPECS}
+_BUILTIN_BY_TAG: Dict[str, OmniVoiceTagSpec] = {s.tag.lower(): s for s in _ALL_BUILTIN_SPECS}
 
 # Локалізовані списки швидких команд для кожної мови (щоб у редакторі та при швидкому друку
 # одразу були природні варіанти на кшталт «хаха, ахаха, ахах, хах»)
@@ -326,6 +364,15 @@ _BUILTIN_LOCALIZED_ALIASES: Dict[str, Dict[str, Tuple[str, ...]]] = {
         "fr": ("hmph", "pff"),
         "pl": ("hmf", "pff"),
     },
+    OMNIVOICE_WHISPER_ID: {
+        "uk": ("шепіт", "шепот", "шіп", "тихо", "шш"),
+        "ru": ("шёпот", "шепот", "тихо", "тсс"),
+        "en": ("whisper", "whisp", "shh", "quiet"),
+        "de": ("flüster", "fluester", "leise", "pst"),
+        "es": ("susurro", "sus", "shh"),
+        "fr": ("chuchot", "chut"),
+        "pl": ("szept", "cicho", "cii"),
+    },
 }
 
 # Старі первинні назви для плавної міграції наявних config.json при зміні мови
@@ -358,6 +405,7 @@ _TAG_TO_EMOJI.update(
         "[question-oh]": "🤔",
         "[question-ei]": "🤨",
         "[question-yi]": "🤨",
+        OMNIVOICE_WHISPER_TAG: "🤫",
     }
 )
 
@@ -374,10 +422,12 @@ _ACTIVE_SLASH_RE = re.compile(
     re.DOTALL,
 )
 
+_ALL_STRIPPABLE_TAGS: Tuple[str, ...] = OMNIVOICE_ALL_OFFICIAL_TAGS + (OMNIVOICE_WHISPER_TAG,)
 _ALL_OFFICIAL_TAGS_RE = re.compile(
-    "|".join(re.escape(t) for t in sorted(OMNIVOICE_ALL_OFFICIAL_TAGS, key=len, reverse=True)),
+    "|".join(re.escape(t) for t in sorted(_ALL_STRIPPABLE_TAGS, key=len, reverse=True)),
     re.IGNORECASE,
 )
+_WHISPER_TAG_RE = re.compile(re.escape(OMNIVOICE_WHISPER_TAG), re.IGNORECASE)
 
 _SLASH_TOKEN_RE = re.compile(r"(?<!\S)[/\\|]([^\s/\\|\[\],.!?;:]+)")
 
@@ -418,13 +468,51 @@ def get_localized_builtin_aliases(spec_id: str, ui_lang: str = "uk") -> List[str
     return []
 
 
+def is_whisper_reaction_item(item: Dict[str, Any]) -> bool:
+    """Повертає True, якщо це вбудована команда перемикання шепоту OmniVoice (`[whisper]`)."""
+    cid = str(item.get("id") or "").strip()
+    ov_tag = str(item.get("omnivoice_tag") or "").strip().lower()
+    return cid == OMNIVOICE_WHISPER_ID or ov_tag == OMNIVOICE_WHISPER_TAG
+
+
+def is_omnivoice_whisper_command_visible(cfg_data: Optional[Dict[str, Any]]) -> bool:
+    """Команда шепоту показується у списку та підказці лише коли увімкнено OmniVoice та його інтеграцію."""
+    if not isinstance(cfg_data, dict):
+        return False
+    return (
+        bool(cfg_data.get("reaction_omnivoice_enabled", True))
+        and str(cfg_data.get("active_engine", "") or "").strip() == "omnivoice"
+    )
+
+
+def build_default_whisper_command(ui_lang: str = "uk") -> Dict[str, Any]:
+    """Повертає локалізований dict-запис команди шепоту OmniVoice."""
+    lang = str(ui_lang or "uk").strip().lower()
+    if lang == "ua":
+        lang = "uk"
+    loc_aliases = get_localized_builtin_aliases(OMNIVOICE_WHISPER_ID, lang)
+    cmd = loc_aliases[0] if loc_aliases else (OMNIVOICE_WHISPER_SPEC.primary_cmds.get(lang) or "whisper")
+    desc = OMNIVOICE_WHISPER_SPEC.descriptions.get(lang) or OMNIVOICE_WHISPER_SPEC.descriptions.get("en") or ""
+    return {
+        "id": OMNIVOICE_WHISPER_ID,
+        "command": cmd,
+        "aliases": loc_aliases or [cmd],
+        "display": OMNIVOICE_WHISPER_SPEC.emoji,
+        "description": desc,
+        "audio_file": "",
+        "omnivoice_tag": OMNIVOICE_WHISPER_TAG,
+        "hotkey": "",
+        "enabled": True,
+    }
+
+
 def get_default_reaction_commands(ui_lang: str = "uk") -> List[Dict[str, Any]]:
-    """Повертає стандартний список із 8 вбудованих реакцій для збереження в config.json."""
+    """Повертає стандартний список вбудованих реакцій (8 реакцій + шепіт OmniVoice) для config.json."""
     lang = str(ui_lang or "uk").strip().lower()
     if lang == "ua":
         lang = "uk"
     items: List[Dict[str, Any]] = []
-    for spec in OMNIVOICE_REACTION_TAGS:
+    for spec in _ALL_BUILTIN_SPECS:
         loc_aliases = get_localized_builtin_aliases(spec.id, lang)
         cmd = loc_aliases[0] if loc_aliases else (spec.primary_cmds.get(lang) or spec.primary_cmds.get("en") or spec.aliases[0])
         desc = spec.descriptions.get(lang) or spec.descriptions.get("en") or ""
@@ -640,7 +728,10 @@ def build_active_reaction_specs(
         spec = item_to_reaction_spec(item, ui_lang=eff_lang, base_dir=base_dir)
         if spec is None:
             continue
-        if spec.audio_file:
+        if is_whisper_reaction_item(item):
+            if ov_enabled and eff_engine == "omnivoice":
+                active.append(spec)
+        elif spec.audio_file:
             active.append(spec)
         elif ov_enabled and spec.omnivoice_tag and eff_engine == "omnivoice":
             active.append(spec)
@@ -825,7 +916,7 @@ def backspace_trailing_omnivoice_tag(
         for spec in specs:
             if spec.tag:
                 candidates.append(spec.tag.lower())
-    for tag in OMNIVOICE_ALL_OFFICIAL_TAGS:
+    for tag in _ALL_STRIPPABLE_TAGS:
         if tag not in candidates:
             candidates.append(tag)
     candidates.sort(key=len, reverse=True)
@@ -861,7 +952,7 @@ def strip_omnivoice_tags(text: str, *, extra_tokens: Optional[Sequence[str]] = N
     if not text or "[" not in text:
         return text
     if extra_tokens:
-        all_toks = list(OMNIVOICE_ALL_OFFICIAL_TAGS) + [t for t in extra_tokens if t]
+        all_toks = list(_ALL_STRIPPABLE_TAGS) + [t for t in extra_tokens if t]
         pat = re.compile("|".join(re.escape(t) for t in sorted(set(all_toks), key=len, reverse=True)), re.IGNORECASE)
         cleaned = pat.sub("", text)
     else:
@@ -949,3 +1040,65 @@ def split_text_for_reaction_playback(
             segments.append(("text", seg_txt, ""))
 
     return segments
+
+
+def strip_whisper_tags(text: str) -> str:
+    """Видаляє маркери `[whisper]` із тексту (наприклад, для чистих субтитрів OBS)."""
+    if not text or "[" not in text:
+        return text
+    cleaned = _WHISPER_TAG_RE.sub("", text)
+    cleaned = re.sub(r"\s+([,.!?;:])", r"\1", cleaned)
+    cleaned = re.sub(r"\s{2,}", " ", cleaned).strip()
+    return cleaned
+
+
+def split_omnivoice_whisper_segments(text: str) -> List[Tuple[str, bool]]:
+    """
+    Розбиває речення на послідовні сегменти `(segment_text, is_whisper)` за маркером `[whisper]`.
+    Кожна поява `[whisper]` перемикає режим шепоту (увімк ↔ вимк), дозволяючи шепотіти
+    окрему частину фрази або всю фразу з певного місця до кінця.
+    """
+    raw = str(text or "").strip()
+    if not raw:
+        return []
+    if "[" not in raw or not _WHISPER_TAG_RE.search(raw):
+        return [(raw, False)]
+
+    parts = _WHISPER_TAG_RE.split(raw)
+    out: List[Tuple[str, bool]] = []
+    in_whisper = False
+    for idx, part in enumerate(parts):
+        seg = re.sub(r"\s{2,}", " ", part).strip()
+        if seg and re.search(r"[\w\[]", seg):
+            if out and out[-1][1] == in_whisper:
+                out[-1] = (f"{out[-1][0]} {seg}", in_whisper)
+            else:
+                out.append((seg, in_whisper))
+        if idx < len(parts) - 1:
+            in_whisper = not in_whisper
+    return out
+
+
+def propagate_whisper_across_chunks(chunks: Sequence[str]) -> List[str]:
+    """
+    Переносить активний стан `[whisper]` через межі речень після `split_into_sentences_punct`,
+    щоб наприклад `"Привіт! [whisper] Тихо. Тут ворог. [whisper] Пішли!"` озвучило пошепки обидва середні речення.
+    """
+    out: List[str] = []
+    in_whisper = False
+    for ch in chunks:
+        seg = str(ch or "").strip()
+        if not seg:
+            continue
+        toggles = len(_WHISPER_TAG_RE.findall(seg))
+        if in_whisper:
+            if _WHISPER_TAG_RE.match(seg):
+                # Провідний `[whisper]` на початку речення скасовує успадкований шепіт
+                seg = _WHISPER_TAG_RE.sub("", seg, count=1).strip()
+            else:
+                seg = f"{OMNIVOICE_WHISPER_TAG} {seg}"
+        if toggles % 2 == 1:
+            in_whisper = not in_whisper
+        if seg:
+            out.append(seg)
+    return out

@@ -3348,7 +3348,9 @@ class TTSEngineManager(QObject):
     ) -> None:
         """Queue audio first, then broadcast OBS subtitles offset by real PortAudio buffer latency."""
         def _on_queued(lat_ms: float) -> None:
-            clean_sub = strip_plus_stress_marks(subtitle_text)
+            from core.omnivoice_tags import strip_whisper_tags
+
+            clean_sub = strip_whisper_tags(strip_plus_stress_marks(subtitle_text))
             if not clean_sub:
                 return
             delays = compute_speech_char_delays(
@@ -3704,6 +3706,10 @@ class TTSEngineManager(QObject):
                                 if bool(config.get("split_sentences_enabled", True))
                                 else [seg_text]
                             )
+                            if eff_eng_id == "omnivoice" and bool(config.get("reaction_omnivoice_enabled", True)):
+                                from core.omnivoice_tags import propagate_whisper_across_chunks
+
+                                sub_chunks = propagate_whisper_across_chunks(sub_chunks)
                             for sc in sub_chunks:
                                 if self._cancel_batch or not self._running:
                                     break
@@ -3738,11 +3744,17 @@ class TTSEngineManager(QObject):
                     text = correct_text_with_ai(text)
                     self._last_corrected_pair = (raw_text, text)
 
+                if eff_eng_id == "omnivoice" and bool(config.get("reaction_omnivoice_enabled", True)) and active_rc_specs:
+                    text = expand_omnivoice_tags(text, specs=active_rc_specs, ui_lang=ui_lang_cur)
                 chunks = (
                     split_into_sentences_punct(text)
                     if bool(config.get("split_sentences_enabled", True))
                     else [text]
                 )
+                if eff_eng_id == "omnivoice" and bool(config.get("reaction_omnivoice_enabled", True)):
+                    from core.omnivoice_tags import propagate_whisper_across_chunks
+
+                    chunks = propagate_whisper_across_chunks(chunks)
                 if len(chunks) > 1:
                     prefetch_pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
                     try:

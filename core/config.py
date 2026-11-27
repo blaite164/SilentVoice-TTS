@@ -234,7 +234,6 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "omnivoice_steps": 16,
     "omnivoice_mode": "clone",
     "omnivoice_denoise": True,
-    "omnivoice_whisper": False,
     "omnivoice_design_gender": "female",
     "omnivoice_design_age": "young adult",
     "omnivoice_design_pitch": "moderate pitch",
@@ -342,7 +341,6 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "hotkey_toggle_game_mode": "Ctrl+Shift+G",
     "hotkey_stop_chat_tts": "",
     "hotkey_toggle_chat_tts": "",
-    "hotkey_toggle_omnivoice_whisper": "",
     "sound_feedback": True,
     "cancel_sound_enabled": True,
     "sound_feedback_volume": 100,
@@ -386,6 +384,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "reaction_picker_style": "emoji_dock",
     "reaction_omnivoice_enabled": True,
     "reaction_commands": None,
+    "reaction_whisper_seeded": False,
     "recent_phrases": [],
 }
 

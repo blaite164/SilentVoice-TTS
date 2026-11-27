@@ -1469,5 +1469,6 @@
   "rc.dlg.hotkey_title_cmd": "Keybind for \\{cmd}",
   "rc.row.hotkey_bound_tip": "Keybind: {hk} (press while typing to insert)",
   "rc.row.hotkey_change_tip": "Change keybind ({hk})",
-  "rc.row.hotkey_add_tip": "Assign keybind for quick text insertion"
+  "rc.row.hotkey_add_tip": "Assign keybind for quick text insertion",
+  "rc.dlg.whisper_info": "🤫 Built-in OmniVoice whisper mode. Insert once to whisper the following text; insert again to return to normal voice."
 }

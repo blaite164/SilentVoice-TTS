@@ -35,8 +35,11 @@ from PySide6.QtWidgets import (
 from core.config import BASE_DIR, BUNDLE_DIR, REACTION_AUDIO_DIR, config
 from core.i18n import get_ui_language, tr
 from core.omnivoice_tags import (
+    build_default_whisper_command,
     get_default_reaction_commands,
+    is_omnivoice_whisper_command_visible,
     is_reaction_item_playable,
+    is_whisper_reaction_item,
     load_reaction_command_items,
     parse_reaction_command_aliases,
     resolve_reaction_audio_path,
@@ -346,13 +349,23 @@ class ReactionCommandDialog(QDialog):
         self.display_preview_lbl.setText(tr("rc.dlg.in_text", "У тексті: {shown}", shown=shown))
 
     def _refresh_audio_status(self) -> None:
-        resolved = resolve_reaction_audio_path(self._data, base_dir=BASE_DIR)
+        is_whisper = is_whisper_reaction_item(self._data)
+        resolved = "" if is_whisper else resolve_reaction_audio_path(self._data, base_dir=BASE_DIR)
         has_file = bool(resolved)
+        self.btn_pick_file.setVisible(not is_whisper)
         self.btn_preview_file.setVisible(has_file)
         self.btn_clear_file.setVisible(has_file)
         ov_tag = str(self._data.get("omnivoice_tag") or "").strip()
 
-        if has_file:
+        if is_whisper:
+            self.audio_status_lbl.setText(
+                tr(
+                    "rc.dlg.whisper_info",
+                    "🤫 Вбудований режим шепоту OmniVoice. Вставте в текст 1 раз — фраза далі звучатиме пошепки; вставте вдруге — повернеться звичайний голос.",
+                )
+            )
+            self.audio_status_lbl.setStyleSheet("border: none; background: transparent; color: #C4B5FD; font-size: 12px;")
+        elif has_file:
             self.audio_status_lbl.setText(
                 tr("rc.dlg.file_attached", "✅ Файл: <b>{name}</b> (працює з будь-яким TTS)", name=Path(resolved).name)
             )
@@ -590,7 +603,17 @@ class ReactionCommandsCard(QFrame):
         lang = self._ui_lang()
         if config.get("reaction_commands", None) is None:
             config.set("reaction_commands", get_default_reaction_commands(lang))
+            config.set("reaction_whisper_seeded", True)
         else:
+            items = load_reaction_command_items(config.data, lang)
+            changed = False
+            if not bool(config.get("reaction_whisper_seeded", False)):
+                if not any(is_whisper_reaction_item(it) for it in items):
+                    items.append(build_default_whisper_command(lang))
+                    changed = True
+                config.set("reaction_whisper_seeded", True)
+            if changed:
+                config.set("reaction_commands", items)
             synced = sync_default_reaction_commands_for_lang(config.data, lang)
             if synced is not None:
                 config.set("reaction_commands", synced)
@@ -750,6 +773,7 @@ class ReactionCommandsCard(QFrame):
     def rebuild_list(self) -> None:
         items = self._get_items()
         ov_enabled = bool(config.get("reaction_omnivoice_enabled", True))
+        whisper_visible = is_omnivoice_whisper_command_visible(config.data)
         self.omnivoice_chk.blockSignals(True)
         self.omnivoice_chk.setChecked(ov_enabled)
         self.omnivoice_chk.blockSignals(False)
@@ -758,6 +782,9 @@ class ReactionCommandsCard(QFrame):
         active_count = 0
 
         for it in items:
+            is_whisper = is_whisper_reaction_item(it)
+            if is_whisper and not whisper_visible:
+                continue
             cid = str(it.get("id") or "")
             cmd = str(it.get("command") or "").strip()
             disp = str(it.get("display") or "").strip()
@@ -892,22 +919,23 @@ class ReactionCommandsCard(QFrame):
                 play_btn.clicked.connect(lambda _c=False, af=resolved_audio: tts_manager.play_sample_preview(af, monitor_only=True))
                 r_lay.addWidget(play_btn)
 
-            file_btn = QPushButton("🎵")
-            file_btn.setFixedSize(26, 26)
-            file_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            file_btn.setToolTip(
-                tr("rc.row.change_file_tip", "Змінити аудіофайл")
-                if has_file
-                else tr("rc.row.add_file_tip", "Додати аудіофайл (.wav, .mp3, .ogg, .flac)")
-            )
-            file_btn.setStyleSheet(
-                "QPushButton { padding: 0px; font-size: 12px; background: #2D354E; border: 1px solid #635BFF; border-radius: 6px; }"
-                "QPushButton:hover { background: #3B4466; border-color: #A78BFA; }"
-                if not can_use
-                else "QPushButton { padding: 0px; font-size: 12px; border-radius: 6px; }"
-            )
-            file_btn.clicked.connect(lambda _c=False, _id=cid: self._on_quick_attach_file(_id))
-            r_lay.addWidget(file_btn)
+            if not is_whisper:
+                file_btn = QPushButton("🎵")
+                file_btn.setFixedSize(26, 26)
+                file_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+                file_btn.setToolTip(
+                    tr("rc.row.change_file_tip", "Змінити аудіофайл")
+                    if has_file
+                    else tr("rc.row.add_file_tip", "Додати аудіофайл (.wav, .mp3, .ogg, .flac)")
+                )
+                file_btn.setStyleSheet(
+                    "QPushButton { padding: 0px; font-size: 12px; background: #2D354E; border: 1px solid #635BFF; border-radius: 6px; }"
+                    "QPushButton:hover { background: #3B4466; border-color: #A78BFA; }"
+                    if not can_use
+                    else "QPushButton { padding: 0px; font-size: 12px; border-radius: 6px; }"
+                )
+                file_btn.clicked.connect(lambda _c=False, _id=cid: self._on_quick_attach_file(_id))
+                r_lay.addWidget(file_btn)
 
             hk_row_btn = QPushButton("⌨")
             hk_row_btn.setFixedSize(26, 26)
@@ -950,7 +978,7 @@ class ReactionCommandsCard(QFrame):
             self.cmd_list.addItem(li)
             self.cmd_list.setItemWidget(li, row_w)
 
-        vis_rows = max(1, min(6, len(items)))
+        vis_rows = max(1, min(6, self.cmd_list.count()))
         self.cmd_list.setFixedHeight(vis_rows * 50 + 12)
 
         if active_count > 0:

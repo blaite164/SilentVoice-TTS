@@ -194,25 +194,24 @@ class OmniVoiceIntegrationTests(unittest.TestCase):
 
     def test_audio_cache_key_tracks_omnivoice_settings(self) -> None:
         old_steps = config.get("omnivoice_steps", 16)
-        old_whisper = config.get("omnivoice_whisper", False)
         old_mode = config.get("omnivoice_mode", "clone")
+        old_seed = config.get("omnivoice_design_seed", 42)
         try:
             config.set("omnivoice_mode", "design")
             config.set("omnivoice_steps", 16)
-            config.set("omnivoice_whisper", False)
+            config.set("omnivoice_design_seed", 42)
             k1 = tts_manager._build_audio_cache_key("Привіт", "omnivoice", "omnivoice_uk")
 
             config.set("omnivoice_steps", 32)
             k2 = tts_manager._build_audio_cache_key("Привіт", "omnivoice", "omnivoice_uk")
             self.assertNotEqual(k1, k2)
 
-            config.set("omnivoice_whisper", True)
-            k3 = tts_manager._build_audio_cache_key("Привіт", "omnivoice", "omnivoice_uk")
+            k3 = tts_manager._build_audio_cache_key("[whisper] Привіт", "omnivoice", "omnivoice_uk")
             self.assertNotEqual(k2, k3)
         finally:
             config.set("omnivoice_steps", old_steps)
-            config.set("omnivoice_whisper", old_whisper)
             config.set("omnivoice_mode", old_mode)
+            config.set("omnivoice_design_seed", old_seed)
 
     def test_omnivoice_settings_dialog_roundtrip(self) -> None:
         from PySide6.QtWidgets import QApplication
@@ -223,7 +222,6 @@ class OmniVoiceIntegrationTests(unittest.TestCase):
         keys = (
             "omnivoice_mode",
             "omnivoice_steps",
-            "omnivoice_whisper",
             "omnivoice_denoise",
             "omnivoice_design_gender",
             "omnivoice_design_age",
@@ -234,8 +232,8 @@ class OmniVoiceIntegrationTests(unittest.TestCase):
         old_vals = {k: config.get(k) for k in keys}
         try:
             dlg = OmniVoiceSettingsDialog()
+            self.assertFalse(hasattr(dlg, "whisper_chk"))
             dlg.radio_design.setChecked(True)
-            dlg.whisper_chk.setChecked(True)
             dlg.denoise_chk.setChecked(False)
             dlg.seed_spin.setValue(777)
             idx32 = dlg.steps_combo.findData(32)
@@ -245,33 +243,48 @@ class OmniVoiceIntegrationTests(unittest.TestCase):
 
             self.assertEqual(config.get("omnivoice_mode"), "design")
             self.assertEqual(config.get("omnivoice_steps"), 32)
-            self.assertTrue(config.get("omnivoice_whisper"))
             self.assertFalse(config.get("omnivoice_denoise"))
             self.assertEqual(config.get("omnivoice_design_seed"), 777)
         finally:
             for k, v in old_vals.items():
                 config.set(k, v)
 
-    def test_omnivoice_whisper_hotkey_only_active_with_omnivoice(self) -> None:
+    def test_omnivoice_global_whisper_hotkey_removed_and_inline_whisper_synthesizes(self) -> None:
+        import numpy as np
+        from core.omnivoice_tts import _omnivoice_server, synthesize_omnivoice_tts
         from core.settings_transfer import CATEGORY_KEYS
         from core.win_api import KeyboardHookManager
 
-        self.assertIn("hotkey_toggle_omnivoice_whisper", CATEGORY_KEYS["hotkeys"])
+        self.assertNotIn("hotkey_toggle_omnivoice_whisper", CATEGORY_KEYS["hotkeys"])
+        self.assertNotIn("omnivoice_whisper", CATEGORY_KEYS["voices"])
 
         hook = KeyboardHookManager()
-        hook.update_from_config({
-            "active_engine": "piper",
-            "hotkey_toggle_omnivoice_whisper": "Ctrl+Shift+W",
-        })
-        self.assertFalse(hook._omnivoice_active)
-        self.assertIsNotNone(hook._hk_toggle_omnivoice_whisper)
+        self.assertFalse(hasattr(hook, "toggle_omnivoice_whisper_triggered"))
+        self.assertFalse(hasattr(hook, "_hk_toggle_omnivoice_whisper"))
 
-        hook.update_from_config({
-            "active_engine": "omnivoice",
-            "hotkey_toggle_omnivoice_whisper": "Ctrl+Shift+W",
-        })
-        self.assertTrue(hook._omnivoice_active)
-        self.assertIsNotNone(hook._hk_toggle_omnivoice_whisper)
+        calls: list[tuple[str, str]] = []
+
+        def _fake_synth(*, text: str, instruct: str = "", **_kw):
+            calls.append((text, instruct))
+            return np.ones(240, dtype=np.float32) * 0.1, 24000
+
+        with mock.patch("core.omnivoice_tts.is_omnivoice_installed", return_value=True), mock.patch.object(
+            _omnivoice_server, "synthesize", side_effect=_fake_synth
+        ), mock.patch("core.omnivoice_tts.normalize_omnivoice_mode", return_value="design"), mock.patch(
+            "core.omnivoice_tts.get_active_omnivoice_design_instruct",
+            side_effect=lambda *, whisper=False: "female, whisper" if whisper else "female",
+        ):
+            audio, sr = synthesize_omnivoice_tts("Привіт [whisper] це секрет [whisper] бувай", lang="uk")
+            self.assertEqual(sr, 24000)
+            self.assertGreater(len(audio), 720)
+            self.assertEqual(
+                calls,
+                [
+                    ("Привіт", "female"),
+                    ("це секрет", "female, whisper"),
+                    ("бувай", "female"),
+                ],
+            )
 
     def test_omnivoice_runtime_candidate_urls_include_gitlab_mirror(self) -> None:
         from core.tts_manager import tts_manager

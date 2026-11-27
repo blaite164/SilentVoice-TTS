@@ -1680,10 +1680,6 @@ class OmniVoiceSettingsDialog(QDialog):
 
         flags_row = QHBoxLayout()
         flags_row.setSpacing(16)
-        self.whisper_chk = QCheckBox(tr("omnivoice.flag.whisper", "🤫 Шепіт (whisper)"))
-        self.whisper_chk.setChecked(bool(config.get("omnivoice_whisper", False)))
-        flags_row.addWidget(self.whisper_chk)
-
         self.denoise_chk = QCheckBox(tr("omnivoice.flag.denoise", "🔇 Очищення шуму (denoise)"))
         self.denoise_chk.setChecked(bool(config.get("omnivoice_denoise", True)))
         flags_row.addWidget(self.denoise_chk)
@@ -1856,7 +1852,6 @@ class OmniVoiceSettingsDialog(QDialog):
             return
         ref_txt = self.ref_text_edit.toPlainText().strip()
         steps = int(self.steps_combo.currentData() or 16)
-        whisper = bool(self.whisper_chk.isChecked())
         denoise = bool(self.denoise_chk.isChecked())
         gender = str(self.gender_combo.currentData() or "")
         age = str(self.age_combo.currentData() or "")
@@ -1907,7 +1902,7 @@ class OmniVoiceSettingsDialog(QDialog):
                         eff_ref_txt = ref_txt
                     else:
                         ref_wav, ref_digest, eff_ref_txt = resolve_omnivoice_ref_text(Path(ref_path), lang="auto")
-                    instruct = "whisper" if whisper else ""
+                    instruct = ""
                 else:
                     instruct = (
                         build_omnivoice_instruct(
@@ -1915,7 +1910,6 @@ class OmniVoiceSettingsDialog(QDialog):
                             age=age,
                             pitch=pitch,
                             accent=accent,
-                            whisper=whisper,
                         )
                         or "female, young adult, moderate pitch"
                     )
@@ -1985,7 +1979,6 @@ class OmniVoiceSettingsDialog(QDialog):
         config.set("omnivoice_ref_text", ref_txt)
         config.set("omnivoice_ref_text_path", self._ref_path if ref_txt else "")
         config.set("omnivoice_steps", int(self.steps_combo.currentData() or 16))
-        config.set("omnivoice_whisper", bool(self.whisper_chk.isChecked()))
         config.set("omnivoice_denoise", bool(self.denoise_chk.isChecked()))
         config.set("omnivoice_design_gender", str(self.gender_combo.currentData() or ""))
         config.set("omnivoice_design_age", str(self.age_combo.currentData() or ""))

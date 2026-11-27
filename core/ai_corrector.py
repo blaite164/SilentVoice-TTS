@@ -737,13 +737,14 @@ def _extract_protected_reaction_spans(text: str) -> tuple[List[str], List[str]]:
     """
     from core.omnivoice_tags import (
         OMNIVOICE_ALL_OFFICIAL_TAGS,
+        OMNIVOICE_WHISPER_TAG,
         build_all_configured_reaction_specs,
         expand_omnivoice_tags,
     )
 
     specs = build_all_configured_reaction_specs(config.data)
     expanded = expand_omnivoice_tags(text, specs=specs)
-    known_tokens = list(OMNIVOICE_ALL_OFFICIAL_TAGS) + [s.tag for s in specs if s.tag]
+    known_tokens = list(OMNIVOICE_ALL_OFFICIAL_TAGS) + [OMNIVOICE_WHISPER_TAG] + [s.tag for s in specs if s.tag]
     if not known_tokens or "[" not in expanded:
         return [text], []
 

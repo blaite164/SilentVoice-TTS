@@ -289,6 +289,90 @@ class OmniVoiceTagsLogicTests(unittest.TestCase):
                 self.assertEqual(out3, "[laughter]")
                 mock_skip.assert_not_called()
 
+    def test_inline_whisper_command_omnivoice_only_visibility_and_segments(self) -> None:
+        from PySide6.QtWidgets import QApplication
+        from core.config import config
+        from core.omnivoice_tags import (
+            OMNIVOICE_WHISPER_ID,
+            OMNIVOICE_WHISPER_TAG,
+            build_default_whisper_command,
+            is_omnivoice_whisper_command_visible,
+            propagate_whisper_across_chunks,
+            split_omnivoice_whisper_segments,
+            strip_whisper_tags,
+        )
+        from ui.reaction_commands import ReactionCommandsCard
+
+        # Локалізація шепоту для всіх мов
+        self.assertEqual(build_default_whisper_command("uk")["command"], "шепіт")
+        self.assertEqual(build_default_whisper_command("ru")["command"], "шёпот")
+        self.assertEqual(build_default_whisper_command("en")["command"], "whisper")
+        self.assertEqual(build_default_whisper_command("de")["command"], "flüster")
+        self.assertEqual(build_default_whisper_command("es")["command"], "susurro")
+        self.assertEqual(build_default_whisper_command("fr")["command"], "chuchot")
+        self.assertEqual(build_default_whisper_command("pl")["command"], "szept")
+
+        # Розбиття на сегменти шепоту (увімк до кінця / увімк+вимк посередині / перенесення через речення)
+        self.assertEqual(
+            split_omnivoice_whisper_segments("Привіт [whisper] це секрет"),
+            [("Привіт", False), ("це секрет", True)],
+        )
+        self.assertEqual(
+            split_omnivoice_whisper_segments("Привіт [whisper] тихо, там ворог [whisper] пішли!"),
+            [("Привіт", False), ("тихо, там ворог", True), ("пішли!", False)],
+        )
+        self.assertEqual(
+            propagate_whisper_across_chunks(["Привіт!", "[whisper] Тихо.", "Тут ворог.", "[whisper] Пішли!"]),
+            ["Привіт!", "[whisper] Тихо.", "[whisper] Тут ворог.", "Пішли!"],
+        )
+        self.assertEqual(strip_whisper_tags("Привіт [whisper] тихо"), "Привіт тихо")
+        self.assertEqual(format_tags_for_display("Привіт [whisper] тихо"), "Привіт 🤫 тихо")
+        self.assertEqual(backspace_trailing_omnivoice_tag("Привіт [whisper]"), "Привіт ")
+
+        # Видимість у списку та підказці ТІЛЬКИ коли увімкнено OmniVoice
+        base_cmds = get_default_reaction_commands("uk")
+        cfg_ov_on = {
+            "ui_language": "uk",
+            "active_engine": "omnivoice",
+            "reaction_omnivoice_enabled": True,
+            "reaction_commands": base_cmds,
+            "reaction_whisper_seeded": True,
+        }
+        cfg_edge = dict(cfg_ov_on, active_engine="edge_tts")
+        cfg_ov_off = dict(cfg_ov_on, reaction_omnivoice_enabled=False)
+
+        self.assertTrue(is_omnivoice_whisper_command_visible(cfg_ov_on))
+        self.assertFalse(is_omnivoice_whisper_command_visible(cfg_edge))
+        self.assertFalse(is_omnivoice_whisper_command_visible(cfg_ov_off))
+
+        self.assertIn(OMNIVOICE_WHISPER_TAG, [s.tag for s in build_active_reaction_specs(cfg_ov_on)])
+        self.assertNotIn(OMNIVOICE_WHISPER_TAG, [s.tag for s in build_active_reaction_specs(cfg_edge)])
+        self.assertNotIn(OMNIVOICE_WHISPER_TAG, [s.tag for s in build_active_reaction_specs(cfg_ov_off)])
+
+        app = QApplication.instance() or QApplication([])
+        self.assertIsNotNone(app)
+        cur_cfg = dict(cfg_edge)
+        with patch.object(config, "_data", cur_cfg), patch.object(
+            config, "get", side_effect=lambda k, d=None: cur_cfg.get(k, d)
+        ), patch.object(config, "set", side_effect=lambda k, v, auto_save=True: cur_cfg.__setitem__(k, v)):
+            card = ReactionCommandsCard()
+            try:
+                ids_edge = [card.cmd_list.item(i).data(0x0100) for i in range(card.cmd_list.count())]
+                self.assertNotIn(OMNIVOICE_WHISPER_ID, ids_edge)
+
+                cur_cfg["active_engine"] = "omnivoice"
+                card.rebuild_list()
+                ids_ov = [card.cmd_list.item(i).data(0x0100) for i in range(card.cmd_list.count())]
+                self.assertIn(OMNIVOICE_WHISPER_ID, ids_ov)
+
+                cur_cfg["reaction_omnivoice_enabled"] = False
+                card.rebuild_list()
+                ids_off = [card.cmd_list.item(i).data(0x0100) for i in range(card.cmd_list.count())]
+                self.assertNotIn(OMNIVOICE_WHISPER_ID, ids_off)
+            finally:
+                card.close()
+                card.deleteLater()
+
 
 class TypingUndoRedoTests(unittest.TestCase):
     def test_keyboard_hook_undo_redo_ctrl_z_and_ctrl_y(self) -> None:
@@ -542,9 +626,9 @@ class OverlayTagHintPaintTests(unittest.TestCase):
                     self.assertTrue(chk1.isEnabled())
                     self.assertTrue(chk1.isChecked())
 
-                    # Перетягування змінює порядок у конфігу
+                    # Перетягування змінює порядок у конфігу (і зберігає прихований rc_whisper)
                     card._on_order_changed(["rc_b", "rc_a"])
-                    self.assertEqual([x["id"] for x in fake_cfg["reaction_commands"]], ["rc_b", "rc_a"])
+                    self.assertEqual([x["id"] for x in fake_cfg["reaction_commands"]], ["rc_b", "rc_a", "rc_whisper"])
                 finally:
                     card.close()
                     card.deleteLater()

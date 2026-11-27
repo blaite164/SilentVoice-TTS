@@ -1469,5 +1469,6 @@
   "rc.dlg.hotkey_title_cmd": "Atajo para \\{cmd}",
   "rc.row.hotkey_bound_tip": "Atajo: {hk} (pulsa al escribir para insertar)",
   "rc.row.hotkey_change_tip": "Cambiar atajo ({hk})",
-  "rc.row.hotkey_add_tip": "Asignar atajo para insertar rápido en el texto"
+  "rc.row.hotkey_add_tip": "Asignar atajo para insertar rápido en el texto",
+  "rc.dlg.whisper_info": "🤫 Modo susurro integrado de OmniVoice. Insértalo una vez para susurrar el texto siguiente; insértalo otra vez para volver a la voz normal."
 }
