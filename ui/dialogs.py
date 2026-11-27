@@ -1695,7 +1695,8 @@ class OmniVoiceSettingsDialog(QDialog):
                     steps=steps,
                     denoise=denoise,
                 )
-                audio_router.play_preview(samples, sr)
+                gen = audio_router.begin_exclusive_playback()
+                audio_router.play_samples(samples, sr, monitor_only=True, generation=gen)
                 self._test_finished.emit("")
             except Exception as exc:
                 self._test_finished.emit(str(exc))
