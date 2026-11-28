@@ -709,6 +709,7 @@
   "ui_local_api_key_ph": "Enter the key only if the server requires it",
   "ui_local_api_disconnected": "⚪ Start the local server, then click “Refresh models”.",
   "ui_local_api_lmstudio_offline": "⚪ LM Studio is not responding. Open it and turn on Local Server, then click “Refresh models”.",
+  "ui_local_api_lmstudio_disabled": "⚪ AI spellcheck is off. Turn it on and SilentVoice will start the selected LM Studio model automatically.",
   "ui_local_api_lmstudio_offline_dialog": "Could not connect to LM Studio. Make sure the app is running and Local Server is enabled, then try again.",
   "ui_local_api_server_offline": "⚪ The local server is not responding. Start it, then click “Refresh models”.",
   "ui_ollama_model_tip": "Choose a model or paste its name and tag from the Ollama library.",

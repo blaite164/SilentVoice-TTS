@@ -5417,7 +5417,15 @@ class MainWindow(QMainWindow):
             if prov_key == "ollama" and not self._ollama_connections.get(item_id, False):
                 st_text = tr("ui_ollama_disconnected", "⚪ Ollama не підключена — список моделей з’явиться після підключення")
             elif prov_key == "local_api" and not avail_models:
-                if str(item.get("managed_backend", "")).strip() == "lmstudio":
+                if (
+                    str(item.get("managed_backend", "")).strip() == "lmstudio"
+                    and not bool(config.get("ai_spellcheck_enabled", False))
+                ):
+                    st_text = tr(
+                        "ui_local_api_lmstudio_disabled",
+                        "⚪ AI Орфографію вимкнено. Увімкніть її — SilentVoice запустить вибрану модель LM Studio автоматично.",
+                    )
+                elif str(item.get("managed_backend", "")).strip() == "lmstudio":
                     st_text = tr(
                         "ui_local_api_lmstudio_offline",
                         "⚪ LM Studio не відповідає. Відкрийте її та увімкніть Local Server, потім натисніть «Оновити моделі».",
@@ -6084,14 +6092,21 @@ class MainWindow(QMainWindow):
                     or "127.0.0.1:1234" in err_lower
                 )
                 if is_lm_studio:
-                    status_text = tr(
-                        "ui_local_api_lmstudio_offline",
-                        "⚪ LM Studio не відповідає. Відкрийте її та увімкніть Local Server, потім натисніть «Оновити моделі».",
-                    )
-                    dialog_text = tr(
-                        "ui_local_api_lmstudio_offline_dialog",
-                        "Не вдалося з’єднатися з LM Studio. Переконайтеся, що програма запущена й Local Server увімкнений, а потім спробуйте ще раз.",
-                    )
+                    if managed_backend == "lmstudio" and not bool(config.get("ai_spellcheck_enabled", False)):
+                        status_text = tr(
+                            "ui_local_api_lmstudio_disabled",
+                            "⚪ AI Орфографію вимкнено. Увімкніть її — SilentVoice запустить вибрану модель LM Studio автоматично.",
+                        )
+                        dialog_text = ""
+                    else:
+                        status_text = tr(
+                            "ui_local_api_lmstudio_offline",
+                            "⚪ LM Studio не відповідає. Відкрийте її та увімкніть Local Server, потім натисніть «Оновити моделі».",
+                        )
+                        dialog_text = tr(
+                            "ui_local_api_lmstudio_offline_dialog",
+                            "Не вдалося з’єднатися з LM Studio. Переконайтеся, що програма запущена й Local Server увімкнений, а потім спробуйте ще раз.",
+                        )
                 else:
                     status_text = tr(
                         "ui_local_api_server_offline",
@@ -6103,7 +6118,7 @@ class MainWindow(QMainWindow):
                         st_lbl.setText(status_text)
                     except RuntimeError:
                         pass
-                if not silent:
+                if not silent and dialog_text:
                     QMessageBox.information(self, tr("ui_229", "Пошук AI моделей"), dialog_text)
                 return
             if st_lbl is not None:

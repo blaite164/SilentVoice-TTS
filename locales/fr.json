@@ -709,6 +709,7 @@
   "ui_local_api_key_ph": "Saisissez la clé uniquement si le serveur la demande",
   "ui_local_api_disconnected": "⚪ Démarrez le serveur local puis cliquez sur « Actualiser les modèles ».",
   "ui_local_api_lmstudio_offline": "⚪ LM Studio ne répond pas. Ouvrez l’application et activez Local Server, puis cliquez sur « Actualiser les modèles ».",
+  "ui_local_api_lmstudio_disabled": "⚪ La correction IA est désactivée. Activez-la et SilentVoice démarrera automatiquement le modèle LM Studio sélectionné.",
   "ui_local_api_lmstudio_offline_dialog": "Connexion à LM Studio impossible. Vérifiez que l’application est ouverte et que Local Server est activé, puis réessayez.",
   "ui_local_api_server_offline": "⚪ Le serveur local ne répond pas. Démarrez-le puis cliquez sur « Actualiser les modèles ».",
   "ui_ollama_model_tip": "Choisissez un modèle ou collez son nom et son tag depuis la bibliothèque Ollama.",
