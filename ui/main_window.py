@@ -6500,34 +6500,22 @@ class MainWindow(QMainWindow):
         b_lay.setSpacing(8)
 
         b_hdr = WrappingRowLayout(h_spacing=8, v_spacing=6, expand_index=0, expand_min_width=110)
-        b_lbl = QLabel(tr("ui_259", "✍️ Написати та озвучити текст прямо з вікна:"))
+        b_lbl = QLabel(tr("ui_259", "🕘 Історія озвучених фраз:"))
         b_lbl.setProperty("class", "cardHeader")
         b_lbl.setWordWrap(True)
         b_lbl.setMinimumWidth(0)
         b_hdr.addWidget(b_lbl)
-        clear_hist_btn = QPushButton(tr("ui_260", "Очистити історію"))
-        clear_hist_btn.clicked.connect(self._on_clear_history)
-        b_hdr.addWidget(clear_hist_btn)
-        b_lay.addLayout(b_hdr)
-
-        input_row = WrappingRowLayout(h_spacing=8, v_spacing=6, expand_index=0, expand_min_width=140)
-        self.quick_speak_input = QLineEdit()
-        self.quick_speak_input.setMinimumWidth(100)
-        self.quick_speak_input.setPlaceholderText(tr("ui_262", "Введіть будь-яке речення та натисніть Enter..."))
-        self.quick_speak_input.returnPressed.connect(self._on_home_speak_clicked)
-        input_row.addWidget(self.quick_speak_input)
-
-        speak_btn = QPushButton(tr("ui_263", "🔊 Сказати (Enter)"))
-        speak_btn.setProperty("class", "primaryBtn")
-        speak_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        speak_btn.clicked.connect(self._on_home_speak_clicked)
-        input_row.addWidget(speak_btn)
 
         repeat_btn = QPushButton(tr("ui_265", "🔁 Повторити останнє"))
         repeat_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         repeat_btn.clicked.connect(tts_manager.repeat_last)
-        input_row.addWidget(repeat_btn)
-        b_lay.addLayout(input_row)
+        b_hdr.addWidget(repeat_btn)
+
+        clear_hist_btn = QPushButton(tr("ui_260", "Очистити історію"))
+        clear_hist_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        clear_hist_btn.clicked.connect(self._on_clear_history)
+        b_hdr.addWidget(clear_hist_btn)
+        b_lay.addLayout(b_hdr)
 
         self.history_list = QListWidget()
         self.history_list.setMinimumHeight(200)
@@ -6537,6 +6525,8 @@ class MainWindow(QMainWindow):
             "QListWidget::item { padding: 2px 4px; border-radius: 5px; color: #E2E8F0; }"
             "QListWidget::item:hover { background-color: #2E364F; }"
         )
+        self.history_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.history_list.customContextMenuRequested.connect(self._on_history_context_menu)
         self.history_list.itemDoubleClicked.connect(
             lambda item: tts_manager.speak(str(item.data(Qt.ItemDataRole.UserRole) or item.text() or ""))
         )
@@ -6550,13 +6540,49 @@ class MainWindow(QMainWindow):
         self._refresh_history_list()
         return scroll
 
-    def _on_home_speak_clicked(self) -> None:
-        text = self.quick_speak_input.text().strip()
-        if not text:
+    def _on_delete_history_item(self, row_index: int) -> None:
+        recent = list(config.get("recent_phrases", []) or [])
+        if 0 <= row_index < len(recent):
+            recent.pop(row_index)
+            config.set("recent_phrases", recent)
+            self._refresh_history_list()
+
+    def _on_history_context_menu(self, pos: QPoint) -> None:
+        item = self.history_list.itemAt(pos)
+        if item is None:
             return
-        self.quick_speak_input.clear()
-        tts_manager.speak(text)
-        self._refresh_history_list()
+        row_idx = self.history_list.row(item)
+        text_val = str(item.data(Qt.ItemDataRole.UserRole) or item.text() or "").strip()
+        if not text_val:
+            return
+        self.history_list.setCurrentItem(item)
+
+        menu = QMenu(self.history_list)
+        menu.setStyleSheet(
+            "QMenu { background-color: #252A3B; color: #F8FAFC; border: 1px solid #3E4766; border-radius: 8px; padding: 6px; }"
+            "QMenu::item { padding: 7px 16px; border-radius: 6px; }"
+            "QMenu::item:selected { background-color: #635BFF; }"
+            "QMenu::separator { height: 1px; background: #373F59; margin: 4px 6px; }"
+        )
+        act_speak = menu.addAction(tr("ui.history.ctx.speak", "🔊 Сказати"))
+        act_copy = menu.addAction(tr("ui.history.ctx.copy", "📋 Копіювати"))
+        act_fav = menu.addAction(tr("ui.history.save_btn", "⭐ В обране"))
+        menu.addSeparator()
+        act_del = menu.addAction(tr("ui.history.ctx.delete", "🗑 Видалити"))
+
+        chosen = menu.exec(self.history_list.viewport().mapToGlobal(pos))
+        if chosen is None:
+            return
+        if chosen == act_speak:
+            tts_manager.speak(text_val)
+        elif chosen == act_copy:
+            cb = QApplication.clipboard()
+            if cb is not None:
+                cb.setText(text_val)
+        elif chosen == act_fav:
+            self._on_save_history_to_quick_phrases(text_val)
+        elif chosen == act_del:
+            self._on_delete_history_item(row_idx)
 
     def _rebuild_quick_phrases_grid(self) -> None:
         while self.quick_phrases_grid.count():

@@ -899,6 +899,79 @@ class WarmupAndDspOptimizationTests(unittest.TestCase):
             btns_after = win.history_list.itemWidget(win.history_list.item(0)).findChildren(QPushButton)
             self.assertIn("★", btns_after[0].text())
 
+    def test_history_list_context_menu_speak_copy_favorite_delete(self) -> None:
+        from PySide6.QtCore import Qt
+        from PySide6.QtWidgets import QApplication
+        from ui.main_window import MainWindow
+
+        app = QApplication.instance() or QApplication([])
+        win = MainWindow.__new__(MainWindow)
+        win.keyboard_hook = MagicMock()
+        cfg_state = {
+            "quick_phrases": [],
+            "recent_phrases": ["Перша фраза", "Друга фраза"],
+        }
+
+        def _fake_get(k, d=None):
+            return cfg_state.get(k, d)
+
+        def _fake_set(k, v):
+            cfg_state[k] = v
+
+        pick_idx = {"idx": 0}
+
+        class _FakeMenu:
+            def __init__(self, _parent=None) -> None:
+                self._actions: list[str] = []
+
+            def setStyleSheet(self, _css: str) -> None:
+                pass
+
+            def addAction(self, text: str) -> str:
+                self._actions.append(text)
+                return text
+
+            def addSeparator(self) -> None:
+                self._actions.append("---")
+
+            def exec(self, _pt) -> str:
+                return self._actions[pick_idx["idx"]]
+
+        with (
+            patch("ui.main_window.config.get", side_effect=_fake_get),
+            patch("ui.main_window.config.set", side_effect=_fake_set),
+            patch("core.config.ConfigManager.data", new_callable=unittest.mock.PropertyMock, return_value=cfg_state),
+            patch("ui.main_window.tts_manager.speak") as speak_mock,
+            patch("ui.main_window.QMenu", _FakeMenu),
+            patch.object(win, "_on_save_history_to_quick_phrases") as fav_mock,
+        ):
+            page = win._build_page_phrases()
+            self.assertFalse(hasattr(win, "quick_speak_input"))
+            self.assertEqual(win.history_list.contextMenuPolicy(), Qt.ContextMenuPolicy.CustomContextMenu)
+            item0 = win.history_list.item(0)
+            pos = win.history_list.visualItemRect(item0).center()
+
+            # 1) Speak action
+            pick_idx["idx"] = 0
+            win._on_history_context_menu(pos)
+            speak_mock.assert_called_once_with("Перша фраза")
+
+            # 2) Copy action
+            pick_idx["idx"] = 1
+            win._on_history_context_menu(pos)
+            self.assertEqual(app.clipboard().text(), "Перша фраза")
+
+            # 3) Save to favorites action
+            pick_idx["idx"] = 2
+            win._on_history_context_menu(pos)
+            fav_mock.assert_called_once_with("Перша фраза")
+
+            # 4) Delete action (last action after separator)
+            pick_idx["idx"] = -1
+            win._on_history_context_menu(pos)
+            self.assertEqual(cfg_state["recent_phrases"], ["Друга фраза"])
+            self.assertEqual(win.history_list.count(), 1)
+
     def test_hide_from_capture_default_false_and_overlay_ready_indicator_is_oval(self) -> None:
         from PySide6.QtGui import QPainter
         from PySide6.QtWidgets import QApplication
