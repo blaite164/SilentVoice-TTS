@@ -2514,8 +2514,8 @@ class MainWindow(QMainWindow):
 
             if prov_key == "fish_audio":
                 fish_paid = bool(item.get("paid_enabled", False))
-                fish_r = QHBoxLayout()
-                fish_r.setSpacing(8)
+                fish_ref_row = QHBoxLayout()
+                fish_ref_row.setSpacing(8)
 
                 ref_lbl = QLabel(tr("ui_147", "ID голосу:"))
                 ref_lbl.setStyleSheet("color: #CBD5E1; font-size: 13px;")
@@ -2525,7 +2525,7 @@ class MainWindow(QMainWindow):
                     "Необов’язкове поле. Вставте reference_id з fish.audio, якщо хочете використати конкретний голос. Якщо залишити порожнім, використається голос із верхнього списку «Голос».",
                 )
                 ref_lbl.setToolTip(ref_tip)
-                fish_r.addWidget(ref_lbl)
+                fish_ref_row.addWidget(ref_lbl)
 
                 ref_edit = QLineEdit(str(item.get("reference_id", "")))
                 ref_edit.setMinimumWidth(110)
@@ -2534,8 +2534,11 @@ class MainWindow(QMainWindow):
                 ref_edit.textChanged.connect(
                     lambda val, iid=item_id: self._on_online_item_field_changed(iid, "reference_id", val.strip())
                 )
-                fish_r.addWidget(ref_edit, 1)
+                fish_ref_row.addWidget(ref_edit, 1)
+                c_lay.addLayout(fish_ref_row)
 
+                fish_r = QHBoxLayout()
+                fish_r.setSpacing(8)
                 model_lbl = QLabel(tr("ui_150", "Модель:"))
                 model_lbl.setStyleSheet("color: #CBD5E1; font-size: 13px;")
                 model_lbl.setFixedWidth(78)
@@ -2565,7 +2568,7 @@ class MainWindow(QMainWindow):
                         iid, "model", str(cb.currentData() or "s2.1-pro-free")
                     )
                 )
-                fish_r.addWidget(model_combo)
+                fish_r.addWidget(model_combo, 1)
 
                 fetch_btn = QPushButton(tr("ui_139", "🔄 Оновити голоси"))
                 fetch_btn.setStyleSheet(_compact_inline_btn_css)
@@ -2651,7 +2654,7 @@ class MainWindow(QMainWindow):
                     self._sync_tts_page_selectors()
 
                 g_mod_combo.currentIndexChanged.connect(_on_g_model_changed)
-                g_row.addWidget(g_mod_combo)
+                g_row.addWidget(g_mod_combo, 1)
 
                 g_fetch_btn = QPushButton(tr("ui_160", "🔄 Знайти голоси (API)"))
                 g_fetch_btn.setStyleSheet(_compact_inline_btn_css)
@@ -2711,14 +2714,17 @@ class MainWindow(QMainWindow):
                 api_row.setSpacing(8)
 
                 if prov_key == "elevenlabs":
+                    el_ref_row = QHBoxLayout()
+                    el_ref_row.setSpacing(8)
                     el_ref_lbl = QLabel(tr("ui_147", "ID голосу:"))
                     el_ref_lbl.setStyleSheet("color: #CBD5E1; font-size: 13px;")
+                    el_ref_lbl.setFixedWidth(78)
                     el_ref_tip = tr(
                         "ui_el_ref_tip",
                         "Необов’язкове поле. Вставте Voice ID з elevenlabs.io (три крапки → Copy Voice ID), якщо хочете використати конкретний голос. Якщо залишити порожнім, використається голос із верхнього списку «Голос».",
                     )
                     el_ref_lbl.setToolTip(el_ref_tip)
-                    api_row.addWidget(el_ref_lbl)
+                    el_ref_row.addWidget(el_ref_lbl)
 
                     el_ref_edit = QLineEdit(str(item.get("reference_id", "")))
                     el_ref_edit.setMinimumWidth(110)
@@ -2727,12 +2733,12 @@ class MainWindow(QMainWindow):
                     el_ref_edit.textChanged.connect(
                         lambda val, iid=item_id: self._on_online_item_field_changed(iid, "reference_id", val.strip())
                     )
-                    api_row.addWidget(el_ref_edit, 1)
+                    el_ref_row.addWidget(el_ref_edit, 1)
+                    c_lay.addLayout(el_ref_row)
 
                 m_lbl = QLabel(tr("ui_150", "Модель:"))
                 m_lbl.setStyleSheet("color: #CBD5E1; font-size: 13px;")
-                if prov_key != "elevenlabs":
-                    m_lbl.setFixedWidth(78)
+                m_lbl.setFixedWidth(78)
                 api_row.addWidget(m_lbl)
 
                 m_combo = QComboBox()
@@ -2766,7 +2772,7 @@ class MainWindow(QMainWindow):
                         iid, "model", str(cb.currentData() or dflt)
                     )
                 )
-                api_row.addWidget(m_combo)
+                api_row.addWidget(m_combo, 1)
 
                 u_fetch_btn = QPushButton(tr("ui_139", "🔄 Оновити голоси"))
                 u_fetch_btn.setStyleSheet(_compact_inline_btn_css)
@@ -2777,8 +2783,6 @@ class MainWindow(QMainWindow):
                     )
                 )
                 api_row.addWidget(u_fetch_btn)
-                if prov_key != "elevenlabs":
-                    api_row.addStretch(1)
                 c_lay.addLayout(api_row)
 
                 if prov_key == "elevenlabs":
