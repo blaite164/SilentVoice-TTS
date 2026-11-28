@@ -842,6 +842,203 @@ class OverlayTagHintPaintTests(unittest.TestCase):
                 dlg.close()
                 dlg.deleteLater()
 
+    def test_collapsible_reopen_preserves_child_layout_and_syncs_after_resize(self) -> None:
+        import time
+        from PySide6.QtCore import Qt
+        from PySide6.QtWidgets import QApplication, QFrame, QLabel, QPushButton, QScrollArea, QVBoxLayout, QWidget
+        from ui.dialogs import (
+            CollapsibleHeaderButton,
+            WrappingCheckBox,
+            WrappingRowLayout,
+            toggle_collapsible_widget,
+        )
+
+        app = QApplication.instance() or QApplication([])
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        content = QWidget()
+        c_lay = QVBoxLayout(content)
+
+        card = QFrame()
+        card_lay = QVBoxLayout(card)
+        card_lay.setContentsMargins(16, 10, 16, 10)
+        card_lay.setSpacing(0)
+        btn = CollapsibleHeaderButton()
+        btn.setCheckable(True)
+        btn.setText("Передача звуку на інший пристрій та довгий заголовок блоку")
+        card_lay.addWidget(btn)
+
+        body = QWidget()
+        b_lay = QVBoxLayout(body)
+        b_lay.setContentsMargins(0, 8, 0, 0)
+        b_lay.setSpacing(8)
+        chk = WrappingCheckBox("Надсилати голос через локальну мережу на інший пристрій у тій самій мережі")
+        b_lay.addWidget(chk)
+        help_lbl = QLabel(
+            "На іншому пристрої потрібен VBAN-приймач. Обидва пристрої мають бути в одній Wi-Fi або локальній мережі."
+        )
+        help_lbl.setWordWrap(True)
+        b_lay.addWidget(help_lbl)
+        actions = WrappingRowLayout(h_spacing=8, v_spacing=6)
+        actions.addWidget(QPushButton("Надіслати тестовий звук"))
+        actions.addWidget(QPushButton("Перевірити зв'язок"))
+        b_lay.addLayout(actions)
+        status_lbl = QLabel("Готово до підключення")
+        status_lbl.setWordWrap(True)
+        b_lay.addWidget(status_lbl)
+        body.setVisible(False)
+        card_lay.addWidget(body)
+        c_lay.addWidget(card)
+        c_lay.addStretch(1)
+
+        scroll.setWidget(content)
+        scroll.resize(760, 520)
+        scroll.show()
+        app.processEvents()
+
+        def _spin(ms: int = 80) -> None:
+            t0 = time.monotonic()
+            while (time.monotonic() - t0) * 1000 < ms:
+                app.processEvents()
+                time.sleep(0.005)
+
+        try:
+            # 1-е відкриття: одразу немає розкиданого тексту шириною 640px
+            toggle_collapsible_widget(btn, body, True, duration_ms=30)
+            app.processEvents()
+            self.assertEqual(help_lbl.width(), body.width())
+            _spin()
+            self.assertGreater(body.height(), 90)
+            self.assertEqual(status_lbl.width(), body.width())
+            self.assertGreater(status_lbl.geometry().y(), chk.geometry().bottom())
+
+            # Згортання -> 2-ге відкриття: вміст НЕ пустий, висота й геометрія збережені
+            toggle_collapsible_widget(btn, body, False, duration_ms=30)
+            _spin()
+            self.assertTrue(body.isHidden())
+
+            toggle_collapsible_widget(btn, body, True, duration_ms=30)
+            _spin()
+            self.assertFalse(body.isHidden())
+            self.assertGreater(body.height(), 90)
+            self.assertGreater(card.height(), body.height())
+            self.assertTrue(status_lbl.isVisible())
+            self.assertEqual(help_lbl.width(), body.width())
+
+            # Звуження вікна: картка й усе тіло підлаштовуються під нову ширину без виходу за межі
+            scroll.resize(440, 520)
+            _spin(40)
+            self.assertLessEqual(card.width(), scroll.viewport().width())
+            self.assertLessEqual(body.width(), card.width())
+            self.assertEqual(help_lbl.width(), body.width())
+            self.assertGreater(body.height(), status_lbl.geometry().bottom() - 1)
+        finally:
+            scroll.close()
+            scroll.deleteLater()
+
+    def test_reaction_commands_card_adapts_to_narrow_window_and_list_changes(self) -> None:
+        from PySide6.QtCore import Qt
+        from PySide6.QtWidgets import QApplication, QScrollArea, QVBoxLayout, QWidget
+        from core.config import config
+        from ui.dialogs import toggle_collapsible_widget
+        from ui.reaction_commands import ReactionCommandsCard
+
+        app = QApplication.instance() or QApplication([])
+        with tempfile.TemporaryDirectory() as td:
+            wav = Path(td) / "clip.wav"
+            wav.write_bytes(b"RIFF\x00\x00\x00\x00WAVE")
+            fake_cfg: dict = {
+                "app_language": "uk",
+                "active_engine": "omnivoice",
+                "reaction_picker_style": "emoji_dock",
+                "reaction_omnivoice_enabled": True,
+                "reaction_commands": [
+                    {
+                        "id": "rc_1",
+                        "command": "хаха",
+                        "aliases": ["хаха"],
+                        "display": "😂",
+                        "description": "Сміх",
+                        "audio_file": str(wav),
+                        "omnivoice_tag": "[laughter]",
+                        "hotkey": "Alt+1",
+                        "enabled": True,
+                    },
+                    {
+                        "id": "rc_2",
+                        "command": "зітх",
+                        "aliases": ["зітх"],
+                        "display": "😮‍💨",
+                        "description": "Зітхання",
+                        "audio_file": str(wav),
+                        "omnivoice_tag": "[sigh]",
+                        "hotkey": "",
+                        "enabled": True,
+                    },
+                ],
+            }
+
+            with (
+                patch.object(config, "_data", fake_cfg),
+                patch.object(config, "get", side_effect=lambda k, d=None: fake_cfg.get(k, d)),
+                patch.object(config, "set", side_effect=lambda k, v, auto_save=True: fake_cfg.__setitem__(k, v)),
+            ):
+                scroll = QScrollArea()
+                scroll.setWidgetResizable(True)
+                scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+                content = QWidget()
+                c_lay = QVBoxLayout(content)
+                card = ReactionCommandsCard()
+                c_lay.addWidget(card)
+                c_lay.addStretch(1)
+                scroll.setWidget(content)
+                scroll.resize(780, 560)
+                scroll.show()
+                app.processEvents()
+                try:
+                    self.assertLess(card.minimumSizeHint().width(), 420)
+                    card.expand_btn.blockSignals(True)
+                    card.expand_btn.setChecked(True)
+                    card.expand_btn.blockSignals(False)
+                    toggle_collapsible_widget(card.expand_btn, card.body, True, duration_ms=0)
+                    app.processEvents()
+
+                    scroll.resize(460, 560)
+                    app.processEvents()
+                    app.processEvents()
+                    vp_w = scroll.viewport().width()
+                    self.assertLessEqual(card.width(), vp_w)
+                    self.assertLessEqual(card.body.width(), vp_w)
+                    self.assertLessEqual(card.cmd_list.width(), vp_w)
+                    row0 = card.cmd_list.itemWidget(card.cmd_list.item(0))
+                    self.assertIsNotNone(row0)
+                    assert row0 is not None
+                    self.assertLessEqual(row0.width(), card.cmd_list.viewport().width())
+                    before_count = card.cmd_list.count()
+
+                    # Після додавання нової команди висота тіла оновлюється без обрізання списку
+                    fake_cfg["reaction_commands"].append(
+                        {
+                            "id": "rc_3",
+                            "command": "ого",
+                            "aliases": ["ого"],
+                            "display": "😲",
+                            "description": "Здивування",
+                            "audio_file": str(wav),
+                            "omnivoice_tag": "",
+                            "hotkey": "",
+                            "enabled": True,
+                        }
+                    )
+                    card.rebuild_list()
+                    app.processEvents()
+                    self.assertEqual(card.cmd_list.count(), before_count + 1)
+                    self.assertGreaterEqual(card.body.height(), card.cmd_list.geometry().bottom())
+                finally:
+                    scroll.close()
+                    scroll.deleteLater()
+
 
 if __name__ == "__main__":
     unittest.main()

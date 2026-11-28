@@ -139,6 +139,7 @@ from ui.dialogs import (
     AISettingsDialog,
     ApiGuideDialog,
     AppUpdateDialog,
+    CollapsibleHeaderButton,
     DonateDialog,
     ElidedLabel,
     ErrorPopupDialog,
@@ -156,8 +157,11 @@ from ui.dialogs import (
     SettingsTransferDialog,
     TelegramAuthDialog,
     VoiceSamplesDialog,
+    WrappingCheckBox,
+    WrappingRowLayout,
     get_check_svg_qss_url,
     run_in_background,
+    sync_collapsible_parent_layout,
     toggle_collapsible_widget,
 )
 
@@ -552,6 +556,9 @@ class VoiceComboBox(QtComboBox):
         super().__init__(parent)
         self.setItemDelegate(VoiceGenderDelegate(self))
         self.setMinimumHeight(33)
+        self.setMinimumWidth(0)
+        self.setSizeAdjustPolicy(QtComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.setMinimumContentsLength(10)
 
     def add_gender_item(self, text: str, data, gender: str = "") -> None:
         self.addItem(text, data)
@@ -6411,11 +6418,12 @@ class MainWindow(QMainWindow):
         qp_lay.setContentsMargins(14, 12, 14, 12)
         qp_lay.setSpacing(10)
 
-        qp_hdr_row = QHBoxLayout()
+        qp_hdr_row = WrappingRowLayout(h_spacing=8, v_spacing=6, expand_index=0, expand_min_width=110)
         qp_title = QLabel(tr("ui_254", "Натисніть на фразу, щоб озвучити її:"))
         qp_title.setProperty("class", "cardHeader")
+        qp_title.setWordWrap(True)
+        qp_title.setMinimumWidth(0)
         qp_hdr_row.addWidget(qp_title)
-        qp_hdr_row.addStretch(1)
 
         reset_qp_btn = QPushButton(tr("ui_255", "↺ Відновити стандартні"))
         reset_qp_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -6471,21 +6479,23 @@ class MainWindow(QMainWindow):
         b_lay.setContentsMargins(14, 12, 14, 12)
         b_lay.setSpacing(8)
 
-        b_hdr = QHBoxLayout()
+        b_hdr = WrappingRowLayout(h_spacing=8, v_spacing=6, expand_index=0, expand_min_width=110)
         b_lbl = QLabel(tr("ui_259", "✍️ Написати та озвучити текст прямо з вікна:"))
         b_lbl.setProperty("class", "cardHeader")
+        b_lbl.setWordWrap(True)
+        b_lbl.setMinimumWidth(0)
         b_hdr.addWidget(b_lbl)
-        b_hdr.addStretch(1)
         clear_hist_btn = QPushButton(tr("ui_260", "Очистити історію"))
         clear_hist_btn.clicked.connect(self._on_clear_history)
         b_hdr.addWidget(clear_hist_btn)
         b_lay.addLayout(b_hdr)
 
-        input_row = QHBoxLayout()
+        input_row = WrappingRowLayout(h_spacing=8, v_spacing=6, expand_index=0, expand_min_width=140)
         self.quick_speak_input = QLineEdit()
+        self.quick_speak_input.setMinimumWidth(100)
         self.quick_speak_input.setPlaceholderText(tr("ui_262", "Введіть будь-яке речення та натисніть Enter..."))
         self.quick_speak_input.returnPressed.connect(self._on_home_speak_clicked)
-        input_row.addWidget(self.quick_speak_input, 1)
+        input_row.addWidget(self.quick_speak_input)
 
         speak_btn = QPushButton(tr("ui_263", "🔊 Сказати (Enter)"))
         speak_btn.setProperty("class", "primaryBtn")
@@ -6923,7 +6933,7 @@ class MainWindow(QMainWindow):
         self.input_mode_combo.currentIndexChanged.connect(self._on_input_mode_changed)
         m_lay.addWidget(self.input_mode_combo)
 
-        self.chk_continuous_chat = QCheckBox(
+        self.chk_continuous_chat = WrappingCheckBox(
             tr("ui_293", "💬 Режим спілкування: не закривати вікно набору після Enter (написав → відправив → одразу пишеш далі)")
         )
         self.chk_continuous_chat.setToolTip(
@@ -6937,7 +6947,7 @@ class MainWindow(QMainWindow):
         sound_row.setContentsMargins(0, 0, 0, 0)
         sound_row.setSpacing(18)
 
-        self.chk_sound_feedback = QCheckBox(
+        self.chk_sound_feedback = WrappingCheckBox(
             tr("ui_295", "Звуковий сигнал при початку набору тексту")
         )
         self.chk_sound_feedback.setToolTip(
@@ -6946,7 +6956,7 @@ class MainWindow(QMainWindow):
         self.chk_sound_feedback.setChecked(bool(config.get("sound_feedback", True)))
         sound_row.addWidget(self.chk_sound_feedback)
 
-        self.chk_cancel_sound = QCheckBox(
+        self.chk_cancel_sound = WrappingCheckBox(
             tr("input.cancel_sound_chk", "Звуковий сигнал при скасуванні вводу")
         )
         self.chk_cancel_sound.setToolTip(
@@ -7002,7 +7012,7 @@ class MainWindow(QMainWindow):
         g_lay.setSpacing(8)
 
         g_hdr = QHBoxLayout()
-        self.chk_game_mode = QCheckBox(
+        self.chk_game_mode = WrappingCheckBox(
             tr("input.game_mode_chk", "🛡️ Дозволити ігровий режим (автозахист у грі)")
         )
         self.chk_game_mode.setChecked(bool(config.get("game_mode_enabled", True)))
@@ -7234,7 +7244,7 @@ class MainWindow(QMainWindow):
         s_lay.setSpacing(10)
 
         top_s_row = QHBoxLayout()
-        self.chk_overlay_enabled = QCheckBox(tr("ui_300", "Показувати текст на екрані під час набору"))
+        self.chk_overlay_enabled = WrappingCheckBox(tr("ui_300", "Показувати текст на екрані під час набору"))
         self.chk_overlay_enabled.setChecked(bool(config.get("overlay_enabled", True)))
         self.chk_overlay_enabled.toggled.connect(lambda v: config.set("overlay_enabled", v))
         top_s_row.addWidget(self.chk_overlay_enabled)
@@ -7368,7 +7378,7 @@ class MainWindow(QMainWindow):
         ex_lay = QHBoxLayout()
         ex_lay.setSpacing(8)
 
-        self.chk_hide_from_capture = QCheckBox(tr("ui_322", "Приховати від OBS або запису екрана"))
+        self.chk_hide_from_capture = WrappingCheckBox(tr("ui_322", "Приховати від OBS або запису екрана"))
         self.chk_hide_from_capture.setChecked(bool(config.get("hide_from_capture", False)))
         self.chk_hide_from_capture.setToolTip(
             tr("ui_323", "Ви бачитимете набраний текст на своєму моніторі, але на стрімі в OBS чи записі екрана рядок вводу буде прихований")
@@ -7393,7 +7403,7 @@ class MainWindow(QMainWindow):
 
         draft_row = QHBoxLayout()
         draft_row.setSpacing(8)
-        self.chk_save_draft_on_close = QCheckBox(
+        self.chk_save_draft_on_close = WrappingCheckBox(
             tr("overlay.save_draft_on_close_chk", "💾 Зберігати недописаний текст при закритті набору")
         )
         self.chk_save_draft_on_close.setChecked(bool(config.get("save_draft_on_close", True)))
@@ -7454,8 +7464,9 @@ class MainWindow(QMainWindow):
 
         tw_hdr_row = QHBoxLayout()
         tw_hdr_row.setContentsMargins(0, 0, 0, 0)
-        self.twitch_expand_btn = QToolButton()
+        self.twitch_expand_btn = CollapsibleHeaderButton()
         self.twitch_expand_btn.setCheckable(True)
+        self.twitch_expand_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.twitch_expand_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.twitch_expand_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self.twitch_expand_btn.setArrowType(Qt.ArrowType.RightArrow)
@@ -7465,8 +7476,7 @@ class MainWindow(QMainWindow):
             "font-size: 14px; font-weight: 700; padding: 4px; text-align: left; }"
             "QToolButton:hover { color: #A78BFA; }"
         )
-        tw_hdr_row.addWidget(self.twitch_expand_btn)
-        tw_hdr_row.addStretch(1)
+        tw_hdr_row.addWidget(self.twitch_expand_btn, 1)
         self.twitch_badge_lbl = QLabel()
         self.twitch_badge_lbl.setStyleSheet("font-size: 12px; color: #AAB4C8;")
         self.twitch_badge_lbl.setVisible(False)
@@ -7474,21 +7484,21 @@ class MainWindow(QMainWindow):
         tw_lay.addLayout(tw_hdr_row)
 
         self.twitch_body = QWidget()
+        self.twitch_body.setMinimumWidth(0)
         tw_body_lay = QVBoxLayout(self.twitch_body)
         tw_body_lay.setContentsMargins(0, 8, 0, 0)
         tw_body_lay.setSpacing(8)
 
-        self.twitch_enable_chk = QCheckBox(tr("twitch.enable", "Дублювати озвучені фрази в чат Twitch"))
+        self.twitch_enable_chk = WrappingCheckBox(tr("twitch.enable", "Дублювати озвучені фрази в чат Twitch"))
         self.twitch_enable_chk.setChecked(bool(config.get("twitch_enabled", False)))
         tw_body_lay.addWidget(self.twitch_enable_chk)
 
-        self.twitch_intercept_chk = QCheckBox(
+        self.twitch_intercept_chk = WrappingCheckBox(
             tr("twitch.intercept_own", "Перехоплювати мої повідомлення з чату Twitch та озвучувати")
         )
         self.twitch_intercept_chk.setChecked(bool(config.get("twitch_intercept_own", False)))
         tw_body_lay.addWidget(self.twitch_intercept_chk)
 
-        tw_help_row = QHBoxLayout()
         tw_help = QLabel(
             tr(
                 "twitch.help",
@@ -7496,14 +7506,14 @@ class MainWindow(QMainWindow):
             )
         )
         tw_help.setWordWrap(True)
+        tw_help.setMinimumWidth(0)
         tw_help.setStyleSheet("color: #AAB4C8;")
-        tw_help_row.addWidget(tw_help, 1)
+        tw_body_lay.addWidget(tw_help)
         self.twitch_get_token_btn = QPushButton(tr("twitch.get_token", "🔑 Отримати токен (twitchtokengenerator.com)"))
         self.twitch_get_token_btn.clicked.connect(
             lambda: QDesktopServices.openUrl(QUrl("https://twitchtokengenerator.com/"))
         )
-        tw_help_row.addWidget(self.twitch_get_token_btn)
-        tw_body_lay.addLayout(tw_help_row)
+        tw_body_lay.addWidget(self.twitch_get_token_btn, 0, Qt.AlignmentFlag.AlignLeft)
 
         tw_form = QGridLayout()
         tw_form.setColumnStretch(1, 1)
@@ -7536,9 +7546,11 @@ class MainWindow(QMainWindow):
         self.twitch_test_btn = QPushButton(tr("twitch.test", "Надіслати тест у чат"))
         self.twitch_status_lbl = QLabel()
         self.twitch_status_lbl.setWordWrap(True)
+        self.twitch_status_lbl.setMinimumWidth(0)
         tw_actions.addWidget(self.twitch_test_btn)
-        tw_actions.addWidget(self.twitch_status_lbl, 1)
+        tw_actions.addStretch(1)
         tw_body_lay.addLayout(tw_actions)
+        tw_body_lay.addWidget(self.twitch_status_lbl)
 
         self.twitch_body.setVisible(False)
         tw_lay.addWidget(self.twitch_body)
@@ -8248,26 +8260,26 @@ class MainWindow(QMainWindow):
 
         st_lay.addLayout(grid)
 
-        self.chk_obs_animate_block = QCheckBox(
+        self.chk_obs_animate_block = WrappingCheckBox(
             tr("obs.animate_block", "Анімувати блок разом із текстом")
         )
         self.chk_obs_animate_block.setChecked(bool(config.get("obs_animate_block", True)))
         self.chk_obs_animate_block.toggled.connect(self._on_obs_style_changed)
         st_lay.addWidget(self.chk_obs_animate_block)
 
-        self.chk_obs_animate_motion_block = QCheckBox(
+        self.chk_obs_animate_motion_block = WrappingCheckBox(
             tr("obs.animate_motion_block", "Застосовувати рух також до самого блоку")
         )
         self.chk_obs_animate_motion_block.setChecked(bool(config.get("obs_animate_motion_block", False)))
         self.chk_obs_animate_motion_block.toggled.connect(self._on_obs_style_changed)
         st_lay.addWidget(self.chk_obs_animate_motion_block)
 
-        self.chk_obs_cursor = QCheckBox(tr("ui_359", "Показувати мигаючий курсор під час друку"))
+        self.chk_obs_cursor = WrappingCheckBox(tr("ui_359", "Показувати мигаючий курсор під час друку"))
         self.chk_obs_cursor.setChecked(bool(config.get("obs_show_cursor", False)))
         self.chk_obs_cursor.toggled.connect(self._on_obs_style_changed)
         st_lay.addWidget(self.chk_obs_cursor)
 
-        self.chk_obs_top_fade = QCheckBox(tr("ui_360", "Плавне затухання тексту зверху (красиве розмиття при довгому тексті)"))
+        self.chk_obs_top_fade = WrappingCheckBox(tr("ui_360", "Плавне затухання тексту зверху (красиве розмиття при довгому тексті)"))
         self.chk_obs_top_fade.setChecked(bool(config.get("obs_top_fade", True)))
         self.chk_obs_top_fade.toggled.connect(self._on_obs_style_changed)
         st_lay.addWidget(self.chk_obs_top_fade)
@@ -8275,7 +8287,7 @@ class MainWindow(QMainWindow):
         live_row = QHBoxLayout()
         live_row.setContentsMargins(0, 0, 0, 0)
         live_row.setSpacing(8)
-        self.chk_obs_live = QCheckBox(tr("ui_361", "Показувати букви в OBS одразу під час набору (ще до натискання Enter)"))
+        self.chk_obs_live = WrappingCheckBox(tr("ui_361", "Показувати букви в OBS одразу під час набору (ще до натискання Enter)"))
         self.chk_obs_live.setToolTip(tr("obs.live_checkbox_tooltip", "Показує набраний текст в OBS ще до натискання Enter."))
         self.chk_obs_live.setChecked(bool(config.get("obs_show_live_typing", False)))
         self.chk_obs_live.toggled.connect(self._on_obs_style_changed)
@@ -8657,6 +8669,8 @@ class MainWindow(QMainWindow):
         vb_row = QHBoxLayout()
         self.vbcable_status_lbl = QLabel()
         self.vbcable_status_lbl.setProperty("class", "cardHeader")
+        self.vbcable_status_lbl.setWordWrap(True)
+        self.vbcable_status_lbl.setMinimumWidth(0)
         vb_row.addWidget(self.vbcable_status_lbl, 1)
 
         vb_row.addWidget(
@@ -8671,14 +8685,14 @@ class MainWindow(QMainWindow):
                 ),
             )
         )
+        vb_lay.addLayout(vb_row)
 
         self.install_vb_btn = QPushButton(tr("ui_370", "⚡ Встановити віртуальний мікрофон (1 клік)"))
         self.install_vb_btn.setProperty("class", "primaryBtn")
         self.install_vb_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.install_vb_btn.setToolTip(tr("ui_371", "Автоматично скачати та встановити безкоштовний драйвер VB-Cable"))
         self.install_vb_btn.clicked.connect(self._on_install_vbcable)
-        vb_row.addWidget(self.install_vb_btn)
-        vb_lay.addLayout(vb_row)
+        vb_lay.addWidget(self.install_vb_btn, 0, Qt.AlignmentFlag.AlignLeft)
         lay.addWidget(vb_card)
 
         ffmpeg_sys_card = self._create_ffmpeg_notice_widget(scope="system", show_when_installed=True)
@@ -8709,7 +8723,9 @@ class MainWindow(QMainWindow):
         ch1_hdr_row = QHBoxLayout()
         ch1_hdr = QLabel(tr("ui_374", "🎙️ Канал 1 — Для інших (Віртуальний мікрофон)"))
         ch1_hdr.setStyleSheet(section_hdr_style)
-        ch1_hdr_row.addWidget(ch1_hdr)
+        ch1_hdr.setWordWrap(True)
+        ch1_hdr.setMinimumWidth(0)
+        ch1_hdr_row.addWidget(ch1_hdr, 1)
         ch1_hdr_row.addWidget(
             HelpButton(
                 tr("ui_374", "Канал 1 — Для інших (Віртуальний мікрофон)"),
@@ -8720,13 +8736,15 @@ class MainWindow(QMainWindow):
                 ),
             )
         )
-        ch1_hdr_row.addStretch(1)
         grid.addLayout(ch1_hdr_row, 0, 0, 1, 2)
 
         ch1_dev_lbl = QLabel(tr("ui_376", "Пристрій для інших:"))
         ch1_dev_lbl.setToolTip(tr("ui_377", "Пристрій, у який програма передає озвучку для інших людей (зазвичай CABLE Input)"))
         grid.addWidget(ch1_dev_lbl, 1, 0)
         self.primary_dev_combo = QComboBox()
+        self.primary_dev_combo.setMinimumWidth(0)
+        self.primary_dev_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.primary_dev_combo.setMinimumContentsLength(10)
         self.primary_dev_combo.setToolTip(tr("ui_378", "Оберіть CABLE Input (VB-Audio Virtual Cable), щоб звук ішов у віртуальний мікрофон, або Off"))
         self.primary_dev_combo.currentIndexChanged.connect(self._on_audio_devices_changed)
         grid.addWidget(self.primary_dev_combo, 1, 1)
@@ -8740,7 +8758,7 @@ class MainWindow(QMainWindow):
         grid.addWidget(_make_divider(), 3, 0, 1, 2)
 
         # --- Блок 2: Канал 2 (Для себе) ---
-        self.chk_secondary = QCheckBox(tr("ui_382", "🎧 Канал 2 — Також слухати озвучку у своїх навушниках / колонках"))
+        self.chk_secondary = WrappingCheckBox(tr("ui_382", "🎧 Канал 2 — Також слухати озвучку у своїх навушниках / колонках"))
         self.chk_secondary.setStyleSheet(section_hdr_style)
         self.chk_secondary.setChecked(bool(config.get("secondary_enabled", True)))
         self.chk_secondary.toggled.connect(self._on_audio_devices_changed)
@@ -8749,6 +8767,9 @@ class MainWindow(QMainWindow):
         ch2_dev_lbl = QLabel(tr("ui_384", "Ваші навушники або колонки:"))
         grid.addWidget(ch2_dev_lbl, 5, 0)
         self.secondary_dev_combo = QComboBox()
+        self.secondary_dev_combo.setMinimumWidth(0)
+        self.secondary_dev_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.secondary_dev_combo.setMinimumContentsLength(10)
         self.secondary_dev_combo.currentIndexChanged.connect(self._on_audio_devices_changed)
         grid.addWidget(self.secondary_dev_combo, 5, 1)
 
@@ -8763,7 +8784,7 @@ class MainWindow(QMainWindow):
         # --- )Блок 3: Мікшування фізичного мікрофона ---
         mic_hdr = QHBoxLayout()
         mic_hdr.setSpacing(6)
-        self.chk_mic_passthrough = QCheckBox(tr("ui_390", "🎤 Мікшувати мій мікрофон у Канал 1 (для Discord / ігор)"))
+        self.chk_mic_passthrough = WrappingCheckBox(tr("ui_390", "🎤 Мікшувати мій мікрофон у Канал 1 (для Discord / ігор)"))
         self.chk_mic_passthrough.setStyleSheet(section_hdr_style)
         self.chk_mic_passthrough.setChecked(bool(config.get("mic_passthrough_enabled", False)))
         self.chk_mic_passthrough.toggled.connect(self._on_audio_devices_changed)
@@ -8787,6 +8808,9 @@ class MainWindow(QMainWindow):
         mic_dev_lbl = QLabel(tr("ui_394", "Ваш мікрофон:"))
         grid.addWidget(mic_dev_lbl, 9, 0)
         self.mic_dev_combo = QComboBox()
+        self.mic_dev_combo.setMinimumWidth(0)
+        self.mic_dev_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.mic_dev_combo.setMinimumContentsLength(10)
         self.mic_dev_combo.currentIndexChanged.connect(self._on_audio_devices_changed)
         grid.addWidget(self.mic_dev_combo, 9, 1)
 
@@ -8813,8 +8837,9 @@ class MainWindow(QMainWindow):
         vban_lay.setSpacing(0)
         vban_hdr_row = QHBoxLayout()
         vban_hdr_row.setContentsMargins(0, 0, 0, 0)
-        self.vban_expand_btn = QToolButton()
+        self.vban_expand_btn = CollapsibleHeaderButton()
         self.vban_expand_btn.setCheckable(True)
+        self.vban_expand_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.vban_expand_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.vban_expand_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self.vban_expand_btn.setArrowType(Qt.ArrowType.RightArrow)
@@ -8824,32 +8849,35 @@ class MainWindow(QMainWindow):
             "font-size: 14px; font-weight: 700; padding: 4px; text-align: left; }"
             "QToolButton:hover { color: #A78BFA; }"
         )
-        vban_hdr_row.addWidget(self.vban_expand_btn)
-        vban_hdr_row.addStretch(1)
+        vban_hdr_row.addWidget(self.vban_expand_btn, 1)
         self.vban_health_badge = QLabel()
         self.vban_health_badge.setStyleSheet("font-size: 12px; color: #AAB4C8;")
         self.vban_health_badge.setVisible(False)
         vban_hdr_row.addWidget(self.vban_health_badge)
         vban_lay.addLayout(vban_hdr_row)
         self.vban_body = QWidget()
+        self.vban_body.setMinimumWidth(0)
         vban_body_lay = QVBoxLayout(self.vban_body)
         vban_body_lay.setContentsMargins(0, 8, 0, 0)
         vban_body_lay.setSpacing(8)
-        self.vban_enable_chk = QCheckBox(tr("audio.vban.enable", "Надсилати голос через локальну мережу"))
+        self.vban_enable_chk = WrappingCheckBox(tr("audio.vban.enable", "Надсилати голос через локальну мережу"))
         self.vban_enable_chk.setChecked(bool(config.get("vban_enabled", False)))
         vban_body_lay.addWidget(self.vban_enable_chk)
         vban_help = QLabel(tr("audio.vban.help", "На іншому пристрої потрібен VBAN-приймач. Обидва пристрої мають бути в одній Wi-Fi або локальній мережі."))
         vban_help.setWordWrap(True)
+        vban_help.setMinimumWidth(0)
         vban_help.setStyleSheet("color: #AAB4C8;")
         vban_body_lay.addWidget(vban_help)
         vban_form = QGridLayout()
         vban_form.setColumnStretch(1, 1)
         vban_form.addWidget(QLabel(tr("audio.vban.address", "IP пристрою-приймача:")), 0, 0)
         self.vban_address_edit = QLineEdit(str(config.get("vban_address", "")))
+        self.vban_address_edit.setMinimumWidth(0)
         self.vban_address_edit.setPlaceholderText("192.168.1.20")
         vban_form.addWidget(self.vban_address_edit, 0, 1)
         vban_form.addWidget(QLabel(tr("audio.vban.port", "Порт:")), 1, 0)
         self.vban_port_spin = QtSpinBox()
+        self.vban_port_spin.setMinimumWidth(0)
         self.vban_port_spin.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
         self.vban_port_spin.setRange(1, 65535)
         self.vban_port_spin.setValue(int(config.get("vban_port", 6980) or 6980))
@@ -8857,6 +8885,7 @@ class MainWindow(QMainWindow):
         vban_form.addWidget(QLabel(tr("audio.vban.stream", "Назва потоку:")), 2, 0)
         saved_vban_name = str(config.get("vban_stream_name", "SilentVoice") or "SilentVoice")
         self.vban_stream_edit = QLineEdit(saved_vban_name)
+        self.vban_stream_edit.setMinimumWidth(0)
         self.vban_stream_edit.setMaxLength(16)
         vban_form.addWidget(self.vban_stream_edit, 2, 1)
         vban_form.addWidget(QLabel(tr("audio.vban.volume", "Гучність VBAN (%):")), 3, 0)
@@ -8864,18 +8893,19 @@ class MainWindow(QMainWindow):
             vban_form, 3, 1, 0, 200, int(config.get("vban_volume", 100)), " %", lambda: None
         )
         vban_body_lay.addLayout(vban_form)
-        vban_actions = QHBoxLayout()
+        vban_actions = WrappingRowLayout(h_spacing=8, v_spacing=6)
         self.vban_test_btn = QPushButton(tr("audio.vban.test", "Надіслати тестовий звук"))
         self.vban_stop_btn = QPushButton(tr("audio.vban.stop", "Зупинити тест"))
         self.vban_stop_btn.setVisible(False)
         self.vban_ping_btn = QPushButton(tr("audio.vban.ping", "Перевірити зв'язок"))
         self.vban_status_lbl = QLabel()
         self.vban_status_lbl.setWordWrap(True)
+        self.vban_status_lbl.setMinimumWidth(0)
         vban_actions.addWidget(self.vban_test_btn)
         vban_actions.addWidget(self.vban_stop_btn)
         vban_actions.addWidget(self.vban_ping_btn)
-        vban_actions.addWidget(self.vban_status_lbl, 1)
         vban_body_lay.addLayout(vban_actions)
+        vban_body_lay.addWidget(self.vban_status_lbl)
         self.vban_body.setVisible(False)
         vban_lay.addWidget(self.vban_body)
 
@@ -8961,6 +8991,8 @@ class MainWindow(QMainWindow):
             self.vban_stop_btn.setEnabled(True)
             self.vban_stop_btn.setVisible(False)
             self._vban_test_stop_event = None
+            if self.vban_expand_btn.isChecked():
+                sync_collapsible_parent_layout(self.vban_body)
 
         self._reconnect_signal(self.vban_test_finished, "_slot_vban_test", _on_vban_test_finished)
 
@@ -8976,6 +9008,8 @@ class MainWindow(QMainWindow):
             self.vban_stop_btn.setVisible(True)
             self.vban_status_lbl.setStyleSheet("")
             self.vban_status_lbl.setText(tr("audio.vban.sending", "Тестовий сигнал передається. Натисніть Connect у приймачі."))
+            if self.vban_expand_btn.isChecked():
+                sync_collapsible_parent_layout(self.vban_body)
             def _worker() -> None:
                 try:
                     send_vban_test(address, port, stream_name, stop_event)
@@ -8990,6 +9024,8 @@ class MainWindow(QMainWindow):
             self.vban_status_lbl.setText(message)
             self.vban_status_lbl.setStyleSheet(f"color: {color};" if color else "")
             self.vban_ping_btn.setEnabled(True)
+            if self.vban_expand_btn.isChecked():
+                sync_collapsible_parent_layout(self.vban_body)
 
         self._reconnect_signal(self.vban_ping_finished, "_slot_vban_ping", _on_vban_ping_finished)
 
@@ -9000,6 +9036,8 @@ class MainWindow(QMainWindow):
             self.vban_ping_btn.setEnabled(False)
             self.vban_status_lbl.setStyleSheet("")
             self.vban_status_lbl.setText(tr("audio.vban.pinging", "Перевірка приймача..."))
+            if self.vban_expand_btn.isChecked():
+                sync_collapsible_parent_layout(self.vban_body)
             def _worker() -> None:
                 try:
                     status, reply, err_detail = self._vban_health_monitor.probe_once_sync(address, port, timeout=1.0)
@@ -9072,22 +9110,22 @@ class MainWindow(QMainWindow):
         ui_lang_row.addStretch(1)
         sys_lay.addLayout(ui_lang_row)
 
-        self.chk_autostart = QCheckBox(tr("ui_403", "Запускати автоматично при ввімкненні комп'ютера"))
+        self.chk_autostart = WrappingCheckBox(tr("ui_403", "Запускати автоматично при ввімкненні комп'ютера"))
         self.chk_autostart.setChecked(is_autostart_enabled())
         self.chk_autostart.toggled.connect(self._on_autostart_toggled)
         sys_lay.addWidget(self.chk_autostart)
 
-        self.chk_close_to_tray = QCheckBox(tr("ui_404", "При закритті вікна [✕] залишати програму працювати біля годинника (у треї)"))
+        self.chk_close_to_tray = WrappingCheckBox(tr("ui_404", "При закритті вікна [✕] залишати програму працювати біля годинника (у треї)"))
         self.chk_close_to_tray.setChecked(bool(config.get("minimize_to_tray_on_close", True)))
         self.chk_close_to_tray.toggled.connect(lambda v: config.set("minimize_to_tray_on_close", v))
         sys_lay.addWidget(self.chk_close_to_tray)
 
-        self.chk_start_min = QCheckBox(tr("ui_405", "При запуску одразу ховати вікно в трей"))
+        self.chk_start_min = WrappingCheckBox(tr("ui_405", "При запуску одразу ховати вікно в трей"))
         self.chk_start_min.setChecked(bool(config.get("start_minimized", False)))
         self.chk_start_min.toggled.connect(lambda v: config.set("start_minimized", v))
         sys_lay.addWidget(self.chk_start_min)
 
-        self.chk_run_as_admin = QCheckBox(tr("ui_406", "Завжди запускати від імені Адміністратора (потрібно для деяких ігор)"))
+        self.chk_run_as_admin = WrappingCheckBox(tr("ui_406", "Завжди запускати від імені Адміністратора (потрібно для деяких ігор)"))
         self.chk_run_as_admin.setChecked(bool(config.get("run_as_admin", True)))
         self.chk_run_as_admin.toggled.connect(self._on_run_as_admin_toggled)
         sys_lay.addWidget(self.chk_run_as_admin)
@@ -9117,10 +9155,13 @@ class MainWindow(QMainWindow):
         transfer_lay.setContentsMargins(16, 12, 16, 12)
         transfer_lay.setSpacing(8)
         transfer_lay.addWidget(QLabel(f"<b>{tr('transfer.section.title', '📦 Перенесення налаштувань')}</b>"))
-        transfer_lay.addWidget(QLabel(tr(
+        transfer_desc = QLabel(tr(
             "transfer.section.description",
             "Створи профіль, щоб перенести вибрані налаштування на інший комп’ютер або відновити їх із резервної копії.",
-        )))
+        ))
+        transfer_desc.setWordWrap(True)
+        transfer_desc.setMinimumWidth(0)
+        transfer_lay.addWidget(transfer_desc)
         transfer_buttons = QHBoxLayout()
         export_settings_btn = QPushButton(tr("transfer.export.open", "📤 Експортувати налаштування"))
         export_settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -9152,7 +9193,7 @@ class MainWindow(QMainWindow):
         update_lay.addLayout(update_top)
 
         update_row = QHBoxLayout()
-        self.chk_auto_updates = QCheckBox(
+        self.chk_auto_updates = WrappingCheckBox(
             tr("update.auto_check", "Автоматично перевіряти наявність оновлень при запуску")
         )
         self.chk_auto_updates.setChecked(bool(config.get("auto_check_updates", True)))

@@ -47,7 +47,16 @@ from core.omnivoice_tags import (
     sync_default_reaction_commands_for_lang,
 )
 from core.tts_manager import tts_manager
-from ui.dialogs import DIALOG_STYLESHEET, HotkeyCaptureDialog, center_dialog_on_screen, toggle_collapsible_widget
+from ui.dialogs import (
+    CollapsibleHeaderButton,
+    DIALOG_STYLESHEET,
+    HotkeyCaptureDialog,
+    WrappingCheckBox,
+    WrappingRowLayout,
+    center_dialog_on_screen,
+    sync_collapsible_parent_layout,
+    toggle_collapsible_widget,
+)
 from ui.overlay_window import TAG_HINT_MODES
 
 
@@ -79,6 +88,7 @@ class _ReactionCommandListWidget(QListWidget):
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
+        self.setMinimumWidth(0)
         self.setDragEnabled(True)
         self.setAcceptDrops(True)
         self.setDropIndicatorShown(True)
@@ -98,6 +108,41 @@ class _ReactionCommandListWidget(QListWidget):
             "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }"
             "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }"
         )
+
+    def sizeHint(self) -> QSize:
+        return QSize(220, max(60, self.minimumHeight()))
+
+    def minimumSizeHint(self) -> QSize:
+        return QSize(180, max(60, self.minimumHeight()))
+
+    def fit_rows_to_viewport(self) -> None:
+        vp_w = self.viewport().width()
+        if vp_w <= 20:
+            return
+        compact_badges = vp_w < 500
+        ultra_compact = vp_w < 410
+        for i in range(self.count()):
+            it = self.item(i)
+            if it is None:
+                continue
+            w = self.itemWidget(it)
+            if w is None:
+                continue
+            hk_badge = getattr(w, "_hk_badge", None)
+            src_badge = getattr(w, "_src_badge", None)
+            if hk_badge is not None:
+                hk_badge.setVisible(not compact_badges)
+            if src_badge is not None:
+                src_badge.setVisible(not ultra_compact)
+            w.resize(vp_w, it.sizeHint().height() or 44)
+            lay = w.layout()
+            if lay is not None:
+                lay.invalidate()
+                lay.activate()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self.fit_rows_to_viewport()
 
     def dropEvent(self, event) -> None:
         super().dropEvent(event)
@@ -493,10 +538,11 @@ class ReactionCommandsCard(QFrame):
         hdr_row = QHBoxLayout()
         hdr_row.setContentsMargins(0, 0, 0, 0)
 
-        self.expand_btn = QToolButton()
+        self.expand_btn = CollapsibleHeaderButton()
         self.expand_btn.setCheckable(True)
         self.expand_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self.expand_btn.setArrowType(Qt.ArrowType.RightArrow)
+        self.expand_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.expand_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.expand_btn.setText(tr("rc.card.title", "Звукові команди та реакції (/ \\ |)"))
         self.expand_btn.setStyleSheet(
@@ -504,8 +550,7 @@ class ReactionCommandsCard(QFrame):
             "font-size: 14px; font-weight: 700; padding: 4px; text-align: left; }"
             "QToolButton:hover { color: #A78BFA; }"
         )
-        hdr_row.addWidget(self.expand_btn)
-        hdr_row.addStretch(1)
+        hdr_row.addWidget(self.expand_btn, 1)
 
         self.status_badge = QLabel()
         self.status_badge.setStyleSheet("font-size: 12px; color: #AAB4C8;")
@@ -514,6 +559,7 @@ class ReactionCommandsCard(QFrame):
 
         # Тіло картки (згорнуте за замовчуванням; верхній відступ всередині body, щоб не було стрибка на 8px)
         self.body = QWidget()
+        self.body.setMinimumWidth(0)
         body_lay = QVBoxLayout(self.body)
         body_lay.setContentsMargins(0, 8, 0, 0)
         body_lay.setSpacing(10)
@@ -526,18 +572,21 @@ class ReactionCommandsCard(QFrame):
             )
         )
         help_lbl.setWordWrap(True)
+        help_lbl.setMinimumWidth(0)
         help_lbl.setStyleSheet("color: #AAB4C8; font-size: 12px;")
         body_lay.addWidget(help_lbl)
 
         # Рядок 1: вибір стилю + кнопка прев’ю + галочка інтеграції з OmniVoice
-        ctrl_row = QHBoxLayout()
-        ctrl_row.setSpacing(8)
+        ctrl_row = WrappingRowLayout(h_spacing=8, v_spacing=6, expand_index=1, expand_min_width=130)
 
         style_lbl = QLabel(tr("rc.style.label", "Стиль підказки:"))
         style_lbl.setStyleSheet("color: #CBD5E1; font-size: 13px;")
         ctrl_row.addWidget(style_lbl)
 
         self.style_combo = combo_cls()
+        self.style_combo.setMinimumWidth(0)
+        self.style_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.style_combo.setMinimumContentsLength(6)
         for mode_id in TAG_HINT_MODES:
             key, default_lbl = _STYLE_LABEL_KEYS.get(mode_id, ("", mode_id))
             self.style_combo.addItem(tr(key, default_lbl) if key else default_lbl, mode_id)
@@ -546,7 +595,7 @@ class ReactionCommandsCard(QFrame):
         if s_idx >= 0:
             self.style_combo.setCurrentIndex(s_idx)
         self.style_combo.currentIndexChanged.connect(self._on_style_changed)
-        ctrl_row.addWidget(self.style_combo, 1)
+        ctrl_row.addWidget(self.style_combo)
 
         preview_btn = QPushButton(tr("rc.style.preview_btn", "👁 Показати"))
         preview_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -555,7 +604,7 @@ class ReactionCommandsCard(QFrame):
         ctrl_row.addWidget(preview_btn)
         body_lay.addLayout(ctrl_row)
 
-        self.omnivoice_chk = QCheckBox(
+        self.omnivoice_chk = WrappingCheckBox(
             tr("rc.omnivoice.enable", "Інтеграція з OmniVoice (вбудовані живі реакції: сміх, зітхання, вау…)")
         )
         self.omnivoice_chk.setChecked(bool(config.get("reaction_omnivoice_enabled", True)))
@@ -563,12 +612,12 @@ class ReactionCommandsCard(QFrame):
         body_lay.addWidget(self.omnivoice_chk)
 
         # Рядок 2: дії списку
-        list_hdr = QHBoxLayout()
-        list_hdr.setSpacing(8)
+        list_hdr = WrappingRowLayout(h_spacing=8, v_spacing=6, expand_index=0, expand_min_width=90)
         list_title = QLabel(tr("rc.list.title", "Список команд:"))
         list_title.setProperty("class", "cardHeader")
+        list_title.setWordWrap(True)
+        list_title.setMinimumWidth(0)
         list_hdr.addWidget(list_title)
-        list_hdr.addStretch(1)
 
         reset_btn = QPushButton(tr("rc.list.reset_btn", "↺ Стандартні"))
         reset_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -805,10 +854,11 @@ class ReactionCommandsCard(QFrame):
             li.setSizeHint(QSize(0, 44))
 
             row_w = QWidget()
+            row_w.setMinimumWidth(0)
             row_w.setStyleSheet("background: transparent;")
             r_lay = QHBoxLayout(row_w)
-            r_lay.setContentsMargins(8, 4, 6, 4)
-            r_lay.setSpacing(7)
+            r_lay.setContentsMargins(6, 4, 6, 4)
+            r_lay.setSpacing(5)
 
             grip = QLabel("⋮⋮")
             grip.setCursor(Qt.CursorShape.OpenHandCursor)
@@ -870,6 +920,7 @@ class ReactionCommandsCard(QFrame):
             r_lay.addWidget(text_lbl, 1)
 
             # Бейдж бінду (якщо призначено)
+            hk_lbl: Optional[QLabel] = None
             if hk_str:
                 hk_lbl = QLabel(f"⌨ {hk_str}")
                 hk_lbl.setToolTip(tr("rc.row.hotkey_bound_tip", "Бінд: {hk} (натисніть під час набору, щоб вставити)", hk=hk_str))
@@ -907,6 +958,8 @@ class ReactionCommandsCard(QFrame):
                     "border: 1px solid rgba(148,163,184,0.22); border-radius: 6px; padding: 2px 7px;"
                 )
             r_lay.addWidget(src_lbl)
+            setattr(row_w, "_hk_badge", hk_lbl)
+            setattr(row_w, "_src_badge", src_lbl)
 
             # Кнопки: Прослухати (якщо є файл), Додати/змінити файл, Редагувати, Видалити
             if has_file:
@@ -982,6 +1035,7 @@ class ReactionCommandsCard(QFrame):
 
         vis_rows = max(1, min(6, self.cmd_list.count()))
         self.cmd_list.setFixedHeight(vis_rows * 50 + 12)
+        self.cmd_list.fit_rows_to_viewport()
 
         if active_count > 0:
             self.status_badge.setText(tr("rc.card.badge_active", "🟢 {n} активних", n=active_count))
@@ -989,3 +1043,6 @@ class ReactionCommandsCard(QFrame):
         else:
             self.status_badge.setText(tr("rc.card.badge_none", "⚪ Немає активних"))
             self.status_badge.setStyleSheet("font-size: 12px; color: #AAB4C8;")
+
+        if self.expand_btn.isChecked():
+            sync_collapsible_parent_layout(self.body)

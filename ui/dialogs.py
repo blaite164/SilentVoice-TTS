@@ -19,11 +19,12 @@ import weakref
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
-from PySide6.QtCore import QAbstractAnimation, QEasingCurve, QEvent, QObject, QRectF, QSize, Qt, QThread, QTimer, QUrl, QVariantAnimation, Signal
+from PySide6.QtCore import QAbstractAnimation, QEasingCurve, QEvent, QObject, QPoint, QRect, QRectF, QSize, Qt, QThread, QTimer, QUrl, QVariantAnimation, Signal
 from PySide6.QtGui import QColor, QConicalGradient, QDesktopServices, QGuiApplication, QIcon, QImage, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
     QApplication,
+    QBoxLayout,
     QButtonGroup,
     QCheckBox,
     QComboBox,
@@ -35,6 +36,7 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QLayout,
     QLineEdit,
     QProgressBar,
     QPushButton,
@@ -46,6 +48,7 @@ from PySide6.QtWidgets import (
     QStackedWidget,
     QTabBar,
     QTextEdit,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -291,6 +294,235 @@ def install_global_dialog_centering(app: QApplication) -> None:
     setattr(app, "_dialog_center_filter", flt)
 
 
+class CollapsibleHeaderButton(QToolButton):
+    """Заголовок згортуваної картки, який уміє стискатися під ширину вузького вікна."""
+
+    def minimumSizeHint(self) -> QSize:
+        hint = super().minimumSizeHint()
+        return QSize(min(hint.width(), 120), hint.height())
+
+
+class WrappingCheckBox(QWidget):
+    """Чекбокс із перенесенням довгого тексту по рядках і повним API QCheckBox."""
+
+    toggled = Signal(bool)
+    stateChanged = Signal(int)
+
+    def __init__(self, text: str = "", parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self.setMinimumWidth(0)
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(8)
+
+        self._box = QCheckBox("")
+        self._box.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self._box.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        self._label = QLabel(text)
+        self._label.setWordWrap(True)
+        self._label.setMinimumWidth(0)
+        self._label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+        self._label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        self._label.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._label.setStyleSheet("QLabel { background: transparent; border: none; padding-top: 1px; }")
+        self._label.installEventFilter(self)
+
+        lay.addWidget(self._box, 0, Qt.AlignmentFlag.AlignTop)
+        lay.addWidget(self._label, 1)
+
+        self._box.toggled.connect(self.toggled.emit)
+        self._box.stateChanged.connect(self.stateChanged.emit)
+
+    def eventFilter(self, obj: QObject, event: QEvent) -> bool:
+        if obj is self._label and event.type() == QEvent.Type.MouseButtonRelease:
+            if hasattr(event, "button") and event.button() == Qt.MouseButton.LeftButton and self._box.isEnabled():
+                if self._label.rect().contains(event.pos()):
+                    self._box.click()
+                    return True
+        return super().eventFilter(obj, event)
+
+    def isChecked(self) -> bool:
+        return self._box.isChecked()
+
+    def setChecked(self, checked: bool) -> None:
+        self._box.setChecked(bool(checked))
+
+    def checkState(self) -> Qt.CheckState:
+        return self._box.checkState()
+
+    def setCheckState(self, state: Qt.CheckState) -> None:
+        self._box.setCheckState(state)
+
+    def toggle(self) -> None:
+        self._box.toggle()
+
+    def click(self) -> None:
+        self._box.click()
+
+    def text(self) -> str:
+        return self._label.text()
+
+    def setText(self, text: str) -> None:
+        self._label.setText(text)
+        self.updateGeometry()
+
+    def setEnabled(self, enabled: bool) -> None:
+        super().setEnabled(enabled)
+        self._box.setEnabled(enabled)
+        self._label.setEnabled(enabled)
+
+    def setToolTip(self, tip: str) -> None:
+        super().setToolTip(tip)
+        self._box.setToolTip(tip)
+        self._label.setToolTip(tip)
+
+    def setStyleSheet(self, style: str) -> None:
+        self._box.setStyleSheet(style)
+        if style and "{" not in style:
+            self._label.setStyleSheet(
+                f"QLabel {{ background: transparent; border: none; padding-top: 1px; {style} }}"
+            )
+        else:
+            self._label.setStyleSheet("QLabel { background: transparent; border: none; padding-top: 1px; }")
+        self.updateGeometry()
+
+    def blockSignals(self, block: bool) -> bool:
+        self._box.blockSignals(block)
+        return super().blockSignals(block)
+
+
+class WrappingRowLayout(QLayout):
+    """Адаптивний горизонтальний ряд: тримає елементи в один рядок і переносить при звуженні вікна."""
+
+    def __init__(
+        self,
+        parent: Optional[QWidget] = None,
+        *,
+        h_spacing: int = 8,
+        v_spacing: int = 6,
+        expand_index: int = -1,
+        expand_min_width: int = 120,
+    ) -> None:
+        super().__init__(parent)
+        self._items: List[Any] = []
+        self._h_spacing = max(0, int(h_spacing))
+        self._v_spacing = max(0, int(v_spacing))
+        self._expand_index = int(expand_index)
+        self._expand_min_width = max(40, int(expand_min_width))
+
+    def __del__(self) -> None:
+        while self._items:
+            self.takeAt(0)
+
+    def addItem(self, item: Any) -> None:
+        self._items.append(item)
+
+    def count(self) -> int:
+        return len(self._items)
+
+    def itemAt(self, index: int) -> Any:
+        if 0 <= index < len(self._items):
+            return self._items[index]
+        return None
+
+    def takeAt(self, index: int) -> Any:
+        if 0 <= index < len(self._items):
+            return self._items.pop(index)
+        return None
+
+    def expandingDirections(self) -> Qt.Orientation:
+        return Qt.Orientation(0)
+
+    def hasHeightForWidth(self) -> bool:
+        return True
+
+    def heightForWidth(self, width: int) -> int:
+        return self._do_layout(QRect(0, 0, max(1, int(width)), 0), test_only=True)
+
+    def setGeometry(self, rect: QRect) -> None:
+        super().setGeometry(rect)
+        self._do_layout(rect, test_only=False)
+
+    def sizeHint(self) -> QSize:
+        return self.minimumSize()
+
+    def minimumSize(self) -> QSize:
+        left, top, right, bottom = self.getContentsMargins()
+        max_w = 0
+        max_h = 0
+        for idx, item in enumerate(self._items):
+            if item.isEmpty():
+                continue
+            sz = item.minimumSize()
+            item_w = max(self._expand_min_width, sz.width()) if idx == self._expand_index else sz.width()
+            max_w = max(max_w, item_w)
+            max_h = max(max_h, sz.height())
+        return QSize(max_w + left + right, max_h + top + bottom)
+
+    def _do_layout(self, rect: QRect, *, test_only: bool) -> int:
+        left, top, right, bottom = self.getContentsMargins()
+        avail_w = max(1, rect.width() - left - right)
+        rows: List[List[tuple[int, Any, int, int]]] = []
+        cur_row: List[tuple[int, Any, int, int]] = []
+        cur_w = 0
+
+        for idx, item in enumerate(self._items):
+            if item.isEmpty():
+                continue
+            hint = item.sizeHint()
+            req_w = (
+                max(self._expand_min_width, item.minimumSize().width())
+                if idx == self._expand_index
+                else hint.width()
+            )
+            step = req_w if not cur_row else (self._h_spacing + req_w)
+            if cur_row and (cur_w + step > avail_w):
+                rows.append(cur_row)
+                cur_row = [(idx, item, hint.width(), hint.height())]
+                cur_w = req_w
+            else:
+                cur_row.append((idx, item, hint.width(), hint.height()))
+                cur_w += step
+        if cur_row:
+            rows.append(cur_row)
+
+        y = rect.y() + top
+        for row_idx, row in enumerate(rows):
+            used_w = sum(item_w for _, _, item_w, _ in row) + self._h_spacing * max(0, len(row) - 1)
+            extra = avail_w - used_w
+            widths: List[int] = [item_w for _, _, item_w, _ in row]
+            expand_pos = next((pos for pos, (idx, _, _, _) in enumerate(row) if idx == self._expand_index), -1)
+            if expand_pos >= 0:
+                min_expand = max(self._expand_min_width, row[expand_pos][1].minimumSize().width())
+                widths[expand_pos] = max(min_expand, widths[expand_pos] + extra)
+            elif len(widths) == 1 and widths[0] > avail_w:
+                widths[0] = avail_w
+
+            row_h = 0
+            x = rect.x() + left
+            for pos, (_, item, _hint_w, hint_h) in enumerate(row):
+                w = min(widths[pos], avail_w) if widths[pos] > avail_w else widths[pos]
+                h = item.heightForWidth(w) if item.hasHeightForWidth() else hint_h
+                row_h = max(row_h, h)
+                widths[pos] = w
+
+            for pos, (_, item, _, _) in enumerate(row):
+                w = widths[pos]
+                h = item.heightForWidth(w) if item.hasHeightForWidth() else item.sizeHint().height()
+                if not test_only:
+                    y_off = max(0, (row_h - h) // 2)
+                    item.setGeometry(QRect(QPoint(x, y + y_off), QSize(w, h)))
+                x += w + self._h_spacing
+
+            y += row_h
+            if row_idx + 1 < len(rows):
+                y += self._v_spacing
+
+        return max(1, (y - rect.y()) + bottom)
+
+
 def _find_scroll_area_and_content(widget: Optional[QWidget]) -> tuple[Optional[QScrollArea], Optional[QWidget]]:
     """Знаходить найближчу QScrollArea та її внутрішній content-віджет, у якому лежить картка."""
     p = widget.parentWidget() if widget is not None else None
@@ -300,6 +532,156 @@ def _find_scroll_area_and_content(widget: Optional[QWidget]) -> tuple[Optional[Q
             return gp.parentWidget(), p
         p = gp
     return None, None
+
+
+def _polish_widget_tree(widget: QWidget) -> None:
+    """Прогріває стилі й метрики шрифтів перед першим обчисленням висоти вмісту."""
+    try:
+        widget.ensurePolished()
+        for child in widget.findChildren(QWidget):
+            child.ensurePolished()
+    except RuntimeError:
+        pass
+
+
+def _activate_layout_tree(widget: QWidget) -> None:
+    """Перераховує layout самого віджета та його піддерева після зміни ширини чи видимості."""
+    lay = widget.layout()
+    if lay is not None:
+        lay.invalidate()
+    for child in widget.findChildren(QWidget):
+        c_lay = child.layout()
+        if c_lay is not None:
+            c_lay.invalidate()
+        child.updateGeometry()
+    if lay is not None:
+        lay.activate()
+    for child in widget.findChildren(QWidget):
+        c_lay = child.layout()
+        if c_lay is not None:
+            c_lay.activate()
+    widget.updateGeometry()
+
+
+def _measure_widget_height_for_width(widget: QWidget, avail_w: int) -> int:
+    """Обчислює потрібну висоту розкривного тіла для заданої ширини."""
+    lay = widget.layout()
+    w = max(120, int(avail_w))
+    if lay is not None and lay.hasHeightForWidth():
+        h = lay.heightForWidth(w)
+    elif widget.hasHeightForWidth():
+        h = widget.heightForWidth(w)
+    else:
+        h = widget.sizeHint().height()
+        if lay is not None:
+            h = max(h, lay.sizeHint().height())
+    if lay is not None:
+        h = max(h, lay.minimumSize().height())
+    return max(1, int(h))
+
+
+class _CollapsibleClipHost(QWidget):
+    """Прозорий контейнер-шторка: під час анімації обрізає висоту, а в спокої транслює розмір body."""
+
+    def __init__(self, body: QWidget, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self._body = body
+        setattr(self, "_is_collapsible_clip", True)
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+        self.setMinimumWidth(0)
+
+    def hasHeightForWidth(self) -> bool:
+        return self._body.hasHeightForWidth() or (
+            self._body.layout() is not None and self._body.layout().hasHeightForWidth()
+        )
+
+    def heightForWidth(self, width: int) -> int:
+        if self.minimumHeight() == self.maximumHeight():
+            return self.minimumHeight()
+        return _measure_widget_height_for_width(self._body, max(width, self.minimumWidth()))
+
+    def sizeHint(self) -> QSize:
+        if self.minimumHeight() == self.maximumHeight():
+            w = max(self.width(), self._body.sizeHint().width(), 1)
+            return QSize(w, self.minimumHeight())
+        w = self.width() if self.width() > 20 else max(self._body.sizeHint().width(), 1)
+        return QSize(max(self._body.sizeHint().width(), 1), _measure_widget_height_for_width(self._body, w))
+
+    def minimumSizeHint(self) -> QSize:
+        if self.minimumHeight() == self.maximumHeight():
+            return QSize(self._body.minimumSizeHint().width(), self.minimumHeight())
+        lay = self._body.layout()
+        min_sz = lay.minimumSize() if lay is not None else self._body.minimumSizeHint()
+        return QSize(max(self._body.minimumSizeHint().width(), min_sz.width()), max(self._body.minimumSizeHint().height(), min_sz.height()))
+
+
+def _ensure_collapsible_clip_host(
+    body: QWidget,
+) -> tuple[QWidget, Optional[QVBoxLayout], Optional[QWidget]]:
+    """
+    Обгортає `body` у прозорий кліпер з власним layout.
+    Внутрішній layout `body` залишається завжди увімкненим, а шторка змінює
+    тільки висоту кліпера — без розкиданого тексту при першому показі
+    й без порожніх блоків при повторному відкритті.
+    """
+    parent = body.parentWidget()
+    if parent is not None and bool(getattr(parent, "_is_collapsible_clip", False)):
+        clip_lay = parent.layout()
+        return parent, clip_lay if isinstance(clip_lay, QVBoxLayout) else None, parent.parentWidget()
+
+    card = parent
+    if card is not None:
+        card_lay = card.layout()
+        if isinstance(card_lay, QBoxLayout) and card_lay.indexOf(body) >= 0:
+            clip = _CollapsibleClipHost(body, card)
+            clip_lay = QVBoxLayout(clip)
+            clip_lay.setContentsMargins(0, 0, 0, 0)
+            clip_lay.setSpacing(0)
+            was_visible = not body.isHidden()
+            card_lay.replaceWidget(body, clip)
+            clip_lay.addWidget(body)
+            clip.setVisible(was_visible)
+            return clip, clip_lay, card
+
+    return body, None, card
+
+
+def sync_collapsible_parent_layout(body: Optional[QWidget]) -> None:
+    """Оновлює геометрію розкритої картки та QScrollArea після зміни контенту всередині."""
+    if body is None:
+        return
+    parent = body.parentWidget()
+    is_clip = parent is not None and bool(getattr(parent, "_is_collapsible_clip", False))
+    clip = parent if is_clip else body
+    card = clip.parentWidget() if is_clip else parent
+    scroll_area, content = _find_scroll_area_and_content(clip)
+    _activate_layout_tree(body)
+    if clip is not body:
+        clip_lay = clip.layout()
+        if isinstance(clip_lay, QBoxLayout) and clip_lay.indexOf(body) >= 0:
+            # Скидаємо внутрішній heightForWidth-кеш QWidgetItemV2 у Qt6,
+            # який інакше зберігає застарілу висоту при тій самій ширині.
+            old_body_it = clip_lay.takeAt(clip_lay.indexOf(body))
+            if old_body_it is not None:
+                del old_body_it
+            clip_lay.addWidget(body)
+            clip_lay.invalidate()
+        clip.updateGeometry()
+    if card is not None and isinstance(card.layout(), QBoxLayout):
+        cbox = card.layout()
+        idx = cbox.indexOf(clip)
+        if idx >= 0:
+            old_clip_it = cbox.takeAt(idx)
+            if old_clip_it is not None:
+                del old_clip_it
+            cbox.insertWidget(idx, clip)
+        card.updateGeometry()
+    _sync_collapsible_scroll_layout(card, scroll_area, content, release_min_height=True)
+    if clip is not body:
+        clip_lay = clip.layout()
+        if clip_lay is not None:
+            clip_lay.activate()
+    _activate_layout_tree(body)
 
 
 def _sync_collapsible_scroll_layout(
@@ -313,9 +695,11 @@ def _sync_collapsible_scroll_layout(
     Синхронно оновлює висоту `card` та `QScrollArea.widget()` в одному кроці,
     щоб картки ВИЩЕ за згортуваний блок не стискалися й не смикалися на жоден піксель.
     """
-    if card is not None and card.layout() is not None:
-        card.layout().invalidate()
-        card.layout().activate()
+    if card is not None:
+        card.updateGeometry()
+        if card.layout() is not None:
+            card.layout().invalidate()
+            card.layout().activate()
     if content is None or scroll_area is None:
         return
     c_lay = content.layout()
@@ -325,10 +709,11 @@ def _sync_collapsible_scroll_layout(
     vp = scroll_area.viewport()
     vp_w = max(1, vp.width())
     vp_h = max(1, vp.height())
-    need_h = c_lay.heightForWidth(vp_w) if c_lay.hasHeightForWidth() else c_lay.sizeHint().height()
+    target_w = max(vp_w, c_lay.minimumSize().width())
+    need_h = c_lay.heightForWidth(target_w) if c_lay.hasHeightForWidth() else c_lay.sizeHint().height()
     need_h = max(need_h, c_lay.minimumSize().height(), vp_h)
     content.setMinimumHeight(0 if release_min_height else need_h)
-    content.resize(vp_w, need_h)
+    content.resize(target_w, need_h)
     c_lay.activate()
 
 
@@ -340,7 +725,7 @@ def toggle_collapsible_widget(
     duration_ms: int = 210,
     on_collapsed: Optional[Callable[[], None]] = None,
 ) -> None:
-    """Плавно розгортає або згортає тіло картки шторкою без ривків елементів вище."""
+    """Плавно розгортає або згортає тіло картки шторкою без ривків і обрізання елементів."""
     if btn is not None and hasattr(btn, "setArrowType"):
         btn.setArrowType(Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow)
 
@@ -353,65 +738,106 @@ def toggle_collapsible_widget(
             pass
         setattr(body, "_collapse_anim", None)
 
-    card = body.parentWidget()
-    scroll_area, content = _find_scroll_area_and_content(card)
-    lay = body.layout()
+    clip, clip_lay, card = _ensure_collapsible_clip_host(body)
+    scroll_area, content = _find_scroll_area_and_content(clip)
+    body_lay = body.layout()
 
     if expanded:
-        avail_w = body.width()
-        if (avail_w <= 20 or not body.isVisible()) and card is not None:
+        avail_w = clip.width() if (clip.isVisible() and clip.width() > 20) else 0
+        if avail_w <= 20 and card is not None and card.width() > 20:
             p_lay = card.layout()
             lm = p_lay.contentsMargins() if p_lay is not None else card.contentsMargins()
-            avail_w = max(240, card.width() - lm.left() - lm.right())
-        start_h = max(0, int(body.height())) if body.isVisible() else 0
-        if lay is not None:
-            lay.setEnabled(True)
+            avail_w = max(200, card.width() - lm.left() - lm.right())
+        if avail_w <= 20 and scroll_area is not None:
+            avail_w = max(200, scroll_area.viewport().width() - 40)
+        avail_w = max(200, int(avail_w))
+
+        start_h = max(0, int(clip.height())) if clip.isVisible() else 0
+
+        if body_lay is not None:
+            body_lay.setEnabled(True)
         body.setMinimumHeight(0)
         body.setMaximumHeight(16777215)
-        if lay is not None:
-            lay.activate()
-        if lay is not None and avail_w > 20 and lay.hasHeightForWidth():
-            target_h = lay.heightForWidth(avail_w)
-        elif avail_w > 20 and body.hasHeightForWidth():
-            target_h = body.heightForWidth(avail_w)
-        else:
-            target_h = body.sizeHint().height()
-            if lay is not None:
-                target_h = max(target_h, lay.sizeHint().height())
-        target_h = max(1, int(target_h))
 
-        # Заздалегідь розкладаємо вміст у фінальному розмірі й блокуємо внутрішній layout
-        # на час шторки — діти плавно відкриваються без стискання та стрибків.
-        body.resize(max(240, avail_w), target_h)
-        if lay is not None:
-            lay.activate()
-            lay.setEnabled(False)
-        body.setFixedHeight(start_h)
-        body.setVisible(True)
+        if clip_lay is not None:
+            # Тримаємо внутрішній layout `body` повністю активним, заморожуючи лише
+            # висоту обгортки `clip` на час анімації.
+            clip_lay.setEnabled(False)
+            clip.setFixedHeight(start_h)
+            clip.setVisible(True)
+            body.setVisible(True)
+            _polish_widget_tree(body)
+            body.resize(avail_w, max(body.height(), 60))
+            _activate_layout_tree(body)
+            target_h = _measure_widget_height_for_width(body, avail_w)
+            body.setGeometry(0, 0, avail_w, target_h)
+            _activate_layout_tree(body)
+            refined_h = _measure_widget_height_for_width(body, avail_w)
+            if refined_h != target_h:
+                target_h = refined_h
+                body.setGeometry(0, 0, avail_w, target_h)
+                _activate_layout_tree(body)
+        else:
+            body.setVisible(True)
+            _polish_widget_tree(body)
+            body.resize(avail_w, max(body.height(), 60))
+            _activate_layout_tree(body)
+            target_h = _measure_widget_height_for_width(body, avail_w)
+            if body_lay is not None:
+                body.resize(avail_w, target_h)
+                _activate_layout_tree(body)
+                body_lay.setEnabled(False)
+            body.setFixedHeight(start_h)
+
         _sync_collapsible_scroll_layout(card, scroll_area, content)
     else:
-        if not body.isVisible():
-            if lay is not None:
-                lay.setEnabled(True)
+        if not clip.isVisible():
+            if clip_lay is not None:
+                clip_lay.setEnabled(True)
+            elif body_lay is not None:
+                body_lay.setEnabled(True)
+            body.setVisible(False)
             body.setMinimumHeight(0)
             body.setMaximumHeight(16777215)
+            clip.setMinimumHeight(0)
+            clip.setMaximumHeight(16777215)
             _sync_collapsible_scroll_layout(card, scroll_area, content, release_min_height=True)
             if on_collapsed is not None:
                 on_collapsed()
             return
-        start_h = max(0, int(body.height()))
+        start_h = max(0, int(clip.height()))
         target_h = 0
-        if lay is not None:
-            lay.setEnabled(False)
-        body.setFixedHeight(start_h)
+        if clip_lay is not None:
+            clip_lay.setEnabled(False)
+            cur_w = max(200, int(clip.width() or body.width()))
+            hold_h = max(start_h, _measure_widget_height_for_width(body, cur_w))
+            body.setGeometry(0, 0, cur_w, hold_h)
+        elif body_lay is not None:
+            body_lay.setEnabled(False)
+        clip.setFixedHeight(start_h)
         _sync_collapsible_scroll_layout(card, scroll_area, content)
 
     if start_h == target_h or duration_ms <= 0:
-        if lay is not None:
-            lay.setEnabled(True)
-        body.setMinimumHeight(0)
-        body.setMaximumHeight(16777215)
-        body.setVisible(expanded)
+        if clip_lay is not None:
+            clip.setMinimumHeight(0)
+            clip.setMaximumHeight(16777215)
+            clip.setVisible(expanded)
+            body.setVisible(expanded)
+            clip_lay.setEnabled(True)
+            clip_lay.invalidate()
+            if expanded:
+                _activate_layout_tree(body)
+            clip_lay.activate()
+            clip.updateGeometry()
+        else:
+            if body_lay is not None:
+                body_lay.setEnabled(True)
+                body_lay.invalidate()
+            body.setMinimumHeight(0)
+            body.setMaximumHeight(16777215)
+            body.setVisible(expanded)
+            if expanded:
+                _activate_layout_tree(body)
         _sync_collapsible_scroll_layout(card, scroll_area, content, release_min_height=True)
         if not expanded and on_collapsed is not None:
             on_collapsed()
@@ -425,7 +851,13 @@ def toggle_collapsible_widget(
 
     def _on_val(val: Any) -> None:
         try:
-            body.setFixedHeight(max(0, int(val)))
+            clip.setFixedHeight(max(0, int(val)))
+            if expanded and clip_lay is not None:
+                cur_w = clip.width()
+                if cur_w > 20 and abs(cur_w - body.width()) > 1:
+                    new_h = max(target_h, _measure_widget_height_for_width(body, cur_w))
+                    body.setGeometry(0, 0, cur_w, new_h)
+                    _activate_layout_tree(body)
             _sync_collapsible_scroll_layout(card, scroll_area, content)
         except RuntimeError:
             pass
@@ -435,17 +867,37 @@ def toggle_collapsible_widget(
             if getattr(body, "_collapse_anim", None) is anim:
                 setattr(body, "_collapse_anim", None)
             if expanded:
-                if lay is not None:
-                    lay.setEnabled(True)
-                body.setMinimumHeight(0)
-                body.setMaximumHeight(16777215)
+                if clip_lay is not None:
+                    clip.setMinimumHeight(0)
+                    clip.setMaximumHeight(16777215)
+                    clip_lay.setEnabled(True)
+                    clip_lay.invalidate()
+                    _activate_layout_tree(body)
+                    clip_lay.activate()
+                    clip.updateGeometry()
+                else:
+                    if body_lay is not None:
+                        body_lay.setEnabled(True)
+                    body.setMinimumHeight(0)
+                    body.setMaximumHeight(16777215)
+                    _activate_layout_tree(body)
                 _sync_collapsible_scroll_layout(card, scroll_area, content, release_min_height=True)
             else:
+                clip.setVisible(False)
                 body.setVisible(False)
-                if lay is not None:
-                    lay.setEnabled(True)
-                body.setMinimumHeight(0)
-                body.setMaximumHeight(16777215)
+                if clip_lay is not None:
+                    clip.setMinimumHeight(0)
+                    clip.setMaximumHeight(16777215)
+                    clip_lay.setEnabled(True)
+                    clip_lay.invalidate()
+                    clip.updateGeometry()
+                else:
+                    if body_lay is not None:
+                        body_lay.setEnabled(True)
+                        body_lay.invalidate()
+                    body.setMinimumHeight(0)
+                    body.setMaximumHeight(16777215)
+                body.updateGeometry()
                 _sync_collapsible_scroll_layout(card, scroll_area, content, release_min_height=True)
                 if on_collapsed is not None:
                     on_collapsed()
