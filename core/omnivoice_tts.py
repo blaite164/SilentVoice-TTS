@@ -17,6 +17,7 @@ from __future__ import annotations
 import atexit
 import base64
 from collections import deque
+from difflib import SequenceMatcher
 import hashlib
 import io
 import json
@@ -29,6 +30,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
@@ -1201,27 +1203,47 @@ class _OmniVoiceServerManager:
         with self._req_lock:
             return self._cancel_gen != my_gen
 
+    @staticmethod
+    def _extract_response_socket(resp: Any) -> Any:
+        try:
+            raw = getattr(resp, "raw", None)
+            fp = getattr(raw, "_fp", None)
+            sock_io = getattr(fp, "fp", None)
+            raw_sock = getattr(sock_io, "raw", None)
+            sock = getattr(raw_sock, "_sock", None)
+            if sock is not None:
+                return sock
+            conn = getattr(raw, "_connection", None)
+            return getattr(conn, "sock", None)
+        except Exception:
+            return None
+
     def cancel_active(self, *, only_warmup: bool = False) -> None:
         socks_to_close: List[Any] = []
-        resps_to_close: List[Any] = []
+        seen_sock_ids: set[int] = set()
+        resps_to_inspect: List[Any] = []
         with self._req_lock:
             if not only_warmup:
                 self._cancel_gen += 1
             for tid, (sock, is_w) in list(self._active_sockets.items()):
                 if not only_warmup or is_w:
-                    socks_to_close.append(sock)
+                    if sock is not None:
+                        socks_to_close.append(sock)
+                        seen_sock_ids.add(id(sock))
                     self._active_sockets.pop(tid, None)
             for tid, (resp, is_w) in list(self._active_responses.items()):
                 if not only_warmup or is_w:
-                    resps_to_close.append(resp)
+                    resps_to_inspect.append(resp)
                     self._active_responses.pop(tid, None)
+        for resp in resps_to_inspect:
+            rsock = self._extract_response_socket(resp)
+            if rsock is not None and id(rsock) not in seen_sock_ids:
+                socks_to_close.append(rsock)
+                seen_sock_ids.add(id(rsock))
+        # Close only underlying OS sockets from this thread; calling resp.close() across threads
+        # races urllib3's BufferedReader while iter_content() reads (causes UI stalls / access violations).
         for sock in socks_to_close:
             _force_close_socket(sock)
-        for resp in resps_to_close:
-            try:
-                resp.close()
-            except Exception:
-                pass
 
     def is_running(self) -> bool:
         with self._lock:
@@ -1864,6 +1886,206 @@ def warmup_omnivoice_tts(lang: str = "") -> bool:
         return False
 
 
+_NONSPEECH_ASR_RE = re.compile(r"^\s*[\[\(*].*[\]\)*]\s*$", re.DOTALL)
+_WORD_TOKEN_RE = re.compile(r"[а-яёіїєґa-z0-9]+", re.IGNORECASE)
+
+
+def _normalize_whisper_asr_lang(lang: str) -> str:
+    low = str(lang or config.get("app_language") or "auto").strip().lower()
+    if low == "ua":
+        return "uk"
+    if low in ("uk", "ru", "en", "pl", "de", "fr", "es"):
+        return low
+    return "auto"
+
+
+def _spoken_word_tokens(text: str) -> List[str]:
+    from core.omnivoice_tags import strip_omnivoice_tags
+
+    plain = strip_omnivoice_tags(str(text or "")).lower().replace("ё", "е")
+    return [w for w in _WORD_TOKEN_RE.findall(plain) if len(w) >= 2]
+
+
+def _words_match_transcript(expected_words: List[str], transcript: str) -> bool:
+    clean_tr = re.sub(r"[\[\(*][^\]\)*]*[\]\)*]", " ", str(transcript or "")).strip()
+    if not clean_tr:
+        return False
+    tr_words = [w for w in _WORD_TOKEN_RE.findall(clean_tr.lower().replace("ё", "е")) if len(w) >= 2]
+    if not tr_words:
+        return False
+    for ew in expected_words:
+        for tw in tr_words:
+            if ew == tw or (len(ew) >= 3 and len(tw) >= 3 and SequenceMatcher(None, ew, tw).ratio() >= 0.55):
+                return True
+            if len(ew) == 2 and tw.startswith(ew):
+                return True
+    return False
+
+
+def _assess_omnivoice_segment_quality(
+    samples: np.ndarray,
+    sr: int,
+    seg_text: str,
+    *,
+    lang: str,
+    is_whisper: bool,
+    ref_wav: Optional[Path],
+    verify_asr: bool = True,
+) -> Tuple[bool, float, str]:
+    """
+    Detect collapsed MaskGIT outputs (single breath pop / static hiss / [музыка]) on a synthesized segment.
+    Returns `(is_ok, rank_score, reason)`. Tiny test stubs (<200ms) bypass checks cleanly.
+    """
+    if samples is None or len(samples) == 0:
+        return False, 0.0, "empty"
+    if len(samples) < max(1, int(sr * 0.2)):
+        return True, 100.0, "short_bypass"
+
+    arr = np.asarray(samples, dtype=np.float32)
+    rms = float(np.sqrt(np.mean(arr * arr)))
+    peak = float(np.max(np.abs(arr)))
+    if rms < 0.008 or peak < 0.025:
+        return False, rms * 10.0, "too_quiet"
+
+    hop = max(1, int(sr // 50))
+    usable = (len(arr) // hop) * hop
+    if usable >= hop:
+        frames = arr[:usable].reshape(-1, hop)
+        frms = np.sqrt(np.mean(frames * frames, axis=1))
+        rel_thr = max(0.008, float(np.max(frms)) * 0.22)
+        act_rel = float(np.mean(frms > rel_thr))
+    else:
+        act_rel = 1.0
+
+    expected_words = _spoken_word_tokens(seg_text)
+    if expected_words and sum(len(w) for w in expected_words) >= 6 and act_rel < 0.12:
+        return False, 1.0 + act_rel * 10.0, "single_burst"
+
+    zcr = float(np.mean(np.abs(np.diff(np.signbit(arr))))) if len(arr) > 1 else 0.0
+    if is_whisper and expected_words and zcr < 0.032:
+        return False, 2.0 + zcr * 20.0, "whisper_low_zcr"
+
+    need_asr = (
+        verify_asr
+        and bool(expected_words)
+        and is_omnivoice_whisper_installed()
+        and (ref_wav is None or "[" in seg_text or rms < 0.03)
+    )
+    if not need_asr:
+        return True, 50.0 + min(20.0, rms * 50.0 + act_rel * 10.0), "dsp_ok"
+
+    try:
+        with tempfile.TemporaryDirectory(prefix="ov_chk_") as td:
+            wav_p = Path(td) / "seg.wav"
+            sf.write(str(wav_p), np.clip(arr, -1.0, 1.0), int(sr), subtype="PCM_16")
+            transcript = transcribe_wav_with_whisper_cpp(wav_p, lang=_normalize_whisper_asr_lang(lang), timeout_sec=15.0)
+    except Exception:
+        return True, 45.0 + min(15.0, act_rel * 15.0), "asr_skipped"
+
+    clean_tr = str(transcript or "").strip()
+    if not clean_tr or _NONSPEECH_ASR_RE.match(clean_tr):
+        return False, 3.0 + act_rel * 5.0, f"asr_nonspeech:{clean_tr!r}"
+    if not _words_match_transcript(expected_words, clean_tr):
+        return False, 8.0 + act_rel * 5.0, f"asr_mismatch:{clean_tr!r}"
+    if is_whisper and zcr < 0.075:
+        return False, 12.0 + zcr * 20.0, f"whisper_dull_zcr:{zcr:.3f}"
+
+    return True, 100.0 + min(30.0, act_rel * 20.0 + rms * 20.0), f"asr_ok:{clean_tr!r}"
+
+
+def _build_recovery_attempts(
+    params: Dict[str, Any],
+    *,
+    is_whisper: bool,
+) -> List[Tuple[str, Optional[int], int]]:
+    orig_lang = str(params["lang_label"] or "None")
+    orig_seed = params["seed"]
+    orig_steps = int(params["steps"])
+    base_s = 42 if orig_seed is None else int(orig_seed)
+    alt_seed_a = 7 if base_s != 7 else 13
+    alt_seed_b = 17 if base_s not in (7, 17) else 29
+    alt_lang = "None" if orig_lang != "None" else orig_lang
+    boost_steps = max(24, orig_steps)
+
+    if is_whisper:
+        return [
+            (alt_lang, orig_seed, orig_steps),
+            (orig_lang, alt_seed_a, orig_steps),
+            ("None", alt_seed_b, boost_steps),
+        ]
+    return [
+        (orig_lang, alt_seed_a, orig_steps),
+        (alt_lang, (base_s + 131) % 2_000_000_000, orig_steps),
+        (orig_lang, alt_seed_b, boost_steps),
+    ]
+
+
+def _synthesize_segment_with_recovery(
+    seg_text: str,
+    *,
+    lang: str,
+    params: Dict[str, Any],
+    is_whisper: bool,
+) -> Tuple[np.ndarray, int]:
+    samples, sr = _omnivoice_server.synthesize(
+        text=seg_text,
+        lang_label=params["lang_label"],
+        ref_wav=params["ref_wav"],
+        ref_digest=params["ref_digest"],
+        ref_text=params["ref_text"],
+        instruct=params["instruct"],
+        seed=params["seed"],
+        steps=params["steps"],
+        denoise=params["denoise"],
+    )
+    ok, best_score, reason = _assess_omnivoice_segment_quality(
+        samples,
+        sr,
+        seg_text,
+        lang=lang,
+        is_whisper=is_whisper,
+        ref_wav=params["ref_wav"],
+        verify_asr=_omnivoice_server.is_running(),
+    )
+    if ok:
+        return samples, sr
+
+    best_samples, best_sr = samples, sr
+    for cand_lang, cand_seed, cand_steps in _build_recovery_attempts(params, is_whisper=is_whisper):
+        print(
+            f"[OmniVoice] Segment quality retry ({reason}) -> lang={cand_lang}, seed={cand_seed}, steps={cand_steps}",
+            file=sys.stderr,
+            flush=True,
+        )
+        cand_samples, cand_sr = _omnivoice_server.synthesize(
+            text=seg_text,
+            lang_label=cand_lang,
+            ref_wav=params["ref_wav"],
+            ref_digest=params["ref_digest"],
+            ref_text=params["ref_text"],
+            instruct=params["instruct"],
+            seed=cand_seed,
+            steps=cand_steps,
+            denoise=params["denoise"],
+        )
+        cand_ok, cand_score, cand_reason = _assess_omnivoice_segment_quality(
+            cand_samples,
+            cand_sr,
+            seg_text,
+            lang=lang,
+            is_whisper=is_whisper,
+            ref_wav=params["ref_wav"],
+            verify_asr=_omnivoice_server.is_running(),
+        )
+        if cand_ok:
+            return cand_samples, cand_sr
+        if cand_score > best_score:
+            best_score = cand_score
+            best_samples, best_sr = cand_samples, cand_sr
+        reason = cand_reason
+    return best_samples, best_sr
+
+
 def synthesize_omnivoice_tts(
     text: str,
     lang: str = "uk",
@@ -1886,33 +2108,23 @@ def synthesize_omnivoice_tts(
     if len(segments) == 1:
         seg_text, is_whisp = segments[0]
         params = _resolve_active_synth_params(lang, whisper=is_whisp)
-        samples, sr = _omnivoice_server.synthesize(
-            text=seg_text,
-            lang_label=params["lang_label"],
-            ref_wav=params["ref_wav"],
-            ref_digest=params["ref_digest"],
-            ref_text=params["ref_text"],
-            instruct=params["instruct"],
-            seed=params["seed"],
-            steps=params["steps"],
-            denoise=params["denoise"],
+        samples, sr = _synthesize_segment_with_recovery(
+            seg_text,
+            lang=lang,
+            params=params,
+            is_whisper=is_whisp,
         )
     else:
         parts: List[np.ndarray] = []
         sr = OMNIVOICE_NATIVE_SR
         has_normal = any(not is_w for _, is_w in segments)
-        for idx, (seg_text, is_whisp) in enumerate(segments):
+        for seg_text, is_whisp in segments:
             params = _resolve_active_synth_params(lang, whisper=is_whisp)
-            seg_samples, seg_sr = _omnivoice_server.synthesize(
-                text=seg_text,
-                lang_label=params["lang_label"],
-                ref_wav=params["ref_wav"],
-                ref_digest=params["ref_digest"],
-                ref_text=params["ref_text"],
-                instruct=params["instruct"],
-                seed=params["seed"],
-                steps=params["steps"],
-                denoise=params["denoise"],
+            seg_samples, seg_sr = _synthesize_segment_with_recovery(
+                seg_text,
+                lang=lang,
+                params=params,
+                is_whisper=is_whisp,
             )
             if len(seg_samples) > 0:
                 sr = int(seg_sr)
@@ -1961,6 +2173,19 @@ def synthesize_omnivoice_tts_stream(
         if emitted_any:
             yield np.zeros(int(OMNIVOICE_NATIVE_SR * 0.045), dtype=np.float32), OMNIVOICE_NATIVE_SR
         params = _resolve_active_synth_params(lang, whisper=is_whisp)
+        if is_whisp or params["ref_wav"] is None or "[" in seg_text:
+            seg_samples, seg_sr = _synthesize_segment_with_recovery(
+                seg_text,
+                lang=lang,
+                params=params,
+                is_whisper=is_whisp,
+            )
+            if len(seg_samples) > 0:
+                if has_normal and is_whisp:
+                    seg_samples = (seg_samples * OMNIVOICE_WHISPER_REL_GAIN).astype(np.float32, copy=False)
+                emitted_any = True
+                yield seg_samples, seg_sr
+            continue
         for chunk, sr in _omnivoice_server.synthesize_stream(
             text=seg_text,
             lang_label=params["lang_label"],
@@ -1973,7 +2198,5 @@ def synthesize_omnivoice_tts_stream(
             denoise=params["denoise"],
         ):
             if len(chunk) > 0:
-                if has_normal and is_whisp:
-                    chunk = (chunk * OMNIVOICE_WHISPER_REL_GAIN).astype(np.float32, copy=False)
                 emitted_any = True
                 yield chunk, sr

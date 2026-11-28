@@ -680,6 +680,7 @@
   "ui_local_models_connected": "Verbunden und bereit: {model}",
   "ui_local_models_lms_server_starting": "Der lokale LM-Studio-Server wird gestartet…",
   "ui_local_models_lms_model_loading": "Das ausgewählte Modell wird in LM Studio geladen…",
+  "ui_local_models_lms_importing": "Modell wird in die LM-Studio-Bibliothek importiert…",
   "ui_local_models_gguf_downloading": "Lade offizielle Vulkan-GPU-Laufzeit von llama.cpp herunter…",
   "ui_local_models_gguf_preparing": "llama.cpp wird vorbereitet…",
   "ui_local_models_gguf_launching": "Das Modell wird gestartet. Der erste Start kann etwas länger dauern…",

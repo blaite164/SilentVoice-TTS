@@ -3508,8 +3508,13 @@ class TTSEngineManager(QObject):
             first_ms = int((time.perf_counter() - t0) * 1000)
             self.status_changed.emit(tr("tts.status.speaking_ms", "Озвучення ({ms} мс)...", ms=first_ms))
             if emit_phrase_spoken:
-                self.phrase_spoken.emit(strip_plus_stress_marks(full_phrase_text))
+                spoken_disp = strip_plus_stress_marks(full_phrase_text)
+                if primary_id == "omnivoice":
+                    spoken_disp = strip_omnivoice_tags(spoken_disp)
+                self.phrase_spoken.emit(spoken_disp)
             clean_chunk_text = strip_plus_stress_marks(chunk_text)
+            if primary_id == "omnivoice":
+                clean_chunk_text = strip_omnivoice_tags(clean_chunk_text)
             est_dur = max(len(first_samples) / float(max(1, sr)), len(clean_chunk_text) / 13.0)
             self.speech_started.emit(clean_chunk_text, est_dur)
             if clean_chunk_text:

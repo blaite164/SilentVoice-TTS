@@ -763,8 +763,9 @@ def _extract_protected_reaction_spans(text: str) -> tuple[List[str], List[str]]:
         expand_omnivoice_tags,
     )
 
-    specs = build_all_configured_reaction_specs(config.data)
-    expanded = expand_omnivoice_tags(text, specs=specs)
+    eff_lang = str(config.get("app_language") or config.get("ui_language") or "uk").strip().lower() or "uk"
+    specs = build_all_configured_reaction_specs(config.data, ui_lang=eff_lang)
+    expanded = expand_omnivoice_tags(text, specs=specs, ui_lang=eff_lang)
     known_tokens = list(OMNIVOICE_ALL_OFFICIAL_TAGS) + [OMNIVOICE_WHISPER_TAG] + [s.tag for s in specs if s.tag]
     if not known_tokens or "[" not in expanded:
         return [text], []

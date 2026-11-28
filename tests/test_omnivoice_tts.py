@@ -752,6 +752,86 @@ class OmniVoiceIntegrationTests(unittest.TestCase):
             finally:
                 config.set("custom_clone_samples", old_custom)
 
+    def test_quality_assessment_recovery_and_safe_cancel(self) -> None:
+        """Collapsed whisper/noise outputs fail quality check, retry with alternate lang/seed, and cancel closes sockets only."""
+        from core import omnivoice_tts as ov
+
+        sr = 24000
+        # 1. Whisper ASR rejects non-speech/garbage markers and single-burst crackle while accepting real speech
+        n = sr  # 1.0s
+        burst = np.zeros(n, dtype=np.float32)
+        burst[:800] = 0.5
+        ok_burst, _, reason_burst = ov._assess_omnivoice_segment_quality(
+            burst, sr, "меня зовут дима", lang="ru", is_whisper=True, ref_wav=None, verify_asr=False
+        )
+        self.assertFalse(ok_burst)
+        self.assertEqual(reason_burst, "single_burst")
+
+        # Broadband fricative noise waveform simulates whisper zcr >= 0.15
+        rng = np.random.default_rng(7)
+        whisp_like = (rng.uniform(-0.2, 0.2, n) * np.sign(np.sin(np.arange(n) * 1.1))).astype(np.float32)
+        with (
+            mock.patch("core.omnivoice_tts.is_omnivoice_whisper_installed", return_value=True),
+            mock.patch("core.omnivoice_tts.transcribe_wav_with_whisper_cpp", side_effect=["*Слышен*", "[музыка]", "Меня зовут Тима."]),
+        ):
+            ok_ns, _, r1 = ov._assess_omnivoice_segment_quality(whisp_like, sr, "меня зовут дима", lang="ru", is_whisper=True, ref_wav=None)
+            self.assertFalse(ok_ns)
+            self.assertIn("asr_nonspeech", r1)
+
+            ok_mu, _, r2 = ov._assess_omnivoice_segment_quality(whisp_like, sr, "[confirmation-en] Привет", lang="ru", is_whisper=False, ref_wav=None)
+            self.assertFalse(ok_mu)
+
+            ok_good, score_good, _ = ov._assess_omnivoice_segment_quality(whisp_like, sr, "меня зовут дима", lang="ru", is_whisper=True, ref_wav=None)
+            self.assertTrue(ok_good)
+            self.assertGreaterEqual(score_good, 100.0)
+
+        # 2. Recovery retries with lang_label="None" when initial Russian whisper segment fails
+        calls = []
+
+        def _fake_retry_synth(*, text, lang_label, seed, steps, **_kw):
+            calls.append((lang_label, seed, steps))
+            if len(calls) == 1:
+                return burst, sr
+            return whisp_like, sr
+
+        params = {
+            "lang_label": "Russian",
+            "ref_wav": None,
+            "ref_digest": "",
+            "ref_text": "",
+            "instruct": "female, young adult, whisper",
+            "seed": 42,
+            "steps": 16,
+            "denoise": True,
+        }
+        with (
+            mock.patch.object(ov._omnivoice_server, "is_running", return_value=True),
+            mock.patch.object(ov._omnivoice_server, "synthesize", side_effect=_fake_retry_synth),
+            mock.patch("core.omnivoice_tts.is_omnivoice_whisper_installed", return_value=True),
+            mock.patch("core.omnivoice_tts.transcribe_wav_with_whisper_cpp", return_value="Меня зовут Дима."),
+        ):
+            out_s, out_sr = ov._synthesize_segment_with_recovery("меня зовут дима", lang="ru", params=params, is_whisper=True)
+        self.assertEqual(out_sr, sr)
+        self.assertEqual(len(out_s), n)
+        self.assertEqual(calls[0][0], "Russian")
+        self.assertEqual(calls[1][0], "None")
+
+        # 3. cancel_active closes sockets via _force_close_socket and NEVER invokes resp.close() on foreign thread
+        mgr = ov._OmniVoiceServerManager()
+        sock_a = mock.MagicMock()
+        sock_resp = mock.MagicMock()
+        resp_mock = mock.MagicMock()
+        resp_mock.raw._fp.fp.raw._sock = sock_resp
+        with mgr._req_lock:
+            mgr._active_sockets[1] = (sock_a, False)
+            mgr._active_responses[1] = (resp_mock, False)
+        mgr.cancel_active(only_warmup=False)
+        sock_a.shutdown.assert_called_once()
+        sock_a.close.assert_called_once()
+        sock_resp.shutdown.assert_called_once()
+        sock_resp.close.assert_called_once()
+        resp_mock.close.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

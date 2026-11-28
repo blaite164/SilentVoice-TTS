@@ -2492,22 +2492,34 @@ class LocalModelsDialog(QDialog):
             )
             return
         entries = models if isinstance(models, list) else []
+        entry_paths: List[str] = []
         for entry in entries:
             if not isinstance(entry, dict):
                 continue
             key = str(entry.get("key", "")).strip()
             label = str(entry.get("label", key)).strip()
+            entry_path = str(entry.get("path", "")).strip()
             if key:
                 self.model_combo.addItem(label, key)
                 self.available_models.append(key)
+                entry_paths.append(entry_path)
         if self.available_models:
             target_key = self._preferred_lms_model_key.split("@", 1)[0].lower()
+            target_slug = target_key.rsplit("/", 1)[-1]
+            if target_slug.endswith("-gguf"):
+                target_slug = target_slug[:-5]
+
+            def _matches_preferred(idx: int) -> bool:
+                if not target_key:
+                    return False
+                item_key = str(self.model_combo.itemData(idx) or "").lower().split("@", 1)[0]
+                item_path = entry_paths[idx].lower()
+                if item_key == target_key or target_key in item_key or target_key in item_path:
+                    return True
+                return bool(target_slug and (target_slug == item_key or target_slug in item_key or target_slug in item_path))
+
             preferred_index = next(
-                (
-                    i for i in range(self.model_combo.count())
-                    if str(self.model_combo.itemData(i) or "").lower().split("@", 1)[0] == target_key
-                    or target_key in str(self.model_combo.itemData(i) or "").lower()
-                ),
+                (i for i in range(self.model_combo.count()) if _matches_preferred(i)),
                 0,
             )
             self.model_combo.setCurrentIndex(preferred_index)

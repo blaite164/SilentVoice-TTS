@@ -680,6 +680,7 @@
   "ui_local_models_connected": "Підключено й готово: {model}",
   "ui_local_models_lms_server_starting": "Запускаю локальний сервер LM Studio…",
   "ui_local_models_lms_model_loading": "Завантажую обрану модель у LM Studio…",
+  "ui_local_models_lms_importing": "Додаю модель у бібліотеку LM Studio…",
   "ui_local_models_gguf_downloading": "Завантажую офіційний Vulkan GPU-модуль llama.cpp…",
   "ui_local_models_gguf_preparing": "Готую llama.cpp…",
   "ui_local_models_gguf_launching": "Запускаю модель. Перший запуск може тривати довше…",

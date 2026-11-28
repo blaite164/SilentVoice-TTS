@@ -90,13 +90,99 @@ def list_lmstudio_models() -> List[Dict[str, str]]:
         elif isinstance(item, dict):
             if str(item.get("type", "llm")).lower() not in ("llm", "model", ""):
                 continue
-            key = str(item.get("modelKey") or item.get("model_key") or item.get("key") or item.get("path") or "").strip()
+            path = str(item.get("path") or "").strip()
+            key = str(item.get("modelKey") or item.get("model_key") or item.get("key") or path or "").strip()
             label = str(item.get("displayName") or item.get("name") or key).strip()
         else:
             continue
         if key:
-            models.append({"key": key, "label": label or key})
+            entry: Dict[str, str] = {"key": key, "label": label or key}
+            if isinstance(item, dict) and path:
+                entry["path"] = path
+            models.append(entry)
     return models
+
+
+def _import_lmstudio_staged_file(
+    staged_file: Path,
+    safe_repo: str,
+    cancel_event: Optional[threading.Event] = None,
+    timeout: float = 600.0,
+) -> None:
+    """Import a staged GGUF into LM Studio without blocking on CLI Y/n prompts."""
+    cli = find_lms_cli()
+    if not cli:
+        raise RuntimeError("LM Studio command-line tools were not found. Open LM Studio once, then try again.")
+
+    proc = subprocess.Popen(
+        [cli, "import", str(staged_file), "--user-repo", safe_repo, "--yes"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        **_hidden_process_options(),
+    )
+    out_chunks: List[str] = []
+    err_chunks: List[str] = []
+
+    def _drain(pipe: Any, target: List[str]) -> None:
+        if pipe is None:
+            return
+        try:
+            data = pipe.read()
+            if data:
+                target.append(data)
+        except Exception:
+            pass
+        finally:
+            try:
+                pipe.close()
+            except Exception:
+                pass
+
+    t_out = threading.Thread(target=_drain, args=(proc.stdout, out_chunks), daemon=True)
+    t_err = threading.Thread(target=_drain, args=(proc.stderr, err_chunks), daemon=True)
+    t_out.start()
+    t_err.start()
+
+    # lms import --yes suppresses warnings yet still prompts "? Do you wish to continue? (Y/n)".
+    if proc.stdin is not None:
+        try:
+            proc.stdin.write("y\n" * 6)
+            proc.stdin.flush()
+        except Exception:
+            pass
+        try:
+            proc.stdin.close()
+        except Exception:
+            pass
+
+    deadline = time.monotonic() + float(timeout)
+    try:
+        while proc.poll() is None:
+            if cancel_event is not None and cancel_event.is_set():
+                raise RuntimeError("Model download cancelled.")
+            if time.monotonic() >= deadline:
+                raise RuntimeError("LM Studio took too long to respond. Please try again.")
+            time.sleep(0.2)
+    except Exception:
+        try:
+            proc.kill()
+            proc.wait(timeout=3.0)
+        except Exception:
+            pass
+        raise
+    finally:
+        t_out.join(timeout=2.0)
+        t_err.join(timeout=2.0)
+
+    if cancel_event is not None and cancel_event.is_set():
+        raise RuntimeError("Model download cancelled.")
+    if proc.returncode != 0:
+        detail = ("".join(err_chunks) or "".join(out_chunks) or "").strip()
+        raise RuntimeError(detail[-1000:] or "LM Studio could not import the downloaded model.")
 
 
 def download_recommended_lmstudio_model(
@@ -119,8 +205,8 @@ def download_recommended_lmstudio_model(
     staging_dir = DATA_DIR / "model_downloads" / "lmstudio"
     staging_dir.mkdir(parents=True, exist_ok=True)
     staged_file = staging_dir / safe_name
-    if not staged_file.is_file():
-        from core.tts_manager import tts_manager
+    from core.tts_manager import tts_manager
+    if not staged_file.is_file() or staged_file.stat().st_size == 0:
         tts_manager._download_url_with_progress(
             url, staged_file, "local_llm_download", 0, 100, safe_name,
             cancel_event=cancel_event,
@@ -128,14 +214,18 @@ def download_recommended_lmstudio_model(
     if cancel_event is not None and cancel_event.is_set():
         raise RuntimeError("Model download cancelled.")
 
-    result = _run_lms(
-        ["import", str(staged_file), "--user-repo", safe_repo, "--yes"],
-        timeout=600,
+    tts_manager.download_progress.emit(
+        "local_llm_download",
+        99,
+        tr("ui_local_models_lms_importing", "Додаю модель у бібліотеку LM Studio…"),
     )
-    if result.returncode != 0:
-        detail = (result.stderr or result.stdout or "").strip()
-        raise RuntimeError(detail[-1000:] or "LM Studio could not import the downloaded model.")
+    _import_lmstudio_staged_file(staged_file, safe_repo, cancel_event=cancel_event, timeout=600.0)
     staged_file.unlink(missing_ok=True)
+    tts_manager.download_progress.emit(
+        "local_llm_download",
+        100,
+        tr("ui_local_models_lms_download_done", "Модель завантажено в LM Studio. Оновлюю список…"),
+    )
     return safe_repo
 
 
@@ -154,6 +244,11 @@ def download_recommended_gguf(
     tts_manager._download_url_with_progress(
         url, destination, "local_llama_cpp", 0, 100, safe_name,
         cancel_event=cancel_event,
+    )
+    tts_manager.download_progress.emit(
+        "local_llama_cpp",
+        100,
+        tr("ui_local_models_gguf_download_done", "Модель завантажено в SilentVoice. Тепер натисніть «Запустити та підключити»."),
     )
     return destination
 

@@ -89,6 +89,38 @@ class AiCorrectorLiveCallTests(unittest.TestCase):
         self.assertEqual(res, "Привет, мир!")
         self.assertEqual(mock_sess.post.call_args.kwargs["timeout"], 30.0)
 
+    def test_correct_text_with_ai_preserves_russian_slash_tags_with_lmstudio_provider(self) -> None:
+        """_extract_protected_reaction_spans respects app_language='ru' and restores [laughter]/[whisper]."""
+        item = {
+            "id": "ai_lms_1",
+            "provider": "local_api",
+            "title": "LM Studio",
+            "url": "http://127.0.0.1:1234/v1",
+            "model": "gemma-3-4b-it",
+        }
+        fake_cfg = {
+            "ai_spellcheck_enabled": True,
+            "ai_items": [item],
+            "ai_primary_id": "ai_lms_1",
+            "ai_fallback_id": "",
+            "app_language": "ru",
+            "reaction_omnivoice_enabled": True,
+        }
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "choices": [{"message": {"content": "⟪T0⟫ Привет, ⟪T1⟫ меня зовут Дима"}}]
+        }
+        mock_sess = MagicMock()
+        mock_sess.post.return_value = mock_resp
+        with (
+            patch("core.ai_corrector.config.get", side_effect=lambda k, d=None: fake_cfg.get(k, d)),
+            patch("core.ai_corrector._get_ai_http_session", return_value=mock_sess),
+        ):
+            res = correct_text_with_ai(r"\хаха привет, \тихо меня зовут дима")
+
+        self.assertEqual(res, "[laughter] Привет, [whisper] меня зовут Дима")
+
 
 if __name__ == "__main__":
     unittest.main()
