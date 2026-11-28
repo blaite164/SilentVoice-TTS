@@ -1348,7 +1348,7 @@
   "tts.badge.recommended": "Empfohlen",
   "dlg.samples.tab_clone": "Stimmen zum Klonen",
   "dlg.samples.tab_model": "Modellstimmen",
-  "tts.title.omnivoice": "OmniVoice — Klonen + Stimmdesign",
+  "tts.title.omnivoice": "OmniVoice - Klonen + Stimmdesign",
   "tts.size.omnivoice": "~1.2 GB",
   "omnivoice.settings_btn": "⚙ Einstellungen",
   "omnivoice.settings_btn_tip": "Klon- / Stimmdesign-Modus, Referenztext, Schritte (16/32) und Flüstern",

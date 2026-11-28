@@ -192,7 +192,6 @@ QCheckBox::indicator:hover {
 QCheckBox::indicator:checked {
     background-color: #635BFF;
     border-color: #A5B4FC;
-    image: url("__CHECK_SVG__");
 }
 QCheckBox::indicator:disabled {
     background-color: #161A26;
@@ -201,7 +200,6 @@ QCheckBox::indicator:disabled {
 QCheckBox::indicator:checked:disabled {
     background-color: #3A3866;
     border-color: #4D4B80;
-    image: url("__CHECK_SVG__");
 }
 QComboBox QAbstractItemView {
     background-color: #262B3D;
@@ -226,9 +224,6 @@ def get_check_svg_qss_url() -> str:
         if cand.is_file():
             return cand.as_posix()
     return (BUNDLE_DIR / "assets" / "check.svg").as_posix()
-
-
-DIALOG_STYLESHEET = DIALOG_STYLESHEET.replace("__CHECK_SVG__", get_check_svg_qss_url())
 
 
 def center_dialog_on_screen(dlg: QDialog, *, adjust_size: bool = False) -> None:

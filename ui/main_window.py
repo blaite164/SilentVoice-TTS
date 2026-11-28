@@ -159,13 +159,15 @@ from ui.dialogs import (
     VoiceSamplesDialog,
     WrappingCheckBox,
     WrappingRowLayout,
-    get_check_svg_qss_url,
     run_in_background,
     sync_collapsible_parent_layout,
     toggle_collapsible_widget,
 )
 
 from ui.overlay_window import FallbackInputWindow, ScreenOverlayWindow, find_screen_for_rect
+
+CARD_ACTION_BTN_WIDTH = 108
+CARD_ACTION_BTN_HEIGHT = 28
 
 OLLAMA_RECOMMENDED_MODELS = [
     "gemma3:4b",
@@ -321,6 +323,17 @@ QPushButton.dangerBtn {
 QPushButton.dangerBtn:hover {
     background-color: #592E3D;
 }
+QPushButton[compactAction="true"] {
+    padding: 0px 4px;
+    border-radius: 7px;
+    font-size: 12px;
+}
+QPushButton[compactAction="true"][compactFont="11"] {
+    font-size: 11px;
+}
+QPushButton[compactAction="true"][compactFont="10"] {
+    font-size: 10px;
+}
 QLabel:disabled {
     color: #64748B;
 }
@@ -371,7 +384,6 @@ QCheckBox::indicator:hover {
 QCheckBox::indicator:checked {
     background-color: #635BFF;
     border-color: #827BFF;
-    image: url("__CHECK_SVG__");
 }
 QCheckBox::indicator:disabled {
     background-color: #161A26;
@@ -380,7 +392,6 @@ QCheckBox::indicator:disabled {
 QCheckBox::indicator:checked:disabled {
     background-color: #3A3866;
     border-color: #4D4B80;
-    image: url("__CHECK_SVG__");
 }
 /* Вкладки всередині розділу Голосів */
 QTabWidget::pane {
@@ -432,7 +443,30 @@ QToolTip {
     font-size: 12px;
 }
 """
-MAIN_STYLESHEET = MAIN_STYLESHEET.replace("__CHECK_SVG__", get_check_svg_qss_url())
+
+
+def _fit_compact_action_btn(btn: QPushButton) -> None:
+    """Уніфікує розмір компактної кнопки дій на картці та підганяє шрифт (12 → 11 → 10 px), щоб напис повністю влазив."""
+    btn.setProperty("compactAction", "true")
+    btn.setFixedSize(CARD_ACTION_BTN_WIDTH, CARD_ACTION_BTN_HEIGHT)
+    txt = btn.text() or ""
+    is_bold = str(btn.property("class") or "") in ("primaryBtn", "successBtn")
+    max_text_w = CARD_ACTION_BTN_WIDTH - 10  # 2px border + 8px horizontal padding
+    chosen = ""
+    for px in (12, 11, 10):
+        f = QFont("Segoe UI")
+        f.setPixelSize(px)
+        f.setWeight(QFont.Weight.Bold if is_bold else QFont.Weight.DemiBold)
+        if QFontMetrics(f).horizontalAdvance(txt) <= max_text_w:
+            chosen = "" if px == 12 else str(px)
+            break
+    else:
+        chosen = "10"
+    btn.setProperty("compactFont", chosen)
+    st = btn.style()
+    if st is not None:
+        st.unpolish(btn)
+        st.polish(btn)
 
 
 def _find_app_icon_path() -> Optional[str]:
@@ -2035,7 +2069,7 @@ class MainWindow(QMainWindow):
             c_lay.setSpacing(6)
 
             top_r = QHBoxLayout()
-            top_r.setSpacing(10)
+            top_r.setSpacing(8)
 
             card_title = (
                 tr(f"tts.title.{eng_id}", str(spec["title"]))
@@ -2054,6 +2088,7 @@ class MainWindow(QMainWindow):
             listen_btn = QPushButton(tr("ui_129", "🎧 Прослухати"))
             listen_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             listen_btn.setToolTip(tr("ui_130", "Відкрити список доступних голосів для прослуховування"))
+            _fit_compact_action_btn(listen_btn)
             if is_clone_gguf:
                 listen_btn.clicked.connect(
                     lambda checked=False, eid=eng_id, title=str(spec["title"]): VoiceSamplesDialog(
@@ -2073,14 +2108,15 @@ class MainWindow(QMainWindow):
             top_r.addWidget(listen_btn)
 
             action_btn = QPushButton()
-            action_btn.setMinimumWidth(115)
             action_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            _fit_compact_action_btn(action_btn)
             action_btn.clicked.connect(lambda checked=False, eid=eng_id: self._on_local_engine_action_clicked(eid))
             top_r.addWidget(action_btn)
 
             cancel_btn = QPushButton(tr("tts.dl.cancel_btn", "✕ Скасувати"))
             cancel_btn.setProperty("class", "dangerBtn")
             cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            _fit_compact_action_btn(cancel_btn)
             cancel_btn.setVisible(False)
             cancel_btn.clicked.connect(lambda checked=False, eid=eng_id: self._on_cancel_model_download_clicked(eid))
             top_r.addWidget(cancel_btn)
@@ -2146,11 +2182,11 @@ class MainWindow(QMainWindow):
         row.addWidget(clear_ref_btn)
 
         choose_ref_btn = QPushButton(tr("ov.pick_file", "📂 Обрати голос"))
-        choose_ref_btn.setMinimumWidth(115)
         choose_ref_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         choose_ref_btn.setToolTip(
             tr("ov.pick_file_tip", "Оберіть або перетягніть .wav/.mp3/.ogg файл зразка голосу для клонування")
         )
+        _fit_compact_action_btn(choose_ref_btn)
         choose_ref_btn.clicked.connect(lambda checked=False, eid=eng_id: self._pick_clone_ref_file(eid))
         row.addWidget(choose_ref_btn)
 
@@ -2161,6 +2197,7 @@ class MainWindow(QMainWindow):
             settings_btn.setToolTip(
                 tr("omnivoice.settings_btn_tip", "Режим клонування / конструктора голосу, текст референсу, кроки (16/32) та шепіт")
             )
+            _fit_compact_action_btn(settings_btn)
             settings_btn.clicked.connect(self._open_omnivoice_settings_dialog)
             row.addWidget(settings_btn)
 
@@ -2313,8 +2350,8 @@ class MainWindow(QMainWindow):
 
         add_btn = QPushButton(tr("ui_131", "+ Додати"))
         add_btn.setProperty("class", "primaryBtn")
-        add_btn.setMinimumWidth(115)
         add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        _fit_compact_action_btn(add_btn)
         add_btn.clicked.connect(self._on_add_online_provider)
         ab_lay.addWidget(add_btn)
 
@@ -2369,18 +2406,18 @@ class MainWindow(QMainWindow):
                 top_r.addWidget(t_lbl)
                 top_r.addStretch(1)
 
-                install_btn = QPushButton(tr("ui_133", "✅ Встановлено") if is_installed else tr("ui_134", "Встановити")) 
-                install_btn.setMinimumWidth(115)
+                install_btn = QPushButton(tr("ui_133", "✅ Встановлено") if is_installed else tr("ui_134", "Встановити"))
                 install_btn.setProperty("class", "primaryBtn")
                 install_btn.setCursor(Qt.CursorShape.PointingHandCursor)
                 install_btn.setEnabled(not is_installed)
+                _fit_compact_action_btn(install_btn)
                 install_btn.clicked.connect(lambda checked=False, iid=item_id: self._on_install_online_edge(iid))
                 top_r.addWidget(install_btn)
 
                 del_btn = QPushButton(tr("ui_137", "Видалити"))
                 del_btn.setProperty("class", "dangerBtn")
-                del_btn.setMinimumWidth(100)
                 del_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+                _fit_compact_action_btn(del_btn)
                 del_btn.clicked.connect(lambda checked=False, iid=item_id: self._on_delete_online_item(iid))
                 top_r.addWidget(del_btn)
 
@@ -2452,8 +2489,8 @@ class MainWindow(QMainWindow):
 
             del_btn = QPushButton(tr("ui_137", "Видалити"))
             del_btn.setProperty("class", "dangerBtn")
-            del_btn.setMinimumWidth(100)
             del_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            _fit_compact_action_btn(del_btn)
             del_btn.clicked.connect(lambda checked=False, iid=item_id: self._on_delete_online_item(iid))
             top_r.addWidget(del_btn)
 
@@ -2780,6 +2817,7 @@ class MainWindow(QMainWindow):
             btn: QPushButton = ui["action_btn"]  # type: ignore
             btn.setEnabled(False)
             btn.setText(tr("ui_170", "⏳ Встановлення..."))
+            _fit_compact_action_btn(btn)
         tts_manager.install_edge_tts_library(item_id)
 
     def _build_silero_bot_card(self, c_lay: QVBoxLayout, item: Dict[str, Any], item_id: str, title_str: str) -> None:
@@ -2807,9 +2845,9 @@ class MainWindow(QMainWindow):
 
         del_btn = QPushButton(tr("ui_137", "Видалити"))
         del_btn.setProperty("class", "dangerBtn")
-        del_btn.setMinimumWidth(100)
         del_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         del_btn.setToolTip(tr("tg.card.delete_tooltip", "Видалити Silero Bot (Telegram) зі списку"))
+        _fit_compact_action_btn(del_btn)
         del_btn.clicked.connect(lambda checked=False, iid=item_id: self._on_delete_online_item(iid))
         top_r.addWidget(del_btn)
         c_lay.addLayout(top_r)
@@ -3901,8 +3939,8 @@ class MainWindow(QMainWindow):
 
         add_btn = QPushButton(tr("ui_131", "+ Додати"))
         add_btn.setProperty("class", "primaryBtn")
-        add_btn.setMinimumWidth(115)
         add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        _fit_compact_action_btn(add_btn)
         add_btn.clicked.connect(self._on_add_ai_provider)
         ab_lay.addWidget(add_btn)
 
@@ -5139,9 +5177,9 @@ class MainWindow(QMainWindow):
 
             del_btn = QPushButton(tr("ui_137", "Видалити"))
             del_btn.setProperty("class", "dangerBtn")
-            del_btn.setMinimumWidth(100)
             del_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             del_btn.setToolTip(tr("ui_219", "Видалити цей AI-сервіс зі списку"))
+            _fit_compact_action_btn(del_btn)
             del_btn.clicked.connect(lambda checked=False, iid=item_id: self._on_delete_ai_item(iid))
             top_r.addWidget(del_btn)
             c_lay.addLayout(top_r)
@@ -9851,8 +9889,7 @@ class MainWindow(QMainWindow):
             btn.setText(tr("ui_134", "Встановити"))
             btn.setProperty("class", "primaryBtn")
             btn.setToolTip(tr("ui_413", "Завантажити та встановити цей TTS на комп'ютер"))
-        btn.style().unpolish(btn)
-        btn.style().polish(btn)
+        _fit_compact_action_btn(btn)
         if engine_id in ("omnivoice", "qwen3_tts", "zonos3_mini"):
             self._refresh_clone_card_ui(engine_id)
 
@@ -10775,8 +10812,7 @@ class MainWindow(QMainWindow):
             btn.setEnabled(True)
             btn.setText(tr("ui_134", "Встановити"))
             btn.setProperty("class", "primaryBtn")
-            btn.style().unpolish(btn)
-            btn.style().polish(btn)
+            _fit_compact_action_btn(btn)
 
     def _on_model_download_cancelled(self, engine_id: str) -> None:
         self._download_ui_state.pop(engine_id, None)
@@ -10800,8 +10836,7 @@ class MainWindow(QMainWindow):
             btn.setEnabled(True)
             btn.setText(tr("ui_134", "Встановити"))
             btn.setProperty("class", "primaryBtn")
-            btn.style().unpolish(btn)
-            btn.style().polish(btn)
+            _fit_compact_action_btn(btn)
 
     def _on_model_status_changed(self, engine_id: str, installed: bool) -> None:
         self._download_ui_state.pop(engine_id, None)

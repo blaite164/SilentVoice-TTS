@@ -1348,7 +1348,7 @@
   "tts.badge.recommended": "Рекомендовано",
   "dlg.samples.tab_clone": "Голоси для клонування",
   "dlg.samples.tab_model": "Голоси моделі",
-  "tts.title.omnivoice": "OmniVoice — клонування + конструктор голосу",
+  "tts.title.omnivoice": "OmniVoice - клонування + конструктор голосу",
   "tts.size.omnivoice": "~1.2 ГБ",
   "omnivoice.settings_btn": "⚙ Налаштування",
   "omnivoice.settings_btn_tip": "Режим клонування / конструктора голосу, текст референсу, кроки (16/32) та шепіт",

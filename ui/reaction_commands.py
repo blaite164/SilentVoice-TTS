@@ -54,6 +54,7 @@ from ui.dialogs import (
     WrappingCheckBox,
     WrappingRowLayout,
     center_dialog_on_screen,
+    get_check_svg_qss_url,
     sync_collapsible_parent_layout,
     toggle_collapsible_widget,
 )
@@ -97,11 +98,14 @@ class _ReactionCommandListWidget(QListWidget):
         self.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setSpacing(3)
+        check_svg = get_check_svg_qss_url()
         self.setStyleSheet(
             "QListWidget { background-color: #1B1F2D; border: 1px solid #38415E; border-radius: 8px; padding: 4px; }"
             "QListWidget::item { background-color: #262C3F; border: 1px solid #38415E; border-radius: 8px; margin: 1px 0px; }"
             "QListWidget::item:selected { border-color: #7C5CFF; background-color: #2D354E; }"
             "QListWidget::item:hover { border-color: #5B6791; }"
+            f'QCheckBox::indicator:checked {{ background-color: #635BFF; border-color: #827BFF; image: url("{check_svg}"); }}'
+            f'QCheckBox::indicator:checked:disabled {{ background-color: #3A3866; border-color: #4D4B80; image: url("{check_svg}"); }}'
             "QScrollBar:vertical { background: transparent; width: 7px; margin: 4px 2px 4px 0px; }"
             "QScrollBar::handle:vertical { background: #475569; border-radius: 3px; min-height: 24px; }"
             "QScrollBar::handle:vertical:hover { background: #7C5CFF; }"
