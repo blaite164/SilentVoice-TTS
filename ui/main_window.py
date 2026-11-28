@@ -166,8 +166,7 @@ from ui.dialogs import (
 
 from ui.overlay_window import FallbackInputWindow, ScreenOverlayWindow, find_screen_for_rect
 
-CARD_ACTION_BTN_WIDTH = 108
-CARD_ACTION_BTN_HEIGHT = 28
+CARD_ACTION_BTN_WIDTH = 110
 
 OLLAMA_RECOMMENDED_MODELS = [
     "gemma3:4b",
@@ -324,15 +323,7 @@ QPushButton.dangerBtn:hover {
     background-color: #592E3D;
 }
 QPushButton[compactAction="true"] {
-    padding: 0px 4px;
-    border-radius: 7px;
-    font-size: 12px;
-}
-QPushButton[compactAction="true"][compactFont="11"] {
-    font-size: 11px;
-}
-QPushButton[compactAction="true"][compactFont="10"] {
-    font-size: 10px;
+    padding: 7px 6px;
 }
 QLabel:disabled {
     color: #64748B;
@@ -451,23 +442,9 @@ QToolTip {
 
 
 def _fit_compact_action_btn(btn: QPushButton) -> None:
-    """Уніфікує розмір компактної кнопки дій на картці та підганяє шрифт (12 → 11 → 10 px), щоб напис повністю влазив."""
+    """Уніфікує ширину кнопок дій на картках зі збереженням стандартної висоти та шрифту."""
     btn.setProperty("compactAction", "true")
-    btn.setFixedSize(CARD_ACTION_BTN_WIDTH, CARD_ACTION_BTN_HEIGHT)
-    txt = btn.text() or ""
-    is_bold = str(btn.property("class") or "") in ("primaryBtn", "successBtn")
-    max_text_w = CARD_ACTION_BTN_WIDTH - 10  # 2px border + 8px horizontal padding
-    chosen = ""
-    for px in (12, 11, 10):
-        f = QFont("Segoe UI")
-        f.setPixelSize(px)
-        f.setWeight(QFont.Weight.Bold if is_bold else QFont.Weight.DemiBold)
-        if QFontMetrics(f).horizontalAdvance(txt) <= max_text_w:
-            chosen = "" if px == 12 else str(px)
-            break
-    else:
-        chosen = "10"
-    btn.setProperty("compactFont", chosen)
+    btn.setMinimumWidth(CARD_ACTION_BTN_WIDTH)
     st = btn.style()
     if st is not None:
         st.unpolish(btn)
@@ -2186,7 +2163,7 @@ class MainWindow(QMainWindow):
         clear_ref_btn.clicked.connect(lambda checked=False, eid=eng_id: self._clear_clone_ref_file(eid))
         row.addWidget(clear_ref_btn)
 
-        choose_ref_btn = QPushButton(tr("ov.pick_file", "📂 Обрати голос"))
+        choose_ref_btn = QPushButton(tr("ov.pick_file", "Обрати голос"))
         choose_ref_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         choose_ref_btn.setToolTip(
             tr("ov.pick_file_tip", "Оберіть або перетягніть .wav/.mp3/.ogg файл зразка голосу для клонування")
@@ -2197,7 +2174,7 @@ class MainWindow(QMainWindow):
 
         settings_btn: Optional[QPushButton] = None
         if eng_id == "omnivoice":
-            settings_btn = QPushButton(tr("omnivoice.settings_btn", "⚙ Налаштування"))
+            settings_btn = QPushButton(tr("omnivoice.settings_btn", "Налаштування"))
             settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             settings_btn.setToolTip(
                 tr("omnivoice.settings_btn_tip", "Режим клонування / конструктора голосу, текст референсу, кроки (16/32) та шепіт")

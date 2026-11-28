@@ -2044,7 +2044,7 @@ class OmniVoiceSettingsDialog(QDialog):
         self.ref_file_lbl.setStyleSheet("border: none; background: transparent;")
         file_row.addWidget(self.ref_file_lbl, 1)
 
-        pick_btn = QPushButton(tr("ov.pick_file", "📂 Обрати голос"))
+        pick_btn = QPushButton(tr("ov.pick_file", "Обрати голос"))
         pick_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         pick_btn.clicked.connect(self._pick_ref_file)
         file_row.addWidget(pick_btn)
