@@ -441,6 +441,23 @@ QToolTip {
 """
 
 
+def _sync_btn_widths(*btns: QPushButton, extra_texts: Tuple[str, ...] = ()) -> None:
+    """Робить кнопки однакової ширини (за найширшим текстом), щоб поля над ними вирівнювались по правому краю."""
+    real = [b for b in btns if b is not None]
+    if not real:
+        return
+    widths: List[int] = []
+    for b in real:
+        b.ensurePolished()
+        widths.append(b.sizeHint().width())
+        for alt in extra_texts:
+            fm = QFontMetrics(b.font())
+            widths.append(fm.horizontalAdvance(alt) + 32)
+    w = max(widths)
+    for b in real:
+        b.setFixedWidth(w)
+
+
 def _fit_compact_action_btn(btn: QPushButton) -> None:
     """Уніфікує ширину кнопок дій на картках зі збереженням стандартної висоти та шрифту."""
     btn.setProperty("compactAction", "true")
@@ -2771,6 +2788,11 @@ class MainWindow(QMainWindow):
                     )
                 )
                 api_row.addWidget(u_fetch_btn)
+                _sync_btn_widths(
+                    show_btn,
+                    u_fetch_btn,
+                    extra_texts=(tr("ui_145", "Показати"), tr("ui_146", "Сховати")),
+                )
                 if prov_key != "elevenlabs":
                     api_row.addStretch(1)
                 c_lay.addLayout(api_row)
@@ -5179,6 +5201,7 @@ class MainWindow(QMainWindow):
             top_r.addWidget(del_btn)
             c_lay.addLayout(top_r)
 
+            ai_show_btn: Optional[QPushButton] = None
             if spec.get("needs_key", True):
                 key_r = QHBoxLayout()
                 key_r.setSpacing(8)
@@ -5219,6 +5242,7 @@ class MainWindow(QMainWindow):
 
                 show_btn.clicked.connect(_toggle_ai_echo)
                 key_r.addWidget(show_btn)
+                ai_show_btn = show_btn
                 c_lay.addLayout(key_r)
             elif prov_key == "ollama":
                 ollama_r = QHBoxLayout()
@@ -5390,6 +5414,13 @@ class MainWindow(QMainWindow):
                 lambda checked=False, iid=item_id, b=refresh_mod_btn: self._start_fetch_ai_models(iid, b, silent=False)
             )
             mod_r.addWidget(refresh_mod_btn)
+            if ai_show_btn is not None:
+                ai_show_btn.setMinimumWidth(0)
+                _sync_btn_widths(
+                    ai_show_btn,
+                    refresh_mod_btn,
+                    extra_texts=(tr("ui_145", "Показати"), tr("ui_146", "Сховати")),
+                )
             if prov_key == "ollama":
                 pull_model_btn = QPushButton(tr("ui_ollama_pull", "⬇ Завантажити модель"))
                 pull_model_btn.setCursor(Qt.CursorShape.PointingHandCursor)
