@@ -389,6 +389,117 @@ class LocalLlmGpuTests(unittest.TestCase):
         mock_popen.assert_not_called()
         dummy2._start_saved_local_llm_servers.assert_called_once()
 
+    def test_shared_gguf_discovery_and_reuse_between_lmstudio_and_llama_cpp(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            llama_models = root / "llama_models"
+            lms_models = root / "lms_models"
+            repo_dir = lms_models / "lmstudio-community" / "gemma-3-4b-it-GGUF"
+            repo_dir.mkdir(parents=True)
+            (repo_dir / "mmproj-gemma.gguf").write_bytes(b"proj")
+            shared_gguf = repo_dir / "gemma-3-4b-it-Q4_K_M.gguf"
+            shared_gguf.write_bytes(b"GGUF-SHARED")
+
+            fake_mgr = MagicMock()
+            with (
+                patch.object(local_llm, "DATA_DIR", root),
+                patch.object(local_llm, "LLAMA_MODEL_DIR", llama_models),
+                patch.object(local_llm, "get_lmstudio_models_dirs", return_value=[lms_models]),
+                patch("core.tts_manager.tts_manager", fake_mgr),
+            ):
+                found = local_llm.find_local_gguf_model(
+                    "gemma-3-4b-it-Q4_K_M.gguf",
+                    "lmstudio-community/gemma-3-4b-it-GGUF",
+                )
+                self.assertEqual(found, shared_gguf)
+                self.assertIsNone(local_llm.find_local_gguf_model("mmproj-gemma.gguf"))
+                self.assertEqual(local_llm.get_preferred_gguf_browse_dir(), lms_models)
+
+                dest = local_llm.download_recommended_gguf(
+                    "https://example.com/gemma-3-4b-it-Q4_K_M.gguf",
+                    "gemma-3-4b-it-Q4_K_M.gguf",
+                )
+                self.assertEqual(dest, shared_gguf)
+                fake_mgr._download_url_with_progress.assert_not_called()
+
+            # When model exists in llama.cpp folder first, LM Studio imports it with --copy without redownloading.
+            llama_models.mkdir(parents=True, exist_ok=True)
+            llama_gguf = llama_models / "Qwen3.5-4B-Q4_K_M.gguf"
+            llama_gguf.write_bytes(b"GGUF-LLAMA")
+            fake_proc = MagicMock()
+            fake_proc.stdin = io.StringIO()
+            fake_proc.stdout = io.StringIO("ok\n")
+            fake_proc.stderr = io.StringIO("")
+            fake_proc.poll.side_effect = [None, 0]
+            fake_proc.returncode = 0
+            fake_mgr2 = MagicMock()
+
+            with (
+                patch.object(local_llm, "DATA_DIR", root),
+                patch.object(local_llm, "LLAMA_MODEL_DIR", llama_models),
+                patch.object(local_llm, "find_lms_cli", return_value="lms.exe"),
+                patch("core.tts_manager.tts_manager", fake_mgr2),
+                patch("core.local_llm.subprocess.Popen", return_value=fake_proc) as mock_popen,
+                patch("core.local_llm.time.sleep"),
+            ):
+                repo = local_llm.download_recommended_lmstudio_model(
+                    "https://example.com/Qwen3.5-4B-Q4_K_M.gguf",
+                    "Qwen3.5-4B-Q4_K_M.gguf",
+                    "lmstudio-community/Qwen3.5-4B-GGUF",
+                )
+            self.assertEqual(repo, "lmstudio-community/Qwen3.5-4B-GGUF")
+            fake_mgr2._download_url_with_progress.assert_not_called()
+            cmd = mock_popen.call_args.args[0]
+            self.assertIn("--copy", cmd)
+            self.assertEqual(Path(cmd[2]), llama_gguf)
+            self.assertTrue(llama_gguf.is_file())
+
+    def test_local_models_dialog_browse_button_and_llama_reuses_shared_gguf(self) -> None:
+        from PySide6.QtWidgets import QApplication
+
+        app = QApplication.instance() or QApplication([])
+        from ui.dialogs import LocalModelsDialog
+
+        with tempfile.TemporaryDirectory() as tmp:
+            lms_gguf = Path(tmp) / "gemma-3-4b-it-Q4_K_M.gguf"
+            lms_gguf.write_bytes(b"GGUF")
+
+            def _fake_find(filename: str, _repo: str = ""):
+                return lms_gguf if filename == "gemma-3-4b-it-Q4_K_M.gguf" else None
+
+            with (
+                patch("ui.dialogs.is_lmstudio_installed", return_value=True),
+                patch("ui.dialogs.list_lmstudio_models", return_value=[]),
+                patch("ui.dialogs.find_local_gguf_model", side_effect=_fake_find),
+                patch("ui.dialogs.QDesktopServices.openUrl", return_value=False) as mock_open_url,
+                patch("ui.dialogs.webbrowser.open") as mock_wb_open,
+            ):
+                dlg = LocalModelsDialog()
+                try:
+                    self.assertIn("padding: 0px", dlg.browse_models_button.styleSheet())
+                    self.assertEqual(dlg.browse_models_button.size().width(), 34)
+                    self.assertEqual(dlg.browse_models_button.size().height(), 34)
+                    dlg.browse_models_button.click()
+                    self.assertEqual(mock_open_url.call_args.args[0].toString(), "https://lmstudio.ai/models")
+                    mock_wb_open.assert_called_with("https://lmstudio.ai/models")
+
+                    llama_idx = dlg.backend_combo.findData("llama_cpp")
+                    dlg.backend_combo.setCurrentIndex(llama_idx)
+                    gemma_idx = dlg.recommended_model_combo.findData("gemma3_4b")
+                    dlg.recommended_model_combo.setCurrentIndex(gemma_idx)
+                    app.processEvents()
+
+                    self.assertEqual(dlg.model_file_edit.text(), str(lms_gguf))
+                    self.assertTrue(dlg.refresh_button.isEnabled())
+                    self.assertFalse(dlg.download_model_button.isEnabled())
+
+                    dlg.browse_models_button.click()
+                    self.assertIn("huggingface.co/models", mock_wb_open.call_args.args[0])
+                finally:
+                    dlg.reject()
+                    dlg.close()
+                    app.processEvents()
+
 
 if __name__ == "__main__":
     unittest.main()

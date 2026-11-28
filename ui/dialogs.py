@@ -16,6 +16,7 @@ import threading
 import time
 import traceback
 import weakref
+import webbrowser
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
@@ -59,6 +60,8 @@ from core.local_llm import (
     LLAMA_MODEL_DIR,
     download_recommended_lmstudio_model,
     download_recommended_gguf,
+    find_local_gguf_model,
+    get_preferred_gguf_browse_dir,
     is_lmstudio_installed,
     list_lmstudio_models,
     prune_ollama_when_local_model_active,
@@ -2632,7 +2635,8 @@ class LocalModelsDialog(QDialog):
         )
         recommended_row.addWidget(self.cancel_model_download_button)
         self.browse_models_button = QPushButton("🌐")
-        self.browse_models_button.setFixedWidth(36)
+        self.browse_models_button.setFixedSize(34, 34)
+        self.browse_models_button.setStyleSheet("QPushButton { padding: 0px; font-size: 15px; }")
         self.browse_models_button.setToolTip(tr("ui_local_models_browse_lms", "Відкрити каталог моделей"))
         self.browse_models_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.browse_models_button.clicked.connect(self._open_model_catalog)
@@ -2836,8 +2840,11 @@ class LocalModelsDialog(QDialog):
         if backend != "llama_cpp":
             return
         model_info = self._selected_recommended_model()
-        path = LLAMA_MODEL_DIR / str(model_info.get("filename", ""))
-        if path.is_file():
+        path = find_local_gguf_model(
+            str(model_info.get("filename", "")),
+            str(model_info.get("lms_repo", "")),
+        )
+        if path is not None and path.is_file():
             self.model_path = str(path)
             self.model_file_edit.setText(str(path))
             self.refresh_button.setEnabled(True)
@@ -2846,11 +2853,11 @@ class LocalModelsDialog(QDialog):
             self.status_label.setText(tr("ui_local_models_gguf_selected", "Модель уже завантажена. Натисніть «Запустити та підключити»."))
         else:
             current_path = Path(self.model_file_edit.text().strip()) if self.model_file_edit.text().strip() else None
-            known_paths = {
-                LLAMA_MODEL_DIR / str(info["filename"])
+            known_names = {
+                str(info["filename"])
                 for info in self.RECOMMENDED_MODELS.values()
             }
-            if current_path in known_paths:
+            if current_path and current_path.name in known_names:
                 self.model_file_edit.clear()
                 self.model_path = ""
                 self.refresh_button.setEnabled(False)
@@ -2870,7 +2877,8 @@ class LocalModelsDialog(QDialog):
             if backend == "lmstudio"
             else "https://huggingface.co/models?library=gguf&pipeline_tag=text-generation"
         )
-        QDesktopServices.openUrl(QUrl(url))
+        if not QDesktopServices.openUrl(QUrl(url)):
+            webbrowser.open(url)
 
     def _download_recommended_model(self) -> None:
         backend = str(self.backend_combo.currentData() or "")
@@ -2878,8 +2886,11 @@ class LocalModelsDialog(QDialog):
         if backend not in ("lmstudio", "llama_cpp") or not model_info:
             return
         if backend == "llama_cpp":
-            existing_path = LLAMA_MODEL_DIR / str(model_info["filename"])
-            if existing_path.is_file():
+            existing_path = find_local_gguf_model(
+                str(model_info.get("filename", "")),
+                str(model_info.get("lms_repo", "")),
+            )
+            if existing_path is not None and existing_path.is_file():
                 self._refresh_recommended_model_state()
                 return
 
@@ -2944,7 +2955,7 @@ class LocalModelsDialog(QDialog):
         path, _ = QFileDialog.getOpenFileName(
             self,
             tr("ui_local_models_choose_gguf", "Choose GGUF file…"),
-            str(LLAMA_MODEL_DIR if LLAMA_MODEL_DIR.is_dir() else Path.home()),
+            str(get_preferred_gguf_browse_dir()),
             "GGUF models (*.gguf)",
         )
         if path:

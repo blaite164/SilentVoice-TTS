@@ -69,6 +69,90 @@ def is_lmstudio_installed() -> bool:
     return False
 
 
+def get_lmstudio_models_dirs() -> List[Path]:
+    """Return existing LM Studio model directories on the local machine."""
+    candidates: List[Path] = []
+    env_dir = os.environ.get("LM_STUDIO_MODELS_DIR", "").strip()
+    if env_dir:
+        candidates.append(Path(env_dir).expanduser())
+    user_home = Path.home()
+    candidates.extend([
+        user_home / ".lmstudio" / "models",
+        user_home / ".cache" / "lm-studio" / "models",
+    ])
+    unique: List[Path] = []
+    seen: set[str] = set()
+    for path in candidates:
+        key = os.path.normcase(str(path))
+        if key in seen:
+            continue
+        seen.add(key)
+        if path.is_dir():
+            unique.append(path)
+    return unique
+
+
+def find_local_gguf_model(filename: str, lms_repo: str = "") -> Optional[Path]:
+    """Find an already downloaded GGUF file across llama.cpp and LM Studio folders."""
+    safe_name = Path(str(filename or "")).name
+    if not safe_name or not safe_name.lower().endswith(".gguf"):
+        return None
+
+    def _is_valid_model_file(path: Path) -> bool:
+        try:
+            return path.is_file() and path.stat().st_size > 0 and not path.name.lower().startswith("mmproj")
+        except OSError:
+            return False
+
+    direct_roots: List[Path] = [LLAMA_MODEL_DIR]
+    staging_dir = DATA_DIR / "model_downloads" / "lmstudio"
+    if staging_dir != LLAMA_MODEL_DIR:
+        direct_roots.append(staging_dir)
+    for root in direct_roots:
+        candidate = root / safe_name
+        if _is_valid_model_file(candidate):
+            return candidate
+
+    clean_repo = str(lms_repo or "").strip().strip("/")
+    for lms_dir in get_lmstudio_models_dirs():
+        if clean_repo:
+            repo_candidate = lms_dir / clean_repo / safe_name
+            if _is_valid_model_file(repo_candidate):
+                return repo_candidate
+        direct = lms_dir / safe_name
+        if _is_valid_model_file(direct):
+            return direct
+        try:
+            for hit in lms_dir.rglob(safe_name):
+                if _is_valid_model_file(hit):
+                    return hit
+        except OSError:
+            continue
+    return None
+
+
+def get_preferred_gguf_browse_dir() -> Path:
+    """Return initial folder for GGUF selection, checking LM Studio models when llama.cpp is empty."""
+    try:
+        if LLAMA_MODEL_DIR.is_dir() and any(
+            p.is_file() and not p.name.lower().startswith("mmproj")
+            for p in LLAMA_MODEL_DIR.glob("*.gguf")
+        ):
+            return LLAMA_MODEL_DIR
+    except OSError:
+        pass
+    for lms_dir in get_lmstudio_models_dirs():
+        try:
+            for p in lms_dir.rglob("*.gguf"):
+                if p.is_file() and not p.name.lower().startswith("mmproj"):
+                    return lms_dir
+        except OSError:
+            continue
+    if LLAMA_MODEL_DIR.is_dir():
+        return LLAMA_MODEL_DIR
+    return Path.home()
+
+
 def prune_ollama_when_local_model_active(
     items: List[Dict[str, Any]],
     primary_id: str,
@@ -170,14 +254,20 @@ def _import_lmstudio_staged_file(
     safe_repo: str,
     cancel_event: Optional[threading.Event] = None,
     timeout: float = 600.0,
+    copy_file: bool = False,
 ) -> None:
     """Import a staged GGUF into LM Studio without blocking on CLI Y/n prompts."""
     cli = find_lms_cli()
     if not cli:
         raise RuntimeError("LM Studio command-line tools were not found. Open LM Studio once, then try again.")
 
+    cmd = [cli, "import", str(staged_file), "--user-repo", safe_repo]
+    if copy_file:
+        cmd.append("--copy")
+    cmd.append("--yes")
+
     proc = subprocess.Popen(
-        [cli, "import", str(staged_file), "--user-repo", safe_repo, "--yes"],
+        cmd,
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -264,15 +354,21 @@ def download_recommended_lmstudio_model(
     if not cli:
         raise RuntimeError("LM Studio command-line tools were not found. Open LM Studio once, then try again.")
 
-    staging_dir = DATA_DIR / "model_downloads" / "lmstudio"
-    staging_dir.mkdir(parents=True, exist_ok=True)
-    staged_file = staging_dir / safe_name
     from core.tts_manager import tts_manager
-    if not staged_file.is_file() or staged_file.stat().st_size == 0:
-        tts_manager._download_url_with_progress(
-            url, staged_file, "local_llm_download", 0, 100, safe_name,
-            cancel_event=cancel_event,
-        )
+    existing_llama = LLAMA_MODEL_DIR / safe_name
+    preserve_source = existing_llama.is_file() and existing_llama.stat().st_size > 0
+    if preserve_source:
+        import_source = existing_llama
+    else:
+        staging_dir = DATA_DIR / "model_downloads" / "lmstudio"
+        staging_dir.mkdir(parents=True, exist_ok=True)
+        staged_file = staging_dir / safe_name
+        if not staged_file.is_file() or staged_file.stat().st_size == 0:
+            tts_manager._download_url_with_progress(
+                url, staged_file, "local_llm_download", 0, 100, safe_name,
+                cancel_event=cancel_event,
+            )
+        import_source = staged_file
     if cancel_event is not None and cancel_event.is_set():
         raise RuntimeError("Model download cancelled.")
 
@@ -281,8 +377,15 @@ def download_recommended_lmstudio_model(
         99,
         tr("ui_local_models_lms_importing", "Додаю модель у бібліотеку LM Studio…"),
     )
-    _import_lmstudio_staged_file(staged_file, safe_repo, cancel_event=cancel_event, timeout=600.0)
-    staged_file.unlink(missing_ok=True)
+    _import_lmstudio_staged_file(
+        import_source,
+        safe_repo,
+        cancel_event=cancel_event,
+        timeout=600.0,
+        copy_file=preserve_source,
+    )
+    if not preserve_source:
+        import_source.unlink(missing_ok=True)
     tts_manager.download_progress.emit(
         "local_llm_download",
         100,
@@ -300,9 +403,17 @@ def download_recommended_gguf(
     safe_name = Path(str(filename or "")).name
     if not safe_name.lower().endswith(".gguf") or safe_name != filename:
         raise RuntimeError("Invalid GGUF file name.")
+    from core.tts_manager import tts_manager
+    existing_shared = find_local_gguf_model(safe_name)
+    if existing_shared is not None and existing_shared.is_file():
+        tts_manager.download_progress.emit(
+            "local_llama_cpp",
+            100,
+            tr("ui_local_models_gguf_download_done", "Модель завантажено в SilentVoice. Тепер натисніть «Запустити та підключити»."),
+        )
+        return existing_shared
     LLAMA_MODEL_DIR.mkdir(parents=True, exist_ok=True)
     destination = LLAMA_MODEL_DIR / safe_name
-    from core.tts_manager import tts_manager
     tts_manager._download_url_with_progress(
         url, destination, "local_llama_cpp", 0, 100, safe_name,
         cancel_event=cancel_event,
