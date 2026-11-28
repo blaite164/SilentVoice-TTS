@@ -2731,7 +2731,8 @@ class MainWindow(QMainWindow):
 
                 m_lbl = QLabel(tr("ui_150", "Модель:"))
                 m_lbl.setStyleSheet("color: #CBD5E1; font-size: 13px;")
-                m_lbl.setFixedWidth(78)
+                if prov_key != "elevenlabs":
+                    m_lbl.setFixedWidth(78)
                 api_row.addWidget(m_lbl)
 
                 m_combo = QComboBox()
