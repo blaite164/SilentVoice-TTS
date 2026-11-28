@@ -56,7 +56,9 @@ from core.local_llm import (
     LLAMA_MODEL_DIR,
     download_recommended_lmstudio_model,
     download_recommended_gguf,
+    is_lmstudio_installed,
     list_lmstudio_models,
+    prune_ollama_when_local_model_active,
     start_llama_cpp_server,
     start_lmstudio_model,
 )
@@ -2071,7 +2073,11 @@ class LocalModelsDialog(QDialog):
         self.model_path = ""
         self._request_url = ""
         self._preferred_lms_model_key = ""
+        self._lms_installed_models: List[Dict[str, str]] = []
         self._recommended_download_cancel = threading.Event()
+        self._lms_install_check_timer = QTimer(self)
+        self._lms_install_check_timer.setInterval(2500)
+        self._lms_install_check_timer.timeout.connect(self._poll_lmstudio_install)
         self.models_fetched.connect(self._on_models_fetched)
         self.lmstudio_models_fetched.connect(self._on_lmstudio_models_fetched)
         self.managed_backend_finished.connect(self._on_managed_backend_finished)
@@ -2094,9 +2100,6 @@ class LocalModelsDialog(QDialog):
         title = QLabel(tr("ui_local_models_heading", "Підключіть модель із локальної програми"))
         title.setObjectName("dialogTitle")
         root.addWidget(title)
-        intro = QLabel(tr("ui_local_models_intro", "Моделі можна завантажити тут або в обраній програмі. SilentVoice допоможе запустити модель і підключитися до неї."))
-        intro.setWordWrap(True)
-        root.addWidget(intro)
 
         form = QFormLayout()
         form.setSpacing(6)
@@ -2164,7 +2167,7 @@ class LocalModelsDialog(QDialog):
             "qwen35_9b",
         )
         recommended_row.addWidget(self.recommended_model_combo, 1)
-        self.download_model_button = QPushButton(tr("ui_local_models_download_lms", "⬇ Завантажити в LM Studio"))
+        self.download_model_button = QPushButton(tr("ui_local_models_download_gguf", "⬇ Завантажити модель"))
         self.download_model_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.download_model_button.clicked.connect(self._download_recommended_model)
         recommended_row.addWidget(self.download_model_button)
@@ -2176,22 +2179,15 @@ class LocalModelsDialog(QDialog):
             lambda checked=False: self._recommended_download_cancel.set()
         )
         recommended_row.addWidget(self.cancel_model_download_button)
-        recommended_layout.addLayout(recommended_row)
-        self.recommended_hint = QLabel(tr("ui_local_models_lms_download_hint", "Натисніть «Завантажити», щоб модель з’явилася в списку LM Studio."))
-        self.recommended_hint.setWordWrap(True)
-        self.recommended_hint.setStyleSheet("color: #94A3B8; font-size: 12px;")
-        recommended_layout.addWidget(self.recommended_hint)
-        self.browse_models_button = QPushButton(tr("ui_local_models_browse_lms", "Відкрити каталог моделей"))
+        self.browse_models_button = QPushButton("🌐")
+        self.browse_models_button.setFixedWidth(36)
+        self.browse_models_button.setToolTip(tr("ui_local_models_browse_lms", "Відкрити каталог моделей"))
         self.browse_models_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.browse_models_button.clicked.connect(self._open_model_catalog)
-        recommended_layout.addWidget(self.browse_models_button, 0, Qt.AlignmentFlag.AlignLeft)
+        recommended_row.addWidget(self.browse_models_button)
+        recommended_layout.addLayout(recommended_row)
         root.addWidget(self.recommended_section)
         root.addWidget(self.model_file_row)
-
-        self.detect_button = QPushButton(tr("ui_local_models_detect", "🔎 Find models in LM Studio"))
-        self.detect_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.detect_button.clicked.connect(self._discover_lmstudio_models)
-        root.addWidget(self.detect_button)
 
         self.key_checkbox = QCheckBox(
             tr("ui_local_models_key", "Сервер просить ключ доступу")
@@ -2211,20 +2207,21 @@ class LocalModelsDialog(QDialog):
         root.addWidget(self.install_button)
 
         model_row = QHBoxLayout()
+        model_row.setSpacing(6)
         self.model_combo = DialogComboBox()
         self.model_combo.setMinimumWidth(180)
         model_row.addWidget(self.model_combo, 1)
+        self.detect_button = QPushButton(tr("ui_local_models_detect_compact", "🔎 Знайти"))
+        self.detect_button.setToolTip(tr("ui_local_models_detect", "🔎 Find models in LM Studio"))
+        self.detect_button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self.detect_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.detect_button.clicked.connect(self._discover_lmstudio_models)
+        model_row.addWidget(self.detect_button)
         self.refresh_button = QPushButton(tr("ui_local_models_refresh", "▶ Start and connect"))
         self.refresh_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.refresh_button.clicked.connect(self._start_or_refresh)
         model_row.addWidget(self.refresh_button)
         root.addLayout(model_row)
-
-        self.test_selected_button = QPushButton(tr("ai.test.open", "Перевірити"))
-        self.test_selected_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.test_selected_button.setVisible(False)
-        self.test_selected_button.clicked.connect(self._test_selected_model)
-        root.addWidget(self.test_selected_button)
 
         self.status_label = QLabel(tr("ui_local_models_ready", "Оберіть програму й натисніть «Знайти моделі»."))
         self.status_label.setWordWrap(True)
@@ -2248,6 +2245,11 @@ class LocalModelsDialog(QDialog):
         root.addStretch(1)
 
         buttons = QHBoxLayout()
+        self.test_selected_button = QPushButton(tr("ai.test.open", "Перевірити"))
+        self.test_selected_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.test_selected_button.setVisible(False)
+        self.test_selected_button.clicked.connect(self._test_selected_model)
+        buttons.addWidget(self.test_selected_button)
         buttons.addStretch(1)
         cancel_button = QPushButton(tr("dlg_026", "Скасувати"))
         cancel_button.clicked.connect(self.reject)
@@ -2268,38 +2270,32 @@ class LocalModelsDialog(QDialog):
         if screen is not None:
             available = screen.availableGeometry()
             available_width = max(320, available.width() - 32)
-            minimum_width = min(600, available_width)
+            minimum_width = min(540, available_width)
             self.setMinimumWidth(minimum_width)
             self.setMaximumWidth(available_width)
             self.setMaximumHeight(max(320, available.height() - 32))
-            self.resize(min(760, max(minimum_width, self.sizeHint().width()), available_width),
-                        min(620, max(520, self.sizeHint().height()), available.height() - 32))
+            self.resize(min(700, max(minimum_width, self.sizeHint().width()), available_width),
+                        min(560, max(320, self.sizeHint().height()), available.height() - 32))
 
     def _on_backend_changed(self, index: int) -> None:
         backend = str(self.backend_combo.itemData(index) or "lmstudio")
         is_lms = backend == "lmstudio"
         is_llama = backend == "llama_cpp"
         is_other = backend == "other"
+        lms_installed = is_lmstudio_installed() if is_lms else False
         self.address_edit.setVisible(is_other)
         self.address_edit.setEnabled(is_other)
         self.address_label.setVisible(is_other)
         self.key_checkbox.setVisible(is_other)
         self.key_edit.setVisible(is_other and self.key_checkbox.isChecked())
         self.model_file_row.setVisible(is_llama)
-        self.model_combo.setVisible(not is_llama)
-        self.detect_button.setVisible(is_lms)
-        self.install_button.setVisible(is_lms)
-        self.recommended_section.setVisible(is_lms or is_llama)
+        self.install_button.setVisible(is_lms and not lms_installed)
+        self.detect_button.setVisible(is_lms and lms_installed)
+        self.recommended_section.setVisible((is_lms and lms_installed) or is_llama)
+        self.model_combo.setVisible((is_lms and lms_installed) or is_other)
+        self.refresh_button.setVisible((is_lms and lms_installed) or is_llama or is_other)
         self.install_button.setText(tr("ui_local_models_install", "⬇ Download LM Studio"))
-        self.download_model_button.setText(
-            tr("ui_local_models_download_lms", "⬇ Завантажити в LM Studio")
-            if is_lms else tr("ui_local_models_download_gguf", "⬇ Завантажити модель")
-        )
-        self.recommended_hint.setText(
-            tr("ui_local_models_lms_download_hint", "Натисніть «Завантажити», щоб модель з’явилася в списку LM Studio.")
-            if is_lms else tr("ui_local_models_gguf_download_hint", "Модель завантажиться в SilentVoice і з’явиться в полі вибору файлу нижче.")
-        )
-        self.browse_models_button.setText(
+        self.browse_models_button.setToolTip(
             tr("ui_local_models_browse_lms", "Відкрити каталог моделей")
             if is_lms else tr("ui_local_models_browse_gguf", "Знайти інші GGUF-моделі")
         )
@@ -2316,32 +2312,76 @@ class LocalModelsDialog(QDialog):
         self.use_button.setEnabled(False)
         self.test_selected_button.setVisible(False)
         self.refresh_button.setEnabled(
-            is_other or is_lms or (is_llama and bool(self.model_file_edit.text().strip()))
+            is_other or (is_lms and lms_installed) or (is_llama and bool(self.model_file_edit.text().strip()))
         )
-        self.detect_button.setEnabled(True)
+        self.detect_button.setEnabled(lms_installed)
         self.operation_progress.setVisible(False)
-        self.status_label.setText(
-            tr("ui_local_models_lms_ready", "Завантажте рекомендовану модель тут або встановіть її в LM Studio. Потім виберіть її зі списку й натисніть «Запустити та підключити».")
-            if is_lms else
-            tr("ui_local_models_gguf_ready", "Оберіть рекомендовану модель і завантажте її кнопкою нижче або виберіть свій файл .gguf.")
-            if is_llama else
-            tr("ui_local_models_other_ready", "Enter the local server address and find its models.")
-        )
+        if is_lms and not lms_installed:
+            self._lms_install_check_timer.start()
+            self.status_label.setText(
+                tr(
+                    "ui_local_models_lms_need_install",
+                    "LM Studio не знайдена на ПК. Встановіть її та відкрийте один раз — пошук моделей з’явиться автоматично.",
+                )
+            )
+        else:
+            self._lms_install_check_timer.stop()
+            self.status_label.setText(
+                tr("ui_local_models_ready", "Оберіть модель зі списку й натисніть «Запустити та підключити».")
+                if is_lms else
+                tr("ui_local_models_gguf_ready", "Оберіть рекомендовану модель і завантажте її кнопкою нижче або виберіть свій файл .gguf.")
+                if is_llama else
+                tr("ui_local_models_other_ready", "Enter the local server address and find its models.")
+            )
         self._refresh_recommended_model_state()
-        if is_lms:
+        if is_lms and lms_installed:
             QTimer.singleShot(0, self._discover_lmstudio_models)
+
+    def _poll_lmstudio_install(self) -> None:
+        if str(self.backend_combo.currentData() or "") != "lmstudio":
+            self._lms_install_check_timer.stop()
+            return
+        if is_lmstudio_installed():
+            self._lms_install_check_timer.stop()
+            self._on_backend_changed(self.backend_combo.currentIndex())
 
     def _selected_recommended_model(self) -> Dict[str, str]:
         return self.RECOMMENDED_MODELS.get(str(self.recommended_model_combo.currentData() or "gemma3_4b"), {})
 
     def _on_recommended_model_changed(self, _index: int) -> None:
-        if str(self.backend_combo.currentData() or "") == "llama_cpp":
+        if str(self.backend_combo.currentData() or "") in ("llama_cpp", "lmstudio"):
             self._refresh_recommended_model_state()
+
+    def _is_lms_recommended_model_installed(self, model_info: Dict[str, str]) -> bool:
+        target_repo = str(model_info.get("lms_repo", "")).strip().lower()
+        if not target_repo:
+            return False
+        target_slug = target_repo.rsplit("/", 1)[-1]
+        if target_slug.endswith("-gguf"):
+            target_slug = target_slug[:-5]
+        for entry in self._lms_installed_models:
+            key = str(entry.get("key", "")).strip().lower().split("@", 1)[0]
+            path = str(entry.get("path", "")).strip().lower()
+            if target_repo in path or target_repo in key:
+                return True
+            if target_slug and (target_slug == key or target_slug in key or target_slug in path):
+                return True
+        return False
 
     def _refresh_recommended_model_state(self) -> None:
         if not hasattr(self, "recommended_model_combo"):
             return
-        if str(self.backend_combo.currentData() or "") != "llama_cpp":
+        backend = str(self.backend_combo.currentData() or "")
+        if backend == "lmstudio":
+            model_info = self._selected_recommended_model()
+            if self._is_lms_recommended_model_installed(model_info):
+                self.download_model_button.setEnabled(False)
+                self.download_model_button.setText(tr("ui_local_models_gguf_downloaded", "✓ Уже завантажено"))
+            else:
+                self.download_model_button.setEnabled(is_lmstudio_installed())
+                self.download_model_button.setText(tr("ui_local_models_download_gguf", "⬇ Завантажити модель"))
+            return
+        if backend != "llama_cpp":
             return
         model_info = self._selected_recommended_model()
         path = LLAMA_MODEL_DIR / str(model_info.get("filename", ""))
@@ -2464,6 +2504,21 @@ class LocalModelsDialog(QDialog):
     def _discover_lmstudio_models(self) -> None:
         if str(self.backend_combo.currentData() or "") != "lmstudio":
             return
+        if not is_lmstudio_installed():
+            self.install_button.setVisible(True)
+            self.detect_button.setVisible(False)
+            self.recommended_section.setVisible(False)
+            self.model_combo.setVisible(False)
+            self.refresh_button.setVisible(False)
+            self.operation_progress.setVisible(False)
+            self._lms_install_check_timer.start()
+            self.status_label.setText(
+                tr(
+                    "ui_local_models_lms_need_install",
+                    "LM Studio не знайдена на ПК. Встановіть її та відкрийте один раз — пошук моделей з’явиться автоматично.",
+                )
+            )
+            return
         self.detect_button.setEnabled(False)
         self.operation_progress.setVisible(True)
         self.status_label.setText(tr("ui_local_models_lms_searching", "Looking for models in LM Studio…"))
@@ -2484,18 +2539,29 @@ class LocalModelsDialog(QDialog):
         self.model_combo.clear()
         self.available_models = []
         if error:
-            self.install_button.setVisible(True)
+            self._lms_installed_models = []
+            lms_installed = is_lmstudio_installed()
+            self.install_button.setVisible((not lms_installed) or ("not found" in error.lower()))
+            self.detect_button.setVisible(lms_installed)
+            if not lms_installed:
+                self._lms_install_check_timer.start()
             self.status_label.setText(
                 tr("ui_local_models_lms_missing", "LM Studio CLI was not found. Install/open LM Studio once, then try again.")
                 if "not found" in error.lower()
                 else tr("ui_local_models_lms_error", "Could not read the LM Studio model list. Check that LM Studio is installed and try again.")
             )
+            self._refresh_recommended_model_state()
             return
-        entries = models if isinstance(models, list) else []
+        self._lms_install_check_timer.stop()
+        self.install_button.setVisible(False)
+        self.detect_button.setVisible(True)
+        self.recommended_section.setVisible(True)
+        self.model_combo.setVisible(True)
+        self.refresh_button.setVisible(True)
+        entries = [dict(entry) for entry in models if isinstance(entry, dict)] if isinstance(models, list) else []
+        self._lms_installed_models = entries
         entry_paths: List[str] = []
         for entry in entries:
-            if not isinstance(entry, dict):
-                continue
             key = str(entry.get("key", "")).strip()
             label = str(entry.get("label", key)).strip()
             entry_path = str(entry.get("path", "")).strip()
@@ -2503,6 +2569,8 @@ class LocalModelsDialog(QDialog):
                 self.model_combo.addItem(label, key)
                 self.available_models.append(key)
                 entry_paths.append(entry_path)
+        self.refresh_button.setEnabled(True)
+        self._refresh_recommended_model_state()
         if self.available_models:
             target_key = self._preferred_lms_model_key.split("@", 1)[0].lower()
             target_slug = target_key.rsplit("/", 1)[-1]
@@ -2542,6 +2610,8 @@ class LocalModelsDialog(QDialog):
         self.recommended_model_combo.setEnabled(not busy)
         self.download_model_button.setEnabled(not busy)
         self.browse_models_button.setEnabled(not busy)
+        if not busy:
+            self._refresh_recommended_model_state()
         if message:
             self.status_label.setText(message)
 
@@ -2695,13 +2765,16 @@ class LocalModelsDialog(QDialog):
         self.use_as_primary = self.primary_checkbox.isChecked()
         index = self.backend_combo.currentIndex()
         self.backend_title = str(self.backend_combo.currentText() or "Локальний сервер")
+        self._lms_install_check_timer.stop()
         self.accept()
 
     def reject(self) -> None:
+        self._lms_install_check_timer.stop()
         self._recommended_download_cancel.set()
         super().reject()
 
     def closeEvent(self, event) -> None:
+        self._lms_install_check_timer.stop()
         self._recommended_download_cancel.set()
         super().closeEvent(event)
 
@@ -4186,13 +4259,34 @@ class AISettingsDialog(QDialog):
 
     def _on_save(self) -> None:
         self._stash_current_prompt_draft()
-        config.update({
-            "ai_spellcheck_enabled": self.chk_enabled.isChecked(),
-            "ai_primary_id": str(self.primary_combo.currentData() or ""),
-            "ai_fallback_id": str(self.fallback_combo.currentData() or ""),
+        enabled = self.chk_enabled.isChecked()
+        primary_id = str(self.primary_combo.currentData() or "")
+        fallback_id = str(self.fallback_combo.currentData() or "")
+        items = list(config.get("ai_items", []))
+        primary_item = next(
+            (x for x in items if isinstance(x, dict) and str(x.get("id", "")) == primary_id),
+            None,
+        )
+        updates: Dict[str, Any] = {
+            "ai_spellcheck_enabled": enabled,
+            "ai_primary_id": primary_id,
+            "ai_fallback_id": fallback_id,
             "ai_spellcheck_prompts": self._draft_prompts,
             "ai_spellcheck_prompt": "",
-        })
+        }
+        if enabled or (primary_item and str(primary_item.get("provider", "")) == "local_api"):
+            preferred = primary_id if (primary_item and str(primary_item.get("provider", "")) == "local_api") else ""
+            next_items, next_primary, next_fallback, removed_ids = prune_ollama_when_local_model_active(
+                items,
+                primary_id,
+                fallback_id,
+                preferred_local_id=preferred,
+            )
+            if removed_ids:
+                updates["ai_items"] = next_items
+                updates["ai_primary_id"] = next_primary
+                updates["ai_fallback_id"] = next_fallback
+        config.update(updates)
         self.accept()
 
 

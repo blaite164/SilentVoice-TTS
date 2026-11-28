@@ -659,6 +659,8 @@
   "ui_local_models_guide": "W tym oknie jednym kliknięciem pobierzesz polecany model do LM Studio lub llama.cpp. LM Studio zapisze go w swoim folderze modeli, a llama.cpp w SilentVoice. Możesz też otworzyć katalog i wybrać inny model. SilentVoice uruchomi lokalny serwer i połączy się z nim.",
   "ui_local_models_ollama_guide": "Zainstaluj Ollama i pobierz model przyciskami na jej karcie. Dla LM Studio lub llama.cpp kliknij ⋯: w oknie pobierzesz polecany model albo znajdziesz inny w katalogu. SilentVoice uruchomi go i automatycznie się połączy.",
   "ui_local_models_detect": "🔎 Znajdź modele w LM Studio",
+  "ui_local_models_detect_compact": "🔎 Znajdź",
+  "ui_local_models_lms_need_install": "LM Studio nie jest zainstalowane. Pobierz je lub wybierz inny silnik.",
   "ui_local_models_install": "⬇ Pobierz LM Studio",
   "ui_local_models_choose_gguf": "Wybierz plik .gguf…",
   "ui_local_models_gguf_hint": "Wybierz plik modelu w formacie .gguf",

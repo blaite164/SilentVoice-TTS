@@ -186,8 +186,208 @@ class LocalLlmGpuTests(unittest.TestCase):
             )
             self.assertEqual(dlg.model_combo.currentData(), "gemma-3-4b-it")
         finally:
+            dlg.reject()
             dlg.close()
             app.processEvents()
+
+    def test_is_lmstudio_installed_checks_cli_and_executable(self) -> None:
+        import os
+
+        with patch.object(local_llm, "find_lms_cli", return_value=r"C:\lms.exe"):
+            self.assertTrue(local_llm.is_lmstudio_installed())
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env_patch = {"LOCALAPPDATA": str(root / "local"), "ProgramFiles": str(root / "pf")}
+            with (
+                patch.object(local_llm, "find_lms_cli", return_value=None),
+                patch.dict(os.environ, env_patch, clear=False),
+                patch("core.local_llm.os.name", "nt"),
+            ):
+                self.assertFalse(local_llm.is_lmstudio_installed())
+                exe = root / "local" / "Programs" / "LM Studio" / "LM Studio.exe"
+                exe.parent.mkdir(parents=True)
+                exe.write_bytes(b"mz")
+                self.assertTrue(local_llm.is_lmstudio_installed())
+
+    def test_prune_ollama_when_local_model_active(self) -> None:
+        items = [
+            {"id": "ollama_1", "provider": "ollama", "model": "gemma3:4b"},
+            {"id": "lms_1", "provider": "local_api", "managed_backend": "lmstudio", "model": "gemma-3-4b-it"},
+            {"id": "groq_1", "provider": "groq", "model": "llama-3.3-70b"},
+        ]
+        next_items, prim, fb, removed = local_llm.prune_ollama_when_local_model_active(
+            items,
+            "ollama_1",
+            "ollama_1",
+            preferred_local_id="lms_1",
+        )
+        self.assertEqual(removed, ["ollama_1"])
+        self.assertEqual([x["id"] for x in next_items], ["lms_1", "groq_1"])
+        self.assertEqual(prim, "lms_1")
+        self.assertEqual(fb, "")
+
+        only_remote = [
+            {"id": "ollama_1", "provider": "ollama", "model": "gemma3:4b"},
+            {"id": "groq_1", "provider": "groq", "model": "llama-3.3-70b"},
+        ]
+        untouched, prim2, fb2, removed2 = local_llm.prune_ollama_when_local_model_active(
+            only_remote,
+            "ollama_1",
+            "groq_1",
+        )
+        self.assertEqual(removed2, [])
+        self.assertEqual([x["id"] for x in untouched], ["ollama_1", "groq_1"])
+        self.assertEqual((prim2, fb2), ("ollama_1", "groq_1"))
+
+    def test_local_models_dialog_visibility_for_lmstudio_installed_and_missing(self) -> None:
+        from PySide6.QtWidgets import QApplication, QSizePolicy
+
+        app = QApplication.instance() or QApplication([])
+        from ui.dialogs import LocalModelsDialog
+
+        installed_entries = [
+            {
+                "key": "gemma-3-4b-it",
+                "label": "Gemma 3 4B Instruct",
+                "path": "lmstudio-community/gemma-3-4b-it-GGUF/gemma-3-4b-it-Q4_K_M.gguf",
+            }
+        ]
+        with (
+            patch("ui.dialogs.is_lmstudio_installed", return_value=True),
+            patch("ui.dialogs.list_lmstudio_models", return_value=installed_entries),
+        ):
+            dlg = LocalModelsDialog()
+            try:
+                self.assertTrue(dlg.install_button.isHidden())
+                self.assertFalse(dlg.detect_button.isHidden())
+                self.assertEqual(dlg.detect_button.sizePolicy().horizontalPolicy(), QSizePolicy.Policy.Fixed)
+                self.assertFalse(dlg.recommended_section.isHidden())
+                self.assertFalse(dlg.model_combo.isHidden())
+                self.assertFalse(dlg.refresh_button.isHidden())
+
+                dlg._on_lmstudio_models_fetched(installed_entries, "")
+                self.assertTrue(dlg.install_button.isHidden())
+                self.assertFalse(dlg.download_model_button.isEnabled())
+            finally:
+                dlg.reject()
+                dlg.close()
+                app.processEvents()
+
+        with patch("ui.dialogs.is_lmstudio_installed", return_value=False):
+            dlg = LocalModelsDialog()
+            try:
+                self.assertFalse(dlg.install_button.isHidden())
+                self.assertTrue(dlg.detect_button.isHidden())
+                self.assertTrue(dlg.recommended_section.isHidden())
+                self.assertTrue(dlg.model_combo.isHidden())
+                self.assertTrue(dlg.refresh_button.isHidden())
+            finally:
+                dlg.reject()
+                dlg.close()
+                app.processEvents()
+
+    def test_open_local_models_dialog_and_toggle_remove_ollama(self) -> None:
+        from PySide6.QtWidgets import QDialog
+        import ui.main_window as main_window_mod
+
+        class _DictCfg:
+            def __init__(self, initial: dict) -> None:
+                self._data = dict(initial)
+
+            def get(self, key: str, default=None):
+                return self._data.get(key, default)
+
+            def set(self, key: str, value) -> None:
+                self._data[key] = value
+
+            def update(self, values: dict) -> None:
+                self._data.update(values)
+
+        fake_cfg = _DictCfg(
+            {
+                "ai_items": [
+                    {"id": "ollama_1", "provider": "ollama", "title": "Ollama", "model": "gemma3:4b"},
+                ],
+                "ai_primary_id": "ollama_1",
+                "ai_fallback_id": "ollama_1",
+                "ai_spellcheck_enabled": False,
+            }
+        )
+        timer = MagicMock()
+        dummy = MagicMock()
+        dummy._ai_debounce_timers = {"ollama_1": timer}
+        dummy._ollama_connections = {"ollama_1": True}
+        dummy._ollama_model_pull_active = {"ollama_1": True}
+        dummy._ollama_download_widgets = {"ollama_1": {}}
+        dummy._ollama_start_in_progress = False
+        dummy._ollama_executable = lambda: r"C:\Program Files\Ollama\ollama.exe"
+        dummy._cleanup_ollama_item_state = main_window_mod.MainWindow._cleanup_ollama_item_state.__get__(dummy, main_window_mod.MainWindow)
+        dummy._prune_ollama_if_local_model_active = main_window_mod.MainWindow._prune_ollama_if_local_model_active.__get__(dummy, main_window_mod.MainWindow)
+        dummy._open_local_models_dialog = main_window_mod.MainWindow._open_local_models_dialog.__get__(dummy, main_window_mod.MainWindow)
+        dummy._on_ai_spellcheck_toggled = main_window_mod.MainWindow._on_ai_spellcheck_toggled.__get__(dummy, main_window_mod.MainWindow)
+        dummy._ensure_ollama_server = main_window_mod.MainWindow._ensure_ollama_server.__get__(dummy, main_window_mod.MainWindow)
+
+        fake_dlg = MagicMock()
+        fake_dlg.exec.return_value = QDialog.DialogCode.Accepted
+        fake_dlg.server_url = "http://127.0.0.1:1234/v1"
+        fake_dlg.api_key = ""
+        fake_dlg.selected_model = "gemma-3-4b-it"
+        fake_dlg.available_models = ["gemma-3-4b-it"]
+        fake_dlg.managed_backend = "lmstudio"
+        fake_dlg.model_path = ""
+        fake_dlg.backend_title = "LM Studio"
+        fake_dlg.use_as_primary = True
+
+        with (
+            patch.object(main_window_mod, "config", fake_cfg),
+            patch("ui.main_window.LocalModelsDialog", return_value=fake_dlg),
+        ):
+            dummy._open_local_models_dialog()
+
+        remaining = fake_cfg.get("ai_items")
+        self.assertEqual(len(remaining), 1)
+        self.assertEqual(remaining[0]["provider"], "local_api")
+        self.assertEqual(fake_cfg.get("ai_primary_id"), remaining[0]["id"])
+        self.assertEqual(fake_cfg.get("ai_fallback_id"), "")
+        timer.stop.assert_called_once()
+        timer.deleteLater.assert_called_once()
+        self.assertEqual(dummy._ollama_connections, {})
+
+        # Enabling AI when both Ollama and LM Studio exist also removes Ollama and skips Ollama server launch.
+        fake_cfg2 = _DictCfg(
+            {
+                "ai_items": [
+                    {"id": "ollama_2", "provider": "ollama", "title": "Ollama", "model": "gemma3:4b"},
+                    {"id": "lms_2", "provider": "local_api", "managed_backend": "lmstudio", "model": "gemma-3-4b-it"},
+                ],
+                "ai_primary_id": "ollama_2",
+                "ai_fallback_id": "",
+                "ai_spellcheck_enabled": False,
+            }
+        )
+        dummy2 = MagicMock()
+        dummy2._ai_debounce_timers = {}
+        dummy2._ollama_connections = {"ollama_2": False}
+        dummy2._ollama_model_pull_active = {}
+        dummy2._ollama_download_widgets = {}
+        dummy2._ollama_start_in_progress = False
+        dummy2._ollama_executable = lambda: r"C:\Program Files\Ollama\ollama.exe"
+        dummy2._cleanup_ollama_item_state = main_window_mod.MainWindow._cleanup_ollama_item_state.__get__(dummy2, main_window_mod.MainWindow)
+        dummy2._prune_ollama_if_local_model_active = main_window_mod.MainWindow._prune_ollama_if_local_model_active.__get__(dummy2, main_window_mod.MainWindow)
+        dummy2._on_ai_spellcheck_toggled = main_window_mod.MainWindow._on_ai_spellcheck_toggled.__get__(dummy2, main_window_mod.MainWindow)
+        dummy2._ensure_ollama_server = main_window_mod.MainWindow._ensure_ollama_server.__get__(dummy2, main_window_mod.MainWindow)
+
+        with (
+            patch.object(main_window_mod, "config", fake_cfg2),
+            patch("ui.main_window.subprocess.Popen") as mock_popen,
+        ):
+            dummy2._on_ai_spellcheck_toggled(True)
+
+        self.assertEqual([x["id"] for x in fake_cfg2.get("ai_items")], ["lms_2"])
+        self.assertEqual(fake_cfg2.get("ai_primary_id"), "lms_2")
+        mock_popen.assert_not_called()
+        dummy2._start_saved_local_llm_servers.assert_called_once()
 
 
 if __name__ == "__main__":

@@ -103,6 +103,7 @@ from core.settings_transfer import (
     write_export_file as write_settings_export,
 )
 from core.local_llm import (
+    prune_ollama_when_local_model_active,
     start_llama_cpp_server,
     start_lmstudio_model,
     stop_managed_llama_server,
@@ -1750,12 +1751,10 @@ class MainWindow(QMainWindow):
             return
         cur = str(self.ai_add_combo.currentData() or "")
         lang = str(config.get("app_language", "uk")).lower()
-        ru_order = ("deepseek", "zai", "openrouter", "ollama", "groq", "gemini", "openai")
+        ru_order = ("deepseek", "zai", "openrouter", "ollama", "local_api", "groq", "gemini", "openai")
         keys = [k for k in ru_order if k in AI_PROVIDERS] if lang == "ru" else list(AI_PROVIDERS.keys())
-        # Local OpenAI-compatible servers are added through the simplified local-model wizard.
-        keys = [k for k in keys if k != "local_api"]
         for k in AI_PROVIDERS.keys():
-            if k != "local_api" and k not in keys:
+            if k not in keys:
                 keys.append(k)
         existing_providers = {
             str(item.get("provider", "")).strip()
@@ -3935,6 +3934,7 @@ class MainWindow(QMainWindow):
         lay.addLayout(self.ai_cards_layout)
         lay.addStretch(1)
 
+        self._prune_ollama_if_local_model_active(rebuild=False)
         self._rebuild_ai_cards()
         self._refresh_ai_status_banner()
         scroll.setWidget(content)
@@ -4914,6 +4914,43 @@ class MainWindow(QMainWindow):
         self.ai_status_banner.setText(tr("ui_f_011", "✅ Активний AI-коректор: <b>{prim_title}</b>{fb_part}", prim_title=prim_title, fb_part=fb_part))
         self.ai_status_banner.setStyleSheet("color: #34D399; padding: 2px 6px; font-size: 12.5px;")
 
+    def _cleanup_ollama_item_state(self, removed_ids: List[str]) -> None:
+        for old_id in removed_ids:
+            old_t = self._ai_debounce_timers.pop(old_id, None)
+            if old_t is not None:
+                old_t.stop()
+                old_t.deleteLater()
+            self._ollama_connections.pop(old_id, None)
+            self._ollama_model_pull_active.pop(old_id, None)
+            self._ollama_download_widgets.pop(old_id, None)
+
+    def _prune_ollama_if_local_model_active(
+        self,
+        *,
+        preferred_local_id: str = "",
+        rebuild: bool = False,
+    ) -> bool:
+        items = list(config.get("ai_items", []))
+        next_items, next_primary, next_fallback, removed_ids = prune_ollama_when_local_model_active(
+            items,
+            str(config.get("ai_primary_id", "") or ""),
+            str(config.get("ai_fallback_id", "") or ""),
+            preferred_local_id=preferred_local_id,
+        )
+        if not removed_ids:
+            return False
+        self._cleanup_ollama_item_state(removed_ids)
+        config.update({
+            "ai_items": next_items,
+            "ai_primary_id": next_primary,
+            "ai_fallback_id": next_fallback,
+        })
+        self._populate_ai_add_combo()
+        if rebuild:
+            self._rebuild_ai_cards()
+        self._refresh_ai_status_banner()
+        return True
+
     def _on_ai_spellcheck_toggled(self, checked: bool) -> None:
         config.set("ai_spellcheck_enabled", bool(checked))
         if checked and not str(config.get("ai_primary_id", "")).strip():
@@ -4921,6 +4958,7 @@ class MainWindow(QMainWindow):
             if items:
                 config.set("ai_primary_id", str(items[0].get("id", "")))
         if checked:
+            self._prune_ollama_if_local_model_active(rebuild=True)
             self._ensure_ollama_server()
             self._start_saved_local_llm_servers()
         self._refresh_ai_status_banner()
@@ -4970,6 +5008,9 @@ class MainWindow(QMainWindow):
             return False
 
     def _ensure_ollama_server(self) -> None:
+        items = [x for x in config.get("ai_items", []) if isinstance(x, dict)]
+        if not any(str(x.get("provider", "")).strip() == "ollama" for x in items):
+            return
         if self._ollama_start_in_progress or self._ollama_executable() is None:
             return
         self._ollama_start_in_progress = True
@@ -5017,12 +5058,23 @@ class MainWindow(QMainWindow):
     def _open_ai_settings_dialog(self) -> None:
         dlg = AISettingsDialog(self)
         if dlg.exec():
+            remaining_ids = {
+                str(x.get("id", "")) for x in config.get("ai_items", []) if isinstance(x, dict)
+            }
+            stale_ids = [
+                iid for iid in set(self._ollama_connections) | set(self._ollama_download_widgets)
+                if iid not in remaining_ids
+            ]
+            self._cleanup_ollama_item_state(stale_ids)
+            self._populate_ai_add_combo()
+            self._rebuild_ai_cards()
             enabled = bool(config.get("ai_spellcheck_enabled", False))
             if hasattr(self, "chk_ai_spellcheck"):
                 self.chk_ai_spellcheck.blockSignals(True)
                 self.chk_ai_spellcheck.setChecked(enabled)
                 self.chk_ai_spellcheck.blockSignals(False)
             if enabled:
+                self._prune_ollama_if_local_model_active(rebuild=True)
                 self._ensure_ollama_server()
                 self._start_saved_local_llm_servers()
             self._refresh_ai_status_banner()
@@ -5175,38 +5227,42 @@ class MainWindow(QMainWindow):
                 self._ollama_install_buttons[item_id] = (install_ollama_btn, remove_ollama_btn)
                 self._refresh_ollama_install_buttons(item_id)
             elif prov_key == "local_api":
-                url_r = QHBoxLayout()
-                url_r.setSpacing(8)
-                url_lbl = QLabel(tr("ui_local_api_url", "Адреса сервера:"))
-                url_lbl.setStyleSheet("color: #CBD5E1; font-size: 13px;")
-                url_r.addWidget(url_lbl)
-                url_edit = QLineEdit(str(item.get("base_url", spec.get("default_base_url", ""))))
-                url_edit.setPlaceholderText(str(spec.get("default_base_url", "http://localhost:1234/v1")))
-                url_edit.setToolTip(tr("ui_local_api_url_tip", "Адреса локального API-сервера з його налаштувань."))
-                url_edit.textChanged.connect(
-                    lambda val, iid=item_id: self._on_ai_item_field_changed(iid, "base_url", val.strip())
-                )
-                url_r.addWidget(url_edit, 1)
-                c_lay.addLayout(url_r)
+                managed_backend = str(item.get("managed_backend", "")).strip()
+                is_managed_local = managed_backend in ("lmstudio", "llama_cpp")
+                if not is_managed_local:
+                    url_r = QHBoxLayout()
+                    url_r.setSpacing(8)
+                    url_lbl = QLabel(tr("ui_local_api_url", "Адреса сервера:"))
+                    url_lbl.setStyleSheet("color: #CBD5E1; font-size: 13px;")
+                    url_r.addWidget(url_lbl)
+                    url_edit = QLineEdit(str(item.get("base_url", spec.get("default_base_url", ""))))
+                    url_edit.setPlaceholderText(str(spec.get("default_base_url", "http://localhost:1234/v1")))
+                    url_edit.setToolTip(tr("ui_local_api_url_tip", "Адреса локального API-сервера з його налаштувань."))
+                    url_edit.textChanged.connect(
+                        lambda val, iid=item_id: self._on_ai_item_field_changed(iid, "base_url", val.strip())
+                    )
+                    url_r.addWidget(url_edit, 1)
+                    c_lay.addLayout(url_r)
 
-                key_checkbox = QCheckBox(tr("ui_local_api_key", "Сервер просить ключ доступу"))
-                key_checkbox.setChecked(bool(saved_key))
-                c_lay.addWidget(key_checkbox)
-                local_key_edit = QLineEdit(saved_key)
-                local_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
-                local_key_edit.setPlaceholderText(tr("ui_local_api_key_ph", "Вставте ключ доступу, якщо сервер його вимагає"))
-                local_key_edit.setVisible(bool(saved_key))
-                local_key_edit.textChanged.connect(
-                    lambda val, iid=item_id: self._on_ai_item_field_changed(iid, "api_key", val.strip())
-                )
+                if not is_managed_local or saved_key:
+                    key_checkbox = QCheckBox(tr("ui_local_api_key", "Сервер просить ключ доступу"))
+                    key_checkbox.setChecked(bool(saved_key))
+                    c_lay.addWidget(key_checkbox)
+                    local_key_edit = QLineEdit(saved_key)
+                    local_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
+                    local_key_edit.setPlaceholderText(tr("ui_local_api_key_ph", "Вставте ключ доступу, якщо сервер його вимагає"))
+                    local_key_edit.setVisible(bool(saved_key))
+                    local_key_edit.textChanged.connect(
+                        lambda val, iid=item_id: self._on_ai_item_field_changed(iid, "api_key", val.strip())
+                    )
 
-                def _toggle_local_api_key(enabled: bool, edit: QLineEdit = local_key_edit) -> None:
-                    edit.setVisible(enabled)
-                    if not enabled:
-                        edit.clear()
+                    def _toggle_local_api_key(enabled: bool, edit: QLineEdit = local_key_edit) -> None:
+                        edit.setVisible(enabled)
+                        if not enabled:
+                            edit.clear()
 
-                key_checkbox.toggled.connect(_toggle_local_api_key)
-                c_lay.addWidget(local_key_edit)
+                    key_checkbox.toggled.connect(_toggle_local_api_key)
+                    c_lay.addWidget(local_key_edit)
 
             mod_r = QHBoxLayout()
             mod_r.setSpacing(8)
@@ -5768,15 +5824,32 @@ class MainWindow(QMainWindow):
                 }
             )
 
-        updates: Dict[str, Any] = {"ai_items": items}
-        if dialog.use_as_primary or not str(config.get("ai_primary_id", "")).strip():
-            updates["ai_primary_id"] = item_id
-        config.update(updates)
+        candidate_primary = (
+            item_id
+            if (dialog.use_as_primary or not str(config.get("ai_primary_id", "")).strip())
+            else str(config.get("ai_primary_id", "")).strip()
+        )
+        next_items, next_primary, next_fallback, removed_ids = prune_ollama_when_local_model_active(
+            items,
+            candidate_primary,
+            str(config.get("ai_fallback_id", "") or ""),
+            preferred_local_id=item_id,
+        )
+        self._cleanup_ollama_item_state(removed_ids)
+        config.update({
+            "ai_items": next_items,
+            "ai_primary_id": next_primary,
+            "ai_fallback_id": next_fallback,
+        })
+        self._populate_ai_add_combo()
         self._rebuild_ai_cards()
         self._refresh_ai_status_banner()
 
     def _on_add_ai_provider(self) -> None:
         prov_key = str(self.ai_add_combo.currentData())
+        if prov_key == "local_api":
+            self._open_local_models_dialog()
+            return
         spec = AI_PROVIDERS.get(prov_key)
         if not spec:
             return

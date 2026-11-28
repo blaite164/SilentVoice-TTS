@@ -49,6 +49,68 @@ def find_lms_cli() -> Optional[str]:
     return next((str(path) for path in candidates if path.is_file()), None)
 
 
+def is_lmstudio_installed() -> bool:
+    """Return True when LM Studio CLI or desktop executable is installed locally."""
+    if find_lms_cli():
+        return True
+    if os.name == "nt":
+        app_candidates = []
+        local_app_str = os.environ.get("LOCALAPPDATA", "").strip()
+        prog_files_str = os.environ.get("ProgramFiles", "").strip()
+        if local_app_str:
+            local_app = Path(local_app_str)
+            app_candidates.extend([
+                local_app / "Programs" / "LM Studio" / "LM Studio.exe",
+                local_app / "LM-Studio" / "LM Studio.exe",
+            ])
+        if prog_files_str:
+            app_candidates.append(Path(prog_files_str) / "LM Studio" / "LM Studio.exe")
+        return any(path.is_file() for path in app_candidates)
+    return False
+
+
+def prune_ollama_when_local_model_active(
+    items: List[Dict[str, Any]],
+    primary_id: str,
+    fallback_id: str,
+    *,
+    preferred_local_id: str = "",
+) -> Tuple[List[Dict[str, Any]], str, str, List[str]]:
+    """Remove Ollama cards when another local model (LM Studio / llama.cpp / local API) is present."""
+    has_other_local = any(
+        isinstance(item, dict) and str(item.get("provider", "")).strip() == "local_api"
+        for item in items
+    )
+    if not has_other_local:
+        return list(items), primary_id, fallback_id, []
+
+    removed_ids: List[str] = []
+    kept_items: List[Dict[str, Any]] = []
+    local_ids: List[str] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        prov = str(item.get("provider", "")).strip()
+        iid = str(item.get("id", "")).strip()
+        if prov == "ollama":
+            if iid:
+                removed_ids.append(iid)
+            continue
+        kept_items.append(item)
+        if prov == "local_api" and iid:
+            local_ids.append(iid)
+
+    if not removed_ids:
+        return list(items), primary_id, fallback_id, []
+
+    fallback_target = preferred_local_id if preferred_local_id in local_ids else (local_ids[0] if local_ids else "")
+    new_primary = primary_id
+    if not new_primary or new_primary in removed_ids:
+        new_primary = fallback_target or (str(kept_items[0].get("id", "")).strip() if kept_items else "")
+    new_fallback = "" if fallback_id in removed_ids else fallback_id
+    return kept_items, new_primary, new_fallback, removed_ids
+
+
 def _run_lms(args: List[str], timeout: float = 60.0) -> subprocess.CompletedProcess:
     cli = find_lms_cli()
     if not cli:
