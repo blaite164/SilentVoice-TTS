@@ -371,6 +371,11 @@ QCheckBox {
     font-size: 13px;
     spacing: 9px;
 }
+QCheckBox#wrapCheckIndicator {
+    spacing: 0px;
+    padding: 0px;
+    margin: 0px;
+}
 QCheckBox::indicator {
     width: 18px;
     height: 18px;
@@ -1361,7 +1366,7 @@ class MainWindow(QMainWindow):
                 "<b>Привіт! Це SilentVoice — твій текстовий голос</b><br>"
                 "Не можеш або не хочеш говорити в мікрофон? Просто друкуй, а програма озвучить усе за тебе — у дзвінках, іграх чи на стрімі. Чудово виручає і тих, кому складно або неможливо говорити голосом, і тих, хто просто хоче спілкуватися текстом.<br><br>"
                 "<b>Налаштування за хвилинку:</b><br>"
-                "1. <b>Обери, чим озвучувати.</b> Зазирни в <b>«🎙️ Голос та Озвучка»</b> та встанови будь-який TTS-рушій: офлайн у <b>«💻 Завантажити на ПК»</b> або онлайн у <b>«🌐 Онлайн-голоси»</b> (найпростіше почати з безкоштовного <b>Edge-TTS</b>).<br>"
+                "1. <b>Обери, чим озвучувати.</b> Зазирни в <b>«🎙️ Голос та Озвучка»</b> та встанови будь-який TTS-рушій: офлайн у <b>«💻 Локальні-голоси»</b> або онлайн у <b>«🌐 Онлайн-голоси»</b> (найпростіше почати з безкоштовного <b>Edge-TTS</b>).<br>"
                 "2. <b>Підбери голос.</b> У самому верху в <b>«Ваш активний голос»</b> вибери диктора до смаку й перевір звучання.<br>"
                 "3. <b>Користуйся де завгодно.</b> Натисни <b>{hk_toggle}</b> поверх будь-якої програми, набери повідомлення й відправ через <b>{hk_send}</b> — і тебе почують!<br><br>"
                 "<i>💡 Порада: щоб звук йшов у Discord чи гру, увімкни <b>VB-Cable</b> у вкладці <b>«🔊 Звук та Система»</b>.</i>",
@@ -1871,7 +1876,7 @@ class MainWindow(QMainWindow):
                     "ui_115",
                     "<b>Як влаштований вибір голосів:</b><br>"
                     "Угорі у блоці <b>«Ваш активний голос»</b> показуються лише готові до роботи голоси.<br><br>"
-                    "• <b>Завантажити на ПК</b> — офлайн-голоси (працюють без інтернету). Завантажуються у 1 клік, можна попередньо прослухати.<br>"
+                    "• <b>Локальні-голоси</b> — офлайн-голоси (працюють без інтернету). Завантажуються у 1 клік, можна попередньо прослухати.<br>"
                     "• <b>Онлайн-голоси</b> — безкоштовний Edge-TTS або сервіси за API-ключем (OpenAI, ElevenLabs, Google Cloud, Fish Audio) чи Telegram-бот.<br><br>"
                     "<i>Найпростіший старт без налаштувань — безкоштовний Edge-TTS або локальний голос Piper / Silero.</i>",
                 ),
@@ -1930,9 +1935,9 @@ class MainWindow(QMainWindow):
 
         lay.addWidget(active_card)
 
-        # Нижня частина: 5 вкладок (Завантажити на ПК / Онлайн-голоси / Усі налаштування / AI Орфографія / Чат Twitch)
+        # Нижня частина: 5 вкладок (Локальні-голоси / Онлайн-голоси / Усі налаштування / AI Орфографія / Чат Twitch)
         self.tts_tabs = QTabWidget()
-        self.tts_tabs.addTab(self._build_tts_tab_models(), tr("ui_123", "💻 Завантажити на ПК"))
+        self.tts_tabs.addTab(self._build_tts_tab_models(), tr("ui_123", "💻 Локальні-голоси"))
         self.tts_tabs.addTab(self._build_tts_tab_online(), tr("ui_124", "🌐 Онлайн-голоси"))
         self.tts_tabs.addTab(self._build_tts_tab_all_settings(), tr("ui_125", "⚙️ Усі налаштування"))
         self.tts_tabs.addTab(self._build_tts_tab_ai_spellcheck(), tr("ui_126", "🪄 AI Орфографія"))
@@ -6947,7 +6952,9 @@ class MainWindow(QMainWindow):
         m_lay.setSpacing(8)
 
         m_hdr = QHBoxLayout()
-        m_hdr.addWidget(QLabel(tr("ui_288", "<b>Спосіб набору тексту:</b>")))
+        m_title = QLabel(tr("ui_288", "<b>Спосіб набору тексту:</b>"))
+        m_title.setProperty("class", "cardHeader")
+        m_hdr.addWidget(m_title)
         m_hdr.addWidget(
             HelpButton(
                 tr("ui_289", "Спосіб набору тексту"),
@@ -7008,6 +7015,7 @@ class MainWindow(QMainWindow):
         fb_vol_row = QWidget()
         fb_grid = QGridLayout(fb_vol_row)
         fb_grid.setContentsMargins(0, 2, 0, 0)
+        fb_grid.setHorizontalSpacing(8)
         fb_grid.setColumnStretch(1, 1)
         fb_grid.addWidget(
             QLabel(tr("input.sound_feedback_volume_lbl", "Гучність звукових сигналів (початок / скасування):")),
@@ -7024,8 +7032,9 @@ class MainWindow(QMainWindow):
             "%",
             lambda: config.set("sound_feedback_volume", int(self.sld_feedback_vol.value())),
         )
-        btn_test_beep = QPushButton("🔊")
-        btn_test_beep.setFixedSize(30, 26)
+        btn_test_beep = QPushButton("▶")
+        btn_test_beep.setFixedSize(28, 26)
+        btn_test_beep.setStyleSheet("padding: 0px; font-size: 12px;")
         btn_test_beep.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_test_beep.setToolTip(tr("input.sound_feedback_test_tip", "Перевірити гучність звукового сигналу"))
         btn_test_beep.clicked.connect(
@@ -7051,10 +7060,10 @@ class MainWindow(QMainWindow):
 
         g_hdr = QHBoxLayout()
         self.chk_game_mode = WrappingCheckBox(
-            tr("input.game_mode_chk", "🛡️ Дозволити ігровий режим (автозахист у грі)")
+            tr("input.game_mode_chk", "🎮 Дозволити ігровий режим (автозахист у грі)")
         )
         self.chk_game_mode.setChecked(bool(config.get("game_mode_enabled", True)))
-        self.chk_game_mode.setStyleSheet("font-weight: 700;")
+        self.chk_game_mode.setStyleSheet("font-weight: 700; color: #FFFFFF; font-size: 14px;")
         g_hdr.addWidget(self.chk_game_mode)
         g_hdr.addWidget(
             HelpButton(
@@ -7675,13 +7684,19 @@ class MainWindow(QMainWindow):
         wrap = QWidget()
         h = QHBoxLayout(wrap)
         h.setContentsMargins(0, 0, 0, 0)
+        h.setSpacing(6)
         slider = QSlider(Qt.Orientation.Horizontal)
         slider.setRange(min_v, max_v)
         slider.setSingleStep(1)
         slider.setPageStep(1)
         slider.setValue(val)
         val_lbl = QLabel(f"{val}{suffix}")
-        val_lbl.setFixedWidth(54)
+        fm = QFontMetrics(val_lbl.font())
+        max_lbl_w = max(
+            fm.horizontalAdvance(f"{min_v}{suffix}"),
+            fm.horizontalAdvance(f"{max_v}{suffix}"),
+        ) + 4
+        val_lbl.setFixedWidth(max(36, max_lbl_w))
         val_lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         slider._val_lbl = val_lbl  # type: ignore[attr-defined]
         slider._val_suffix = suffix  # type: ignore[attr-defined]

@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from PySide6.QtCore import QAbstractAnimation, QEasingCurve, QEvent, QObject, QPoint, QRect, QRectF, QSize, Qt, QThread, QTimer, QUrl, QVariantAnimation, Signal
-from PySide6.QtGui import QColor, QConicalGradient, QDesktopServices, QGuiApplication, QIcon, QImage, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtGui import QColor, QConicalGradient, QDesktopServices, QFont, QFontMetrics, QGuiApplication, QIcon, QImage, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
     QApplication,
@@ -179,6 +179,11 @@ QCheckBox {
     spacing: 9px;
     padding: 2px 0;
 }
+QCheckBox#wrapCheckIndicator {
+    spacing: 0px;
+    padding: 0px;
+    margin: 0px;
+}
 QCheckBox::indicator {
     width: 18px;
     height: 18px;
@@ -306,25 +311,42 @@ class WrappingCheckBox(QWidget):
     toggled = Signal(bool)
     stateChanged = Signal(int)
 
+    _BASE_LABEL_CSS = (
+        "background: transparent; border: none; color: #F1F5F9; "
+        "font-size: 13px; padding: 0px; margin: 0px;"
+    )
+    _BOX_SIZE = 20
+    _SPACING = 9
+
     def __init__(self, text: str = "", parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
+        self._font_px: int = 13
+        self._font_weight: int = 400
         self.setMinimumWidth(0)
-        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+        sp = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+        sp.setHeightForWidth(True)
+        self.setSizePolicy(sp)
+
         lay = QHBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(8)
+        lay.setSpacing(self._SPACING)
 
         self._box = QCheckBox("")
+        self._box.setObjectName("wrapCheckIndicator")
+        self._box.setFixedSize(self._BOX_SIZE, self._BOX_SIZE)
         self._box.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self._box.setCursor(Qt.CursorShape.PointingHandCursor)
 
         self._label = QLabel(text)
         self._label.setWordWrap(True)
         self._label.setMinimumWidth(0)
-        self._label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+        self._label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        lsp = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+        lsp.setHeightForWidth(True)
+        self._label.setSizePolicy(lsp)
         self._label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
         self._label.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._label.setStyleSheet("QLabel { background: transparent; border: none; padding-top: 1px; }")
+        self._label.setStyleSheet(f"QLabel {{ {self._BASE_LABEL_CSS} }}")
         self._label.installEventFilter(self)
 
         lay.addWidget(self._box, 0, Qt.AlignmentFlag.AlignTop)
@@ -332,6 +354,46 @@ class WrappingCheckBox(QWidget):
 
         self._box.toggled.connect(self.toggled.emit)
         self._box.stateChanged.connect(self.stateChanged.emit)
+
+    def _effective_label_font(self) -> QFont:
+        f = QFont(self._label.font())
+        if not f.family():
+            f.setFamily("Segoe UI")
+        f.setPixelSize(max(10, self._font_px))
+        if self._font_weight >= 700:
+            f.setWeight(QFont.Weight.Bold)
+        elif self._font_weight >= 600:
+            f.setWeight(QFont.Weight.DemiBold)
+        else:
+            f.setWeight(QFont.Weight.Normal)
+        return f
+
+    def _single_line_text_size(self) -> QSize:
+        fm = QFontMetrics(self._effective_label_font())
+        txt = self._label.text() or ""
+        br = fm.boundingRect(txt)
+        w = max(fm.horizontalAdvance(txt), br.width()) + 10
+        h = max(self._BOX_SIZE, fm.height() + 4)
+        return QSize(w, h)
+
+    def sizeHint(self) -> QSize:
+        ts = self._single_line_text_size()
+        return QSize(self._BOX_SIZE + self._SPACING + ts.width(), ts.height())
+
+    def minimumSizeHint(self) -> QSize:
+        ts = self._single_line_text_size()
+        return QSize(0, ts.height())
+
+    def hasHeightForWidth(self) -> bool:
+        return True
+
+    def heightForWidth(self, width: int) -> int:
+        ts = self._single_line_text_size()
+        avail = max(1, int(width) - self._BOX_SIZE - self._SPACING)
+        if avail >= ts.width():
+            return ts.height()
+        lh = self._label.heightForWidth(avail)
+        return max(ts.height(), int(lh) if lh > 0 else ts.height())
 
     def eventFilter(self, obj: QObject, event: QEvent) -> bool:
         if obj is self._label and event.type() == QEvent.Type.MouseButtonRelease:
@@ -377,13 +439,22 @@ class WrappingCheckBox(QWidget):
         self._label.setToolTip(tip)
 
     def setStyleSheet(self, style: str) -> None:
-        self._box.setStyleSheet(style)
+        self._font_px = 13
+        self._font_weight = 400
+        if style:
+            import re as _re
+
+            m_sz = _re.search(r"font-size\s*:\s*(\d+(?:\.\d+)?)\s*px", style, _re.IGNORECASE)
+            if m_sz:
+                self._font_px = max(10, round(float(m_sz.group(1))))
+            m_wt = _re.search(r"font-weight\s*:\s*(\d+|bold)", style, _re.IGNORECASE)
+            if m_wt:
+                wt_raw = m_wt.group(1).lower()
+                self._font_weight = 700 if wt_raw == "bold" else int(wt_raw)
         if style and "{" not in style:
-            self._label.setStyleSheet(
-                f"QLabel {{ background: transparent; border: none; padding-top: 1px; {style} }}"
-            )
+            self._label.setStyleSheet(f"QLabel {{ {self._BASE_LABEL_CSS} {style} }}")
         else:
-            self._label.setStyleSheet("QLabel { background: transparent; border: none; padding-top: 1px; }")
+            self._label.setStyleSheet(f"QLabel {{ {self._BASE_LABEL_CSS} }}")
         self.updateGeometry()
 
     def blockSignals(self, block: bool) -> bool:
