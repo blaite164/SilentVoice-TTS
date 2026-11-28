@@ -263,6 +263,7 @@ class LocalLlmGpuTests(unittest.TestCase):
                 self.assertFalse(dlg.detect_button.isHidden())
                 self.assertEqual(dlg.detect_button.sizePolicy().horizontalPolicy(), QSizePolicy.Policy.Fixed)
                 self.assertFalse(dlg.recommended_section.isHidden())
+                self.assertFalse(dlg.available_models_title.isHidden())
                 self.assertFalse(dlg.model_combo.isHidden())
                 self.assertFalse(dlg.refresh_button.isHidden())
 
@@ -280,6 +281,7 @@ class LocalLlmGpuTests(unittest.TestCase):
                 self.assertFalse(dlg.install_button.isHidden())
                 self.assertTrue(dlg.detect_button.isHidden())
                 self.assertTrue(dlg.recommended_section.isHidden())
+                self.assertTrue(dlg.available_models_title.isHidden())
                 self.assertTrue(dlg.model_combo.isHidden())
                 self.assertTrue(dlg.refresh_button.isHidden())
             finally:
@@ -485,6 +487,7 @@ class LocalLlmGpuTests(unittest.TestCase):
 
                     llama_idx = dlg.backend_combo.findData("llama_cpp")
                     dlg.backend_combo.setCurrentIndex(llama_idx)
+                    self.assertTrue(dlg.available_models_title.isHidden())
                     gemma_idx = dlg.recommended_model_combo.findData("gemma3_4b")
                     dlg.recommended_model_combo.setCurrentIndex(gemma_idx)
                     app.processEvents()
@@ -495,6 +498,10 @@ class LocalLlmGpuTests(unittest.TestCase):
 
                     dlg.browse_models_button.click()
                     self.assertIn("huggingface.co/models", mock_wb_open.call_args.args[0])
+
+                    other_idx = dlg.backend_combo.findData("other")
+                    dlg.backend_combo.setCurrentIndex(other_idx)
+                    self.assertFalse(dlg.available_models_title.isHidden())
                 finally:
                     dlg.reject()
                     dlg.close()

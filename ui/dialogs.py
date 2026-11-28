@@ -2662,6 +2662,10 @@ class LocalModelsDialog(QDialog):
         self.install_button.clicked.connect(self._open_backend_download)
         root.addWidget(self.install_button)
 
+        self.available_models_title = QLabel(tr("ui_local_models_installed_title", "Встановлені моделі для запуску"))
+        self.available_models_title.setStyleSheet("color: #CBD5E1; font-size: 13px; font-weight: 600;")
+        root.addWidget(self.available_models_title)
+
         model_row = QHBoxLayout()
         model_row.setSpacing(6)
         self.model_combo = DialogComboBox()
@@ -2748,7 +2752,13 @@ class LocalModelsDialog(QDialog):
         self.install_button.setVisible(is_lms and not lms_installed)
         self.detect_button.setVisible(is_lms and lms_installed)
         self.recommended_section.setVisible((is_lms and lms_installed) or is_llama)
-        self.model_combo.setVisible((is_lms and lms_installed) or is_other)
+        show_model_combo = (is_lms and lms_installed) or is_other
+        self.available_models_title.setText(
+            tr("ui_local_models_installed_title", "Встановлені моделі для запуску")
+            if is_lms else tr("ui_local_models_server_title", "Доступні моделі на сервері")
+        )
+        self.available_models_title.setVisible(show_model_combo)
+        self.model_combo.setVisible(show_model_combo)
         self.refresh_button.setVisible((is_lms and lms_installed) or is_llama or is_other)
         self.install_button.setText(tr("ui_local_models_install", "⬇ Download LM Studio"))
         self.browse_models_button.setToolTip(
@@ -2971,6 +2981,7 @@ class LocalModelsDialog(QDialog):
             self.install_button.setVisible(True)
             self.detect_button.setVisible(False)
             self.recommended_section.setVisible(False)
+            self.available_models_title.setVisible(False)
             self.model_combo.setVisible(False)
             self.refresh_button.setVisible(False)
             self.operation_progress.setVisible(False)
@@ -3019,6 +3030,7 @@ class LocalModelsDialog(QDialog):
         self.install_button.setVisible(False)
         self.detect_button.setVisible(True)
         self.recommended_section.setVisible(True)
+        self.available_models_title.setVisible(True)
         self.model_combo.setVisible(True)
         self.refresh_button.setVisible(True)
         entries = [dict(entry) for entry in models if isinstance(entry, dict)] if isinstance(models, list) else []
