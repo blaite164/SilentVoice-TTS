@@ -106,11 +106,6 @@ class _ReactionCommandListWidget(QListWidget):
             "QListWidget::item:hover { border-color: #5B6791; }"
             f'QCheckBox::indicator:checked {{ background-color: #635BFF; border-color: #827BFF; image: url("{check_svg}"); }}'
             f'QCheckBox::indicator:checked:disabled {{ background-color: #3A3866; border-color: #4D4B80; image: url("{check_svg}"); }}'
-            "QScrollBar:vertical { background: transparent; width: 7px; margin: 4px 2px 4px 0px; }"
-            "QScrollBar::handle:vertical { background: #475569; border-radius: 3px; min-height: 24px; }"
-            "QScrollBar::handle:vertical:hover { background: #7C5CFF; }"
-            "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }"
-            "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }"
         )
 
     def sizeHint(self) -> QSize:
@@ -123,8 +118,10 @@ class _ReactionCommandListWidget(QListWidget):
         vp_w = self.viewport().width()
         if vp_w <= 20:
             return
-        compact_badges = vp_w < 500
-        ultra_compact = vp_w < 410
+        sp = max(0, int(self.spacing()))
+        fallback_w = max(20, vp_w - sp * 2)
+        compact_badges = fallback_w < 500
+        ultra_compact = fallback_w < 410
         for i in range(self.count()):
             it = self.item(i)
             if it is None:
@@ -138,11 +135,22 @@ class _ReactionCommandListWidget(QListWidget):
                 hk_badge.setVisible(not compact_badges)
             if src_badge is not None:
                 src_badge.setVisible(not ultra_compact)
-            w.resize(vp_w, it.sizeHint().height() or 44)
+            rect = self.visualItemRect(it)
+            target_w = max(20, rect.width() - 2) if rect.width() > 22 else max(20, fallback_w - 2)
+            target_h = max(20, rect.height() - 4) if rect.height() > 24 else (it.sizeHint().height() or 44)
+            w.resize(target_w, target_h)
             lay = w.layout()
             if lay is not None:
                 lay.invalidate()
                 lay.activate()
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        QTimer.singleShot(0, self.fit_rows_to_viewport)
+
+    def updateGeometries(self) -> None:
+        super().updateGeometries()
+        self.fit_rows_to_viewport()
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
@@ -650,6 +658,8 @@ class ReactionCommandsCard(QFrame):
 
     def _on_expand_toggled(self, checked: bool) -> None:
         toggle_collapsible_widget(self.expand_btn, self.body, checked)
+        if checked:
+            QTimer.singleShot(0, self.cmd_list.fit_rows_to_viewport)
 
     def _ui_lang(self) -> str:
         return str(config.get("app_language") or config.get("ui_language") or "uk").strip().lower() or "uk"
@@ -861,7 +871,7 @@ class ReactionCommandsCard(QFrame):
             row_w.setMinimumWidth(0)
             row_w.setStyleSheet("background: transparent;")
             r_lay = QHBoxLayout(row_w)
-            r_lay.setContentsMargins(6, 4, 6, 4)
+            r_lay.setContentsMargins(8, 4, 8, 4)
             r_lay.setSpacing(5)
 
             grip = QLabel("⋮⋮")
