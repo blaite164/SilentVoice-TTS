@@ -3470,6 +3470,7 @@ class TTSEngineManager(QObject):
         Повертає False, якщо сталася помилка ДО першого звуку (щоб викликач міг відпрацювати fallback/retry).
         """
         from core.llama_tts import Qwen3SynthesisCancelledError, synthesize_llama_tts_stream, synthesize_qwen3_tts_stream
+        from core.omnivoice_tags import strip_omnivoice_tags
         from core.omnivoice_tts import OmniVoiceSynthesisCancelledError, synthesize_omnivoice_tts_stream
         from core.telegram_silero import SynthesisCancelledError
 
@@ -3485,6 +3486,11 @@ class TTSEngineManager(QObject):
         t0 = time.perf_counter()
         first_chunk_played = False
         first_ms = 0
+        clean_chunk_text = strip_plus_stress_marks(chunk_text)
+        spoken_disp = strip_plus_stress_marks(full_phrase_text)
+        if primary_id == "omnivoice":
+            clean_chunk_text = strip_omnivoice_tags(clean_chunk_text)
+            spoken_disp = strip_omnivoice_tags(spoken_disp)
 
         def _dsp_chunks():
             if primary_id == "qwen3_tts":
@@ -3508,13 +3514,7 @@ class TTSEngineManager(QObject):
             first_ms = int((time.perf_counter() - t0) * 1000)
             self.status_changed.emit(tr("tts.status.speaking_ms", "Озвучення ({ms} мс)...", ms=first_ms))
             if emit_phrase_spoken:
-                spoken_disp = strip_plus_stress_marks(full_phrase_text)
-                if primary_id == "omnivoice":
-                    spoken_disp = strip_omnivoice_tags(spoken_disp)
                 self.phrase_spoken.emit(spoken_disp)
-            clean_chunk_text = strip_plus_stress_marks(chunk_text)
-            if primary_id == "omnivoice":
-                clean_chunk_text = strip_omnivoice_tags(clean_chunk_text)
             est_dur = max(len(first_samples) / float(max(1, sr)), len(clean_chunk_text) / 13.0)
             self.speech_started.emit(clean_chunk_text, est_dur)
             if clean_chunk_text:
@@ -3542,13 +3542,13 @@ class TTSEngineManager(QObject):
             )
         except (Qwen3SynthesisCancelledError, OmniVoiceSynthesisCancelledError, SynthesisCancelledError):
             if first_chunk_played:
-                self.speech_finished.emit(chunk_text)
+                self.speech_finished.emit(clean_chunk_text)
             raise
         except Exception:
             if not first_chunk_played and not self._cancel_batch:
                 return False
             if first_chunk_played:
-                self.speech_finished.emit(chunk_text)
+                self.speech_finished.emit(clean_chunk_text)
             raise
 
         if not first_chunk_played:
@@ -3556,7 +3556,7 @@ class TTSEngineManager(QObject):
                 raise Qwen3SynthesisCancelledError("Qwen3-TTS synthesis cancelled")
             return False
 
-        self.speech_finished.emit(chunk_text)
+        self.speech_finished.emit(clean_chunk_text)
         if not self._cancel_batch and full_samples is not None and len(full_samples) > 0:
             self.status_changed.emit(tr("tts.status.done_ms", "Готово ({ms} мс)", ms=first_ms))
         return True

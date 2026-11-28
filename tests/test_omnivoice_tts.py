@@ -239,7 +239,8 @@ class OmniVoiceIntegrationTests(unittest.TestCase):
             idx32 = dlg.steps_combo.findData(32)
             self.assertGreaterEqual(idx32, 0)
             dlg.steps_combo.setCurrentIndex(idx32)
-            dlg._save_and_accept()
+            with mock.patch("core.tts_manager.tts_manager.schedule_smart_warmup"):
+                dlg._save_and_accept()
 
             self.assertEqual(config.get("omnivoice_mode"), "design")
             self.assertEqual(config.get("omnivoice_steps"), 32)
@@ -831,6 +832,78 @@ class OmniVoiceIntegrationTests(unittest.TestCase):
         sock_resp.shutdown.assert_called_once()
         sock_resp.close.assert_called_once()
         resp_mock.close.assert_not_called()
+
+    def test_speak_qwen3_streaming_chunk_strips_omnivoice_tags_without_name_error(self) -> None:
+        """OmniVoice streaming callback cleanly imports and applies strip_omnivoice_tags for subtitles/OBS."""
+        from PySide6.QtWidgets import QApplication
+        from core.tts_manager import tts_manager
+
+        _ = QApplication.instance() or QApplication([])
+        spoken_msgs = []
+        started_msgs = []
+        finished_msgs = []
+        obs_msgs = []
+
+        def _on_started(t: str, _d: float) -> None:
+            started_msgs.append(t)
+
+        tts_manager.phrase_spoken.connect(spoken_msgs.append)
+        tts_manager.speech_started.connect(_on_started)
+        tts_manager.speech_finished.connect(finished_msgs.append)
+
+        def _fake_play_stream(chunks_iter, *, on_first_chunk=None, on_generation_done=None, **_kw):
+            collected = list(chunks_iter)
+            first_s, first_sr = collected[0]
+            if on_first_chunk is not None:
+                on_first_chunk(first_s, first_sr, 12.0)
+            full = np.concatenate([c for c, _ in collected])
+            if on_generation_done is not None:
+                on_generation_done(full, first_sr)
+            return full, first_sr
+
+        plan = {
+            "primary_id": "omnivoice",
+            "primary_voice": "omnivoice_ru",
+            "primary_title": "OmniVoice",
+            "synth_text": "[laughter] Привет, [whisper] меня зовут Дима",
+            "cache_key": "test_ov_stream_key",
+            "lang": "ru",
+            "speaker": "",
+        }
+        old_running = tts_manager._running
+        old_cancel = tts_manager._cancel_batch
+        tts_manager._running = True
+        tts_manager._cancel_batch = False
+        try:
+            with (
+                mock.patch("core.omnivoice_tts.synthesize_omnivoice_tts_stream", return_value=iter([(np.ones(240, dtype=np.float32) * 0.2, 24000)])),
+                mock.patch("core.tts_manager.apply_engine_dsp", side_effect=lambda s, sr, *_a: (s, sr)),
+                mock.patch("core.tts_manager.audio_router.play_stream", side_effect=_fake_play_stream),
+                mock.patch("core.tts_manager.obs_server.broadcast_speech", side_effect=lambda txt, *_a, **_kw: obs_msgs.append(txt)),
+                mock.patch.object(tts_manager, "_cache_store"),
+            ):
+                ok = tts_manager._speak_qwen3_streaming_chunk(
+                    "[laughter] Привет, [whisper] меня зовут Дима",
+                    "[laughter] Привет, [whisper] меня зовут Дима",
+                    plan=plan,
+                    emit_phrase_spoken=True,
+                    monitor_only=False,
+                    send_primary=True,
+                    vban_stream_override=None,
+                    extra_gain_pct=100,
+                )
+        finally:
+            tts_manager._running = old_running
+            tts_manager._cancel_batch = old_cancel
+            tts_manager.phrase_spoken.disconnect(spoken_msgs.append)
+            tts_manager.speech_started.disconnect(_on_started)
+            tts_manager.speech_finished.disconnect(finished_msgs.append)
+
+        self.assertTrue(ok)
+        self.assertEqual(spoken_msgs, ["Привет, меня зовут Дима"])
+        self.assertEqual(started_msgs, ["Привет, меня зовут Дима"])
+        self.assertEqual(finished_msgs, ["Привет, меня зовут Дима"])
+        self.assertEqual(obs_msgs, ["Привет, меня зовут Дима"])
 
 
 if __name__ == "__main__":
