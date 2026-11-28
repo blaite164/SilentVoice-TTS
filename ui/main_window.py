@@ -2398,8 +2398,8 @@ class MainWindow(QMainWindow):
 
                 del_btn = QPushButton(tr("ui_137", "Видалити"))
                 del_btn.setProperty("class", "dangerBtn")
+                del_btn.setMinimumWidth(96)
                 del_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-                _fit_compact_action_btn(del_btn)
                 del_btn.clicked.connect(lambda checked=False, iid=item_id: self._on_delete_online_item(iid))
                 top_r.addWidget(del_btn)
 
@@ -2471,8 +2471,8 @@ class MainWindow(QMainWindow):
 
             del_btn = QPushButton(tr("ui_137", "Видалити"))
             del_btn.setProperty("class", "dangerBtn")
+            del_btn.setMinimumWidth(96)
             del_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            _fit_compact_action_btn(del_btn)
             del_btn.clicked.connect(lambda checked=False, iid=item_id: self._on_delete_online_item(iid))
             top_r.addWidget(del_btn)
 
@@ -2509,12 +2509,14 @@ class MainWindow(QMainWindow):
 
             c_lay.addLayout(key_r)
 
+            _compact_inline_btn_css = "padding: 7px 8px;"
+
             if prov_key == "fish_audio":
                 fish_paid = bool(item.get("paid_enabled", False))
                 fish_r = QHBoxLayout()
                 fish_r.setSpacing(8)
 
-                ref_lbl = QLabel(tr("ui_147", "ID голосу (опц.):"))
+                ref_lbl = QLabel(tr("ui_147", "ID голосу:"))
                 ref_lbl.setStyleSheet("color: #CBD5E1; font-size: 13px;")
                 ref_tip = tr(
                     "ui_148",
@@ -2524,7 +2526,8 @@ class MainWindow(QMainWindow):
                 fish_r.addWidget(ref_lbl)
 
                 ref_edit = QLineEdit(str(item.get("reference_id", "")))
-                ref_edit.setPlaceholderText(tr("ui_149", "Порожньо = брати зі списку «Голос» (або вставте ID з fish.audio)"))
+                ref_edit.setMinimumWidth(110)
+                ref_edit.setPlaceholderText(tr("ui_149", "Необов’язково"))
                 ref_edit.setToolTip(ref_tip)
                 ref_edit.textChanged.connect(
                     lambda val, iid=item_id: self._on_online_item_field_changed(iid, "reference_id", val.strip())
@@ -2536,7 +2539,7 @@ class MainWindow(QMainWindow):
                 fish_r.addWidget(model_lbl)
 
                 model_combo = QComboBox()
-                model_combo.setMinimumWidth(165)
+                model_combo.setMinimumWidth(155)
                 fish_models = [("s2.1-pro-free", tr("ui_151", "s2.1-pro-free (Безкоштовна)"))]
                 if fish_paid:
                     fish_models.extend([
@@ -2562,6 +2565,7 @@ class MainWindow(QMainWindow):
                 fish_r.addWidget(model_combo)
 
                 fetch_btn = QPushButton(tr("ui_139", "🔄 Оновити голоси"))
+                fetch_btn.setStyleSheet(_compact_inline_btn_css)
                 fetch_btn.setCursor(Qt.CursorShape.PointingHandCursor)
                 fetch_btn.setToolTip(tr("ui_155", "Завантажити ваші та популярні голоси з Fish Audio у список голосів"))
                 fetch_btn.clicked.connect(
@@ -2574,18 +2578,17 @@ class MainWindow(QMainWindow):
                 fish_paid_btn = QPushButton(
                     tr("ui_156", "✅ Платний режим (s2.1-pro)") if fish_paid else tr("ui_157", "💳 Перейти на платно")
                 )
-                
                 fish_paid_btn.setCursor(Qt.CursorShape.PointingHandCursor)
                 if fish_paid:
                     fish_paid_btn.setStyleSheet(
                         "QPushButton { background-color: #7C2D12; color: #FED7AA; border: 1px solid #EA580C; "
-                        "border-radius: 6px; padding: 5px 10px; font-weight: 600; }"
+                        "border-radius: 8px; padding: 7px 8px; font-weight: 600; }"
                         "QPushButton:hover { background-color: #9A3412; }"
                     )
                 else:
                     fish_paid_btn.setStyleSheet(
                         "QPushButton { background-color: #1E293B; color: #FBBF24; border: 1px solid #B45309; "
-                        "border-radius: 6px; padding: 5px 10px; font-weight: 600; }"
+                        "border-radius: 8px; padding: 7px 8px; font-weight: 600; }"
                         "QPushButton:hover { background-color: #334155; }"
                     )
                 fish_paid_btn.clicked.connect(
@@ -2596,7 +2599,7 @@ class MainWindow(QMainWindow):
                 c_lay.addLayout(fish_r)
 
                 fish_hint = QLabel(
-                    tr("ui_158", "💡 Безкоштовна модель: s2.1-pro-free. Поле «ID голосу» можна не заповнювати — "
+                    tr("ui_158", "💡 Поле «ID голосу» можна не заповнювати — "
                     "програма сама підтягне голоси у верхній список «Голос» (або вставте туди свій reference_id з сайту fish.audio).")
                 )
                 fish_hint.setStyleSheet("color: #94A3B8; font-size: 11.5px;")
@@ -2647,6 +2650,7 @@ class MainWindow(QMainWindow):
                 g_row.addWidget(g_mod_combo)
 
                 g_fetch_btn = QPushButton(tr("ui_160", "🔄 Знайти голоси (API)"))
+                g_fetch_btn.setStyleSheet(_compact_inline_btn_css)
                 g_fetch_btn.setCursor(Qt.CursorShape.PointingHandCursor)
                 g_fetch_btn.setToolTip(
                     tr("ui_161", "Завантажити моделі й голоси Google Cloud TTS з урахуванням мови, статі та тарифу")
@@ -2659,19 +2663,18 @@ class MainWindow(QMainWindow):
                 paid_btn = QPushButton(
                     tr("ui_162", "✅ Платний режим (Neural2 / Studio)") if paid_enabled else tr("ui_157", "💳 Перейти на платно")
                 )
-                
                 paid_btn.setCursor(Qt.CursorShape.PointingHandCursor)
                 if paid_enabled:
                     paid_btn.setStyleSheet(
                         "QPushButton { background-color: #7C2D12; color: #FED7AA; border: 1px solid #EA580C; "
-                        "border-radius: 6px; padding: 5px 10px; font-weight: 600; }"
+                        "border-radius: 8px; padding: 7px 8px; font-weight: 600; }"
                         "QPushButton:hover { background-color: #9A3412; }"
                     )
                     paid_btn.setToolTip(tr("ui_163", "Платні моделі (Neural2, Studio, Chirp HD тощо) увімкнено. Натисніть, щоб повернутися до безкоштовних."))
                 else:
                     paid_btn.setStyleSheet(
                         "QPushButton { background-color: #1E293B; color: #FBBF24; border: 1px solid #B45309; "
-                        "border-radius: 6px; padding: 5px 10px; font-weight: 600; }"
+                        "border-radius: 8px; padding: 7px 8px; font-weight: 600; }"
                         "QPushButton:hover { background-color: #334155; }"
                     )
                     paid_btn.setToolTip(tr("ui_164", "Відкрити платні моделі Google Cloud (Neural2, Studio, Polyglot тощо)"))
@@ -2684,53 +2687,50 @@ class MainWindow(QMainWindow):
 
                 c_lay.addLayout(g_row)
 
-                from core.tts_manager import GOOGLE_FREE_SAFE_LIMITS, load_google_month_usage_map
-                usage_map = load_google_month_usage_map()
-                active_model_f = str(item.get("model_filter", "all")).strip()
-                show_fam = active_model_f if active_model_f in GOOGLE_FREE_SAFE_LIMITS else "Chirp 3: HD"
-                used_c = int(usage_map.get(show_fam, 0))
-                lim_c = int(GOOGLE_FREE_SAFE_LIMITS.get(show_fam, 950_000))
-                quota_lbl = QLabel(
-                    tr("ui_f_003", "📊 Ліміт ({fam}, скидання 1-го числа): {used} / {lim} симв. (запас -50 000)", fam=show_fam, used=f"{used_c:,}", lim=f"{lim_c:,}")
-                    + (tr("ui_165", " • Захист вимкнено (Платний режим)") if paid_enabled else tr("ui_166", " • Захист від перевищення увімкнено"))
-                )
-                quota_lbl.setStyleSheet("color: #A5B4FC; font-size: 11.5px;")
-                quota_lbl.setWordWrap(True)
-                c_lay.addWidget(quota_lbl)
+                if bool(saved_key.strip()) and len(custom_v) > 0:
+                    from core.tts_manager import GOOGLE_FREE_SAFE_LIMITS, load_google_month_usage_map
+                    usage_map = load_google_month_usage_map()
+                    active_model_f = str(item.get("model_filter", "all")).strip()
+                    show_fam = active_model_f if active_model_f in GOOGLE_FREE_SAFE_LIMITS else "Chirp 3: HD"
+                    used_c = int(usage_map.get(show_fam, 0))
+                    lim_c = int(GOOGLE_FREE_SAFE_LIMITS.get(show_fam, 950_000))
+                    quota_lbl = QLabel(
+                        tr("ui_f_003", "📊 Ліміт ({fam}, скидання 1-го числа): {used} / {lim} симв. (запас -50 000)", fam=show_fam, used=f"{used_c:,}", lim=f"{lim_c:,}")
+                        + (tr("ui_165", " • Захист вимкнено (Платний режим)") if paid_enabled else tr("ui_166", " • Захист від перевищення увімкнено"))
+                    )
+                    quota_lbl.setStyleSheet("color: #A5B4FC; font-size: 11.5px;")
+                    quota_lbl.setWordWrap(True)
+                    c_lay.addWidget(quota_lbl)
 
             if prov_key in ("elevenlabs", "openai", "gemini_tts"):
+                api_row = QHBoxLayout()
+                api_row.setSpacing(8)
+
                 if prov_key == "elevenlabs":
-                    el_ref_row = QHBoxLayout()
-                    el_ref_row.setSpacing(8)
-                    el_ref_lbl = QLabel(tr("ui_147", "ID голосу (опц.):"))
+                    el_ref_lbl = QLabel(tr("ui_147", "ID голосу:"))
                     el_ref_lbl.setStyleSheet("color: #CBD5E1; font-size: 13px;")
                     el_ref_tip = tr(
                         "ui_el_ref_tip",
                         "Необов’язкове поле. Вставте Voice ID з elevenlabs.io (три крапки → Copy Voice ID), якщо хочете використати конкретний голос. Якщо залишити порожнім, використається голос із верхнього списку «Голос».",
                     )
                     el_ref_lbl.setToolTip(el_ref_tip)
-                    el_ref_row.addWidget(el_ref_lbl)
+                    api_row.addWidget(el_ref_lbl)
 
                     el_ref_edit = QLineEdit(str(item.get("reference_id", "")))
-                    el_ref_edit.setPlaceholderText(
-                        tr("ui_el_ref_ph", "Порожньо = брати зі списку «Голос» (або вставте Voice ID з elevenlabs.io)")
-                    )
+                    el_ref_edit.setMinimumWidth(110)
+                    el_ref_edit.setPlaceholderText(tr("ui_el_ref_ph", "Необов’язково"))
                     el_ref_edit.setToolTip(el_ref_tip)
                     el_ref_edit.textChanged.connect(
                         lambda val, iid=item_id: self._on_online_item_field_changed(iid, "reference_id", val.strip())
                     )
-                    el_ref_row.addWidget(el_ref_edit, 1)
-                    c_lay.addLayout(el_ref_row)
-
-                api_row = QHBoxLayout()
-                api_row.setSpacing(8)
+                    api_row.addWidget(el_ref_edit, 1)
 
                 m_lbl = QLabel(tr("ui_150", "Модель:"))
                 m_lbl.setStyleSheet("color: #CBD5E1; font-size: 13px;")
                 api_row.addWidget(m_lbl)
 
                 m_combo = QComboBox()
-                m_combo.setMinimumWidth(165)
+                m_combo.setMinimumWidth(155)
                 if prov_key == "elevenlabs":
                     default_models = ["eleven_flash_v2_5", "eleven_turbo_v2_5", "eleven_multilingual_v2"]
                 elif prov_key == "gemini_tts":
@@ -2763,6 +2763,7 @@ class MainWindow(QMainWindow):
                 api_row.addWidget(m_combo)
 
                 u_fetch_btn = QPushButton(tr("ui_139", "🔄 Оновити голоси"))
+                u_fetch_btn.setStyleSheet(_compact_inline_btn_css)
                 u_fetch_btn.setCursor(Qt.CursorShape.PointingHandCursor)
                 u_fetch_btn.clicked.connect(
                     lambda checked=False, iid=item_id, btn=u_fetch_btn: self._start_fetch_provider_catalog(
@@ -2770,8 +2771,20 @@ class MainWindow(QMainWindow):
                     )
                 )
                 api_row.addWidget(u_fetch_btn)
-                api_row.addStretch(1)
+                if prov_key != "elevenlabs":
+                    api_row.addStretch(1)
                 c_lay.addLayout(api_row)
+
+                if prov_key == "elevenlabs":
+                    el_hint = QLabel(
+                        tr(
+                            "ui_el_hint",
+                            "💡 Поле «ID голосу» можна не заповнювати — програма сама підтягне голоси у верхній список «Голос» (або вставте туди свій Voice ID з сайту elevenlabs.io).",
+                        )
+                    )
+                    el_hint.setStyleSheet("color: #94A3B8; font-size: 11.5px;")
+                    el_hint.setWordWrap(True)
+                    c_lay.addWidget(el_hint)
 
             c_cnt = len(list(item.get("custom_voices") or []))
             if c_cnt > 0:
@@ -2827,9 +2840,9 @@ class MainWindow(QMainWindow):
 
         del_btn = QPushButton(tr("ui_137", "Видалити"))
         del_btn.setProperty("class", "dangerBtn")
+        del_btn.setMinimumWidth(96)
         del_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         del_btn.setToolTip(tr("tg.card.delete_tooltip", "Видалити Silero Bot (Telegram) зі списку"))
-        _fit_compact_action_btn(del_btn)
         del_btn.clicked.connect(lambda checked=False, iid=item_id: self._on_delete_online_item(iid))
         top_r.addWidget(del_btn)
         c_lay.addLayout(top_r)
@@ -5159,9 +5172,9 @@ class MainWindow(QMainWindow):
 
             del_btn = QPushButton(tr("ui_137", "Видалити"))
             del_btn.setProperty("class", "dangerBtn")
+            del_btn.setMinimumWidth(96)
             del_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             del_btn.setToolTip(tr("ui_219", "Видалити цей AI-сервіс зі списку"))
-            _fit_compact_action_btn(del_btn)
             del_btn.clicked.connect(lambda checked=False, iid=item_id: self._on_delete_ai_item(iid))
             top_r.addWidget(del_btn)
             c_lay.addLayout(top_r)
