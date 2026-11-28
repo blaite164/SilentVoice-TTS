@@ -2485,6 +2485,7 @@ class MainWindow(QMainWindow):
             key_lbl = QLabel(tr("ui_143", "API ключ:"))
             key_lbl.setStyleSheet("color: #CBD5E1; font-size: 13px;")
             key_lbl.setFixedWidth(78)
+            key_lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             key_r.addWidget(key_lbl)
 
             key_edit = QLineEdit(saved_key)
@@ -2520,6 +2521,7 @@ class MainWindow(QMainWindow):
                 ref_lbl = QLabel(tr("ui_147", "ID голосу:"))
                 ref_lbl.setStyleSheet("color: #CBD5E1; font-size: 13px;")
                 ref_lbl.setFixedWidth(78)
+                ref_lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
                 ref_tip = tr(
                     "ui_148",
                     "Необов’язкове поле. Вставте reference_id з fish.audio, якщо хочете використати конкретний голос. Якщо залишити порожнім, використається голос із верхнього списку «Голос».",
@@ -2539,16 +2541,17 @@ class MainWindow(QMainWindow):
                 model_lbl = QLabel(tr("ui_150", "Модель:"))
                 model_lbl.setStyleSheet("color: #CBD5E1; font-size: 13px;")
                 model_lbl.setFixedWidth(78)
+                model_lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
                 fish_r.addWidget(model_lbl)
 
                 model_combo = QComboBox()
                 model_combo.setMinimumWidth(180)
-                fish_models = [("s2.1-pro-free", tr("ui_151", "s2.1-pro-free (Безкоштовна)"))]
+                fish_models = [("s2.1-pro-free", "s2.1-pro-free")]
                 if fish_paid:
                     fish_models.extend([
-                        ("s2.1-pro", tr("ui_152", "s2.1-pro (Платна) 💎")),
-                        ("s2-pro", tr("ui_153", "s2-pro (Платна) 💎")),
-                        ("s1", tr("ui_154", "s1 (Застаріла)")),
+                        ("s2.1-pro", "s2.1-pro"),
+                        ("s2-pro", "s2-pro"),
+                        ("s1", "s1"),
                         ("speech-1.6", "speech-1.6"),
                         ("speech-1.5", "speech-1.5"),
                     ])
@@ -2617,6 +2620,7 @@ class MainWindow(QMainWindow):
                 g_mod_lbl = QLabel(tr("ui_150", "Модель:"))
                 g_mod_lbl.setStyleSheet("color: #CBD5E1; font-size: 13px;")
                 g_mod_lbl.setFixedWidth(78)
+                g_mod_lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
                 g_row.addWidget(g_mod_lbl)
 
                 g_mod_combo = QComboBox()
@@ -2713,6 +2717,8 @@ class MainWindow(QMainWindow):
                 if prov_key == "elevenlabs":
                     el_ref_lbl = QLabel(tr("ui_147", "ID голосу:"))
                     el_ref_lbl.setStyleSheet("color: #CBD5E1; font-size: 13px;")
+                    el_ref_lbl.setFixedWidth(78)
+                    el_ref_lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
                     el_ref_tip = tr(
                         "ui_el_ref_tip",
                         "Необов’язкове поле. Вставте Voice ID з elevenlabs.io (три крапки → Copy Voice ID), якщо хочете використати конкретний голос. Якщо залишити порожнім, використається голос із верхнього списку «Голос».",
@@ -2731,8 +2737,8 @@ class MainWindow(QMainWindow):
 
                 m_lbl = QLabel(tr("ui_150", "Модель:"))
                 m_lbl.setStyleSheet("color: #CBD5E1; font-size: 13px;")
-                if prov_key != "elevenlabs":
-                    m_lbl.setFixedWidth(78)
+                m_lbl.setFixedWidth(78)
+                m_lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
                 api_row.addWidget(m_lbl)
 
                 m_combo = QComboBox()
@@ -5191,6 +5197,7 @@ class MainWindow(QMainWindow):
                 key_lbl = QLabel(tr("ui_143", "API ключ:"))
                 key_lbl.setStyleSheet("color: #CBD5E1; font-size: 13px;")
                 key_lbl.setFixedWidth(78)
+                key_lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
                 key_r.addWidget(key_lbl)
 
                 key_edit = QLineEdit(saved_key)
@@ -5316,6 +5323,7 @@ class MainWindow(QMainWindow):
             mod_lbl = QLabel(tr("ui_150", "Модель:"))
             mod_lbl.setStyleSheet("color: #CBD5E1; font-size: 13px;")
             mod_lbl.setFixedWidth(78)
+            mod_lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             mod_r.addWidget(mod_lbl)
 
             # Ollama's model selector is editable. Use the native Qt combo here:
