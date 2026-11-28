@@ -794,7 +794,7 @@ ONLINE_PROVIDERS: Dict[str, Dict[str, Any]] = {
     },
     "gemini_tts": {
         "provider": "gemini_tts",
-        "title": "Google AI Studio (Gemini TTS)",
+        "title": "Gemini TTS",
         "subtitle": "Gemini Flash TTS",
         "voices": [
             {"id": "Kore", "name": "Kore (Gemini)", "gender": "female", "lang": "multi"},
@@ -4937,7 +4937,7 @@ class TTSEngineManager(QObject):
     ) -> Tuple[np.ndarray, int]:
         clean_key = str(api_key or "").strip().strip("\"'")
         if not clean_key:
-            raise RuntimeError(tr("tts.err.enter_key_online", "Введіть API ключ у блоці {provider} (вкладка «Онлайн-голоси»).", provider="Google AI Studio (Gemini TTS)"))
+            raise RuntimeError(tr("tts.err.enter_key_online", "Введіть API ключ у блоці {provider} (вкладка «Онлайн-голоси»).", provider="Gemini TTS"))
         if not voice_name:
             voice_name = "Kore"
         avail = list((item or {}).get("available_models") or [])

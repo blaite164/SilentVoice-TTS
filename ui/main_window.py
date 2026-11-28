@@ -441,23 +441,6 @@ QToolTip {
 """
 
 
-def _sync_btn_widths(*btns: QPushButton, extra_texts: Tuple[str, ...] = ()) -> None:
-    """Робить кнопки однакової ширини (за найширшим текстом), щоб поля над ними вирівнювались по правому краю."""
-    real = [b for b in btns if b is not None]
-    if not real:
-        return
-    widths: List[int] = []
-    for b in real:
-        b.ensurePolished()
-        widths.append(b.sizeHint().width())
-        for alt in extra_texts:
-            fm = QFontMetrics(b.font())
-            widths.append(fm.horizontalAdvance(alt) + 32)
-    w = max(widths)
-    for b in real:
-        b.setFixedWidth(w)
-
-
 def _fit_compact_action_btn(btn: QPushButton) -> None:
     """Уніфікує ширину кнопок дій на картках зі збереженням стандартної висоти та шрифту."""
     btn.setProperty("compactAction", "true")
@@ -2501,6 +2484,7 @@ class MainWindow(QMainWindow):
 
             key_lbl = QLabel(tr("ui_143", "API ключ:"))
             key_lbl.setStyleSheet("color: #CBD5E1; font-size: 13px;")
+            key_lbl.setFixedWidth(78)
             key_r.addWidget(key_lbl)
 
             key_edit = QLineEdit(saved_key)
@@ -2535,6 +2519,7 @@ class MainWindow(QMainWindow):
 
                 ref_lbl = QLabel(tr("ui_147", "ID голосу:"))
                 ref_lbl.setStyleSheet("color: #CBD5E1; font-size: 13px;")
+                ref_lbl.setFixedWidth(78)
                 ref_tip = tr(
                     "ui_148",
                     "Необов’язкове поле. Вставте reference_id з fish.audio, якщо хочете використати конкретний голос. Якщо залишити порожнім, використається голос із верхнього списку «Голос».",
@@ -2553,10 +2538,11 @@ class MainWindow(QMainWindow):
 
                 model_lbl = QLabel(tr("ui_150", "Модель:"))
                 model_lbl.setStyleSheet("color: #CBD5E1; font-size: 13px;")
+                model_lbl.setFixedWidth(78)
                 fish_r.addWidget(model_lbl)
 
                 model_combo = QComboBox()
-                model_combo.setMinimumWidth(155)
+                model_combo.setMinimumWidth(180)
                 fish_models = [("s2.1-pro-free", tr("ui_151", "s2.1-pro-free (Безкоштовна)"))]
                 if fish_paid:
                     fish_models.extend([
@@ -2630,10 +2616,11 @@ class MainWindow(QMainWindow):
 
                 g_mod_lbl = QLabel(tr("ui_150", "Модель:"))
                 g_mod_lbl.setStyleSheet("color: #CBD5E1; font-size: 13px;")
+                g_mod_lbl.setFixedWidth(78)
                 g_row.addWidget(g_mod_lbl)
 
                 g_mod_combo = QComboBox()
-                g_mod_combo.setMinimumWidth(145)
+                g_mod_combo.setMinimumWidth(180)
                 g_mod_combo.addItem(tr("ui_159", "Усі доступні"), "all")
 
                 custom_v = list(item.get("custom_voices") or [])
@@ -2744,10 +2731,11 @@ class MainWindow(QMainWindow):
 
                 m_lbl = QLabel(tr("ui_150", "Модель:"))
                 m_lbl.setStyleSheet("color: #CBD5E1; font-size: 13px;")
+                m_lbl.setFixedWidth(78)
                 api_row.addWidget(m_lbl)
 
                 m_combo = QComboBox()
-                m_combo.setMinimumWidth(155)
+                m_combo.setMinimumWidth(180)
                 if prov_key == "elevenlabs":
                     default_models = ["eleven_flash_v2_5", "eleven_turbo_v2_5", "eleven_multilingual_v2"]
                 elif prov_key == "gemini_tts":
@@ -2788,11 +2776,6 @@ class MainWindow(QMainWindow):
                     )
                 )
                 api_row.addWidget(u_fetch_btn)
-                _sync_btn_widths(
-                    show_btn,
-                    u_fetch_btn,
-                    extra_texts=(tr("ui_145", "Показати"), tr("ui_146", "Сховати")),
-                )
                 if prov_key != "elevenlabs":
                     api_row.addStretch(1)
                 c_lay.addLayout(api_row)
@@ -3396,7 +3379,7 @@ class MainWindow(QMainWindow):
             self._populate_online_add_combo()
             return
 
-        base_title = prov_spec["title"]
+        base_title = "Google AI Studio (Gemini TTS)" if prov_key == "gemini_tts" else prov_spec["title"]
         same_count = sum(1 for x in items if x.get("provider") == prov_key)
         title = base_title if same_count == 0 else f"{base_title} #{same_count + 1}"
         new_id = f"{prov_key}_{int(QTimer().remainingTime())}_{len(items) + 1}_{id(title) % 10000}"
@@ -5201,12 +5184,12 @@ class MainWindow(QMainWindow):
             top_r.addWidget(del_btn)
             c_lay.addLayout(top_r)
 
-            ai_show_btn: Optional[QPushButton] = None
             if spec.get("needs_key", True):
                 key_r = QHBoxLayout()
                 key_r.setSpacing(8)
                 key_lbl = QLabel(tr("ui_143", "API ключ:"))
                 key_lbl.setStyleSheet("color: #CBD5E1; font-size: 13px;")
+                key_lbl.setFixedWidth(78)
                 key_r.addWidget(key_lbl)
 
                 key_edit = QLineEdit(saved_key)
@@ -5242,7 +5225,6 @@ class MainWindow(QMainWindow):
 
                 show_btn.clicked.connect(_toggle_ai_echo)
                 key_r.addWidget(show_btn)
-                ai_show_btn = show_btn
                 c_lay.addLayout(key_r)
             elif prov_key == "ollama":
                 ollama_r = QHBoxLayout()
@@ -5332,6 +5314,7 @@ class MainWindow(QMainWindow):
             mod_r.setSpacing(8)
             mod_lbl = QLabel(tr("ui_150", "Модель:"))
             mod_lbl.setStyleSheet("color: #CBD5E1; font-size: 13px;")
+            mod_lbl.setFixedWidth(78)
             mod_r.addWidget(mod_lbl)
 
             # Ollama's model selector is editable. Use the native Qt combo here:
@@ -5414,13 +5397,6 @@ class MainWindow(QMainWindow):
                 lambda checked=False, iid=item_id, b=refresh_mod_btn: self._start_fetch_ai_models(iid, b, silent=False)
             )
             mod_r.addWidget(refresh_mod_btn)
-            if ai_show_btn is not None:
-                ai_show_btn.setMinimumWidth(0)
-                _sync_btn_widths(
-                    ai_show_btn,
-                    refresh_mod_btn,
-                    extra_texts=(tr("ui_145", "Показати"), tr("ui_146", "Сховати")),
-                )
             if prov_key == "ollama":
                 pull_model_btn = QPushButton(tr("ui_ollama_pull", "⬇ Завантажити модель"))
                 pull_model_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -5441,7 +5417,13 @@ class MainWindow(QMainWindow):
             if prov_key == "ollama" and not self._ollama_connections.get(item_id, False):
                 st_text = tr("ui_ollama_disconnected", "⚪ Ollama не підключена — список моделей з’явиться після підключення")
             elif prov_key == "local_api" and not avail_models:
-                st_text = tr("ui_local_api_disconnected", "⚪ Запустіть локальний API-сервер і натисніть «Оновити моделі»")
+                if str(item.get("managed_backend", "")).strip() == "lmstudio":
+                    st_text = tr(
+                        "ui_local_api_lmstudio_offline",
+                        "⚪ LM Studio не відповідає. Відкрийте її та увімкніть Local Server, потім натисніть «Оновити моделі».",
+                    )
+                else:
+                    st_text = tr("ui_local_api_disconnected", "⚪ Запустіть локальний API-сервер і натисніть «Оновити моделі»")
             elif avail_models:
                 st_text = tr("ui_f_014", "🟢 Завантажено моделей: {count}", count=len(avail_models))
             elif saved_key.strip():
@@ -6055,7 +6037,12 @@ class MainWindow(QMainWindow):
 
         st_lbl = self._ai_status_labels.get(item_id)
         if err:
-            if str(next((x.get("provider") for x in config.get("ai_items", []) if str(x.get("id")) == item_id), "")) == "ollama":
+            failed_item = next(
+                (x for x in config.get("ai_items", []) if str(x.get("id")) == item_id),
+                {},
+            )
+            failed_provider = str(failed_item.get("provider", ""))
+            if failed_provider == "ollama":
                 self._ollama_connections[item_id] = False
                 items = list(config.get("ai_items", []))
                 for item in items:
@@ -6074,6 +6061,50 @@ class MainWindow(QMainWindow):
                     st_lbl.setText(tr("ui_ollama_disconnected", "⚪ Ollama не підключена — список моделей з’явиться після підключення"))
                 if not silent:
                     QMessageBox.information(self, tr("ui_229", "Пошук AI моделей"), tr("ui_ollama_connect_hint", "Не вдалося підключитися до Ollama. Переконайтеся, що вона встановлена й запущена."))
+                return
+            if failed_provider == "local_api" and any(
+                marker in err.casefold()
+                for marker in (
+                    "connection refused",
+                    "actively refused",
+                    "failed to establish a new connection",
+                    "max retries exceeded",
+                    "timed out",
+                )
+            ):
+                managed_backend = str(failed_item.get("managed_backend", "")).strip()
+                failed_base_url = str(failed_item.get("base_url", "")).casefold()
+                err_lower = err.casefold()
+                is_lm_studio = (
+                    managed_backend == "lmstudio"
+                    or "127.0.0.1:1234" in failed_base_url
+                    or "localhost:1234" in failed_base_url
+                    or "port=1234" in err_lower
+                    or "localhost:1234" in err_lower
+                    or "127.0.0.1:1234" in err_lower
+                )
+                if is_lm_studio:
+                    status_text = tr(
+                        "ui_local_api_lmstudio_offline",
+                        "⚪ LM Studio не відповідає. Відкрийте її та увімкніть Local Server, потім натисніть «Оновити моделі».",
+                    )
+                    dialog_text = tr(
+                        "ui_local_api_lmstudio_offline_dialog",
+                        "Не вдалося з’єднатися з LM Studio. Переконайтеся, що програма запущена й Local Server увімкнений, а потім спробуйте ще раз.",
+                    )
+                else:
+                    status_text = tr(
+                        "ui_local_api_server_offline",
+                        "⚪ Локальний сервер не відповідає. Запустіть його та натисніть «Оновити моделі».",
+                    )
+                    dialog_text = status_text[2:] if status_text.startswith("⚪ ") else status_text
+                if st_lbl is not None:
+                    try:
+                        st_lbl.setText(status_text)
+                    except RuntimeError:
+                        pass
+                if not silent:
+                    QMessageBox.information(self, tr("ui_229", "Пошук AI моделей"), dialog_text)
                 return
             if st_lbl is not None:
                 try:
@@ -6300,7 +6331,7 @@ class MainWindow(QMainWindow):
         sl_volume.setValue(int(round(float(dsp.get("volume", 100)))))
         lbl_volume = QLabel(f"{sl_volume.value()}%")
         lbl_volume.setFixedWidth(64)
-        lbl_volume.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        lbl_volume.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         vol_row.addWidget(vol_lbl_title)
         vol_row.addWidget(sl_volume, 1)
         vol_row.addWidget(lbl_volume)
@@ -6318,7 +6349,7 @@ class MainWindow(QMainWindow):
         sl_speed.setValue(int(round(float(dsp.get("speed_rate", 1.00)) * 100)))
         lbl_speed = QLabel(f"{sl_speed.value() / 100.0:.2f}x")
         lbl_speed.setFixedWidth(64)
-        lbl_speed.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        lbl_speed.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         grid.addWidget(chk_speed, 0, 0)
         grid.addWidget(sl_speed, 0, 1)
         grid.addWidget(lbl_speed, 0, 2)
@@ -6331,7 +6362,7 @@ class MainWindow(QMainWindow):
         sl_pitch.setValue(int(round(float(dsp.get("pitch_steps", 0.0)) * 10)))
         lbl_pitch = QLabel(f"{sl_pitch.value() / 10.0:+.1f} st")
         lbl_pitch.setFixedWidth(64)
-        lbl_pitch.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        lbl_pitch.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         grid.addWidget(chk_pitch, 1, 0)
         grid.addWidget(sl_pitch, 1, 1)
         grid.addWidget(lbl_pitch, 1, 2)
@@ -6344,7 +6375,7 @@ class MainWindow(QMainWindow):
         sl_denoise.setValue(int(round(float(dsp.get("denoise_prop", 0.0)) * 100)))
         lbl_denoise = QLabel(f"{sl_denoise.value()}%")
         lbl_denoise.setFixedWidth(64)
-        lbl_denoise.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        lbl_denoise.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         grid.addWidget(chk_denoise, 2, 0)
         grid.addWidget(sl_denoise, 2, 1)
         grid.addWidget(lbl_denoise, 2, 2)
@@ -6357,7 +6388,7 @@ class MainWindow(QMainWindow):
         sl_deess.setValue(int(round(float(dsp.get("deess_db", -6.0)) * 10)))
         lbl_deess = QLabel(f"{sl_deess.value() / 10.0:.1f} dB")
         lbl_deess.setFixedWidth(64)
-        lbl_deess.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        lbl_deess.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         grid.addWidget(chk_deess, 3, 0)
         grid.addWidget(sl_deess, 3, 1)
         grid.addWidget(lbl_deess, 3, 2)
@@ -6370,7 +6401,7 @@ class MainWindow(QMainWindow):
         sl_gate.setValue(int(round(float(dsp.get("gate_db", -45.0)))))
         lbl_gate = QLabel(f"{sl_gate.value()} dB")
         lbl_gate.setFixedWidth(64)
-        lbl_gate.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        lbl_gate.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         grid.addWidget(chk_gate, 4, 0)
         grid.addWidget(sl_gate, 4, 1)
         grid.addWidget(lbl_gate, 4, 2)
